@@ -1,0 +1,1 @@
+<?php require 'page-guard.php';require '../config/db_conn.php';$id=(int)($_POST['id']??0);if($id){$stmt=$conn->prepare('DELETE FROM teachers WHERE TEACHER_ID=?');$stmt->bind_param('i',$id);$stmt->execute();}header('Location: teacher-list.php');exit;

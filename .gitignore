@@ -1,0 +1,17 @@
+# Local editor settings and tooling
+.vscode/
+.codex/
+.agents/
+node_modules/
+
+# Local secrets and runtime files
+.env
+.env.*
+!.env.example
+*.log
+
+# Student photographs are runtime data, not source assets
+uploads/*
+!uploads/students/
+uploads/students/*
+!uploads/students/.gitkeep
