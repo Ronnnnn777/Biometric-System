@@ -15,3 +15,7 @@ uploads/*
 !uploads/students/
 uploads/students/*
 !uploads/students/.gitkeep
+
+# Generated face-recognition runtime cache
+admin/face_encoding_cache.pkl
+admin/__pycache__/
