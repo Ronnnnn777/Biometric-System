@@ -47,7 +47,9 @@ def recognize(image_path):
     known,ids=known_faces();matches=[];seen=set();faces=[]
     for encoding,location in zip(encodings,locations):
         top,right,bottom,left=location
-        if right-left < 55 or bottom-top < 55: continue
+        # In a group scan, secondary faces occupy fewer pixels than the person
+        # closest to the camera.  Keep them eligible for matching too.
+        if right-left < 45 or bottom-top < 45: continue
         box={"top":int(top),"right":int(right),"bottom":int(bottom),"left":int(left)};faces.append({"box":box})
         distances=face_recognition.face_distance(known,encoding)
         if len(distances):

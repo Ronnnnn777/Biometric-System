@@ -1,4 +1,5 @@
 <?php
+require 'page-guard.php';
 require '../config/db_conn.php';
 $section=$_GET['section']??'all';$filterDate=$_GET['date']??'';$student=trim($_GET['student']??'');$where=[];
 if($filterDate!==''){$where[]="DATE(a.TIME_IN)='".mysqli_real_escape_string($conn,$filterDate)."'";}

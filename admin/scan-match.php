@@ -7,9 +7,19 @@ if (!preg_match('#^data:image/(?:jpeg|png);base64,(.+)$#', $frame, $matches)) { 
 $imagePath = tempnam(sys_get_temp_dir(), 'biometric-scan-') . '.jpg';
 file_put_contents($imagePath, base64_decode($matches[1], true));
 function recognizeWithService(string $imagePath): ?array { $payload=json_encode(['image_path'=>$imagePath]); $context=stream_context_create(['http'=>['method'=>'POST','header'=>'Content-Type: application/json\r\n','content'=>$payload,'timeout'=>3,'ignore_errors'=>true]]); $raw=@file_get_contents('http://127.0.0.1:8765/recognize',false,$context); $result=json_decode($raw ?: '',true); return is_array($result)?$result:null; }
+$pythonPath='C:\\Users\\jaxim\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe';
+$pythonCommand=is_file($pythonPath) ? escapeshellarg($pythonPath) : 'py -3';
 $result=recognizeWithService($imagePath);
-if ($result===null && empty($_SESSION['face_service_started'])) { $_SESSION['face_service_started']=true; $service=escapeshellarg(__DIR__.DIRECTORY_SEPARATOR.'recognize_face_service.py'); if (PHP_OS_FAMILY==='Windows') { @pclose(@popen('start "" /B python '.$service.' >NUL 2>&1','r')); } $result=recognizeWithService($imagePath); }
-if ($result===null) { $script=escapeshellarg(__DIR__.DIRECTORY_SEPARATOR.'recognize_face.py'); $raw=shell_exec('python '.$script.' '.escapeshellarg($imagePath).' 2>NUL'); $result=json_decode($raw ?? '',true); }
+// Keep recognition in one long-running Python process.  Re-loading every
+// enrolled face for every camera frame is the main source of scan latency.
+if ($result===null && (microtime(true)-(float)($_SESSION['face_service_attempted_at'] ?? 0)) > 5) {
+    $_SESSION['face_service_attempted_at']=microtime(true);
+    $service=escapeshellarg(__DIR__.DIRECTORY_SEPARATOR.'recognize_face_service.py');
+    if (PHP_OS_FAMILY==='Windows') @pclose(@popen('start "" /B '.$pythonCommand.' '.$service.' >NUL 2>&1','r'));
+    usleep(400000);
+    $result=recognizeWithService($imagePath);
+}
+if ($result===null) { $script=escapeshellarg(__DIR__.DIRECTORY_SEPARATOR.'recognize_face.py'); $raw=shell_exec($pythonCommand.' '.$script.' '.escapeshellarg($imagePath).' 2>NUL'); $result=json_decode($raw ?? '',true); }
 @unlink($imagePath);
 $faces=$result['faces'] ?? [];
 $recognized=$result['matches'] ?? [];

@@ -1,4 +1,14 @@
 <?php
 require 'page-guard.php';require '../config/db_conn.php';require '../includes/xlsx-export.php';
 $date=$_GET['date']??date('Y-m-d');$section=$_GET['section']??'all';$studentId=trim($_GET['student_id']??($_GET['student']??''));if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$date)){http_response_code(400);exit('Invalid date.');}
-$stmt=$conn->prepare("SELECT a.STUDENT_ID,COALESCE(s.STUDENT_NAME,a.STUDENT_NAME) STUDENT_NAME,s.SECTION,a.TIME_IN FROM attendance a LEFT JOIN students s ON TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID) WHERE DATE(a.TIME_IN)=? AND (?='all' OR s.SECTION=?) AND (?='' OR a.STUDENT_ID=?) ORDER BY s.SECTION,STUDENT_NAME");$stmt->bind_param('sssss',$date,$section,$section,$studentId,$studentId);$stmt->execute();$result=$stmt->get_result();$rows=[];while($row=$result->fetch_assoc())$rows[]=[ $row['STUDENT_ID'],$row['STUDENT_NAME'],$row['SECTION']??'N/A',$date,$row['TIME_IN'],'Present'];$filePart=preg_replace('/[^A-Za-z0-9_-]/','_',$studentId?:$section);downloadAttendanceXlsx('attendance-'.$filePart.'-'.$date.'.xlsx',['Student ID','Student Name','Section','Date','Time In','Status'],$rows);
+$stmt=$conn->prepare("SELECT a.STUDENT_ID,COALESCE(s.STUDENT_NAME,a.STUDENT_NAME) STUDENT_NAME,s.SECTION,a.TIME_IN FROM attendance a LEFT JOIN students s ON TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID) WHERE DATE(a.TIME_IN)=? AND (?='all' OR s.SECTION=?) AND (?='' OR a.STUDENT_ID=?) ORDER BY s.SECTION,STUDENT_NAME");
+$stmt->bind_param('sssss',$date,$section,$section,$studentId,$studentId);
+$stmt->execute();
+$result=$stmt->get_result();
+$rows=[];
+while($row=$result->fetch_assoc()) {
+    $timeIn=(new DateTimeImmutable($row['TIME_IN']))->format('g:i:s A');
+    $rows[]=[ $row['STUDENT_ID'],$row['STUDENT_NAME'],$row['SECTION']??'N/A',$date,$timeIn,'Present'];
+}
+$filePart=preg_replace('/[^A-Za-z0-9_-]/','_',$studentId?:$section);
+downloadAttendanceXlsx('attendance-'.$filePart.'-'.$date.'.xlsx',['Student ID','Student Name','Section','Date','Time In','Status'],$rows);

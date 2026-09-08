@@ -1,4 +1,5 @@
 <?php
+    require 'page-guard.php';
     // Connect to your existing database config
     require "../config/db_conn.php";
     header('Content-Type: application/json');
