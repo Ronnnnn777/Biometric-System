@@ -11,6 +11,12 @@ _cached_key = None
 _cached_encodings = []
 _cached_ids = []
 
+# A single enrollment photo cannot capture every harmless appearance change
+# (for example, a different hairstyle).  Permit a moderately wider genuine
+# match, but only when it is clearly separated from every other student.
+MAX_MATCH_DISTANCE = 0.42
+MIN_RUNNER_UP_MARGIN = 0.075
+
 def fingerprint():
     entries=[]
     for name in sorted(os.listdir(KNOWN_FACES_DIR)):
@@ -53,9 +59,18 @@ def recognize(image_path):
         box={"top":int(top),"right":int(right),"bottom":int(bottom),"left":int(left)};faces.append({"box":box})
         distances=face_recognition.face_distance(known,encoding)
         if len(distances):
-            best=distances.argmin()
-            if distances[best]<=0.38 and ids[best] not in seen:
-                seen.add(ids[best]);matches.append({"student_id":ids[best],"confidence":round(float(1-distances[best]),3),"box":box})
+            # Compare against the best reference for each student, then make
+            # sure the winner is not ambiguous with another student.
+            per_student={}
+            for index,distance in enumerate(distances):
+                student_id=ids[index]
+                per_student[student_id]=min(per_student.get(student_id,float("inf")),float(distance))
+            ranked=sorted(per_student.items(),key=lambda item:item[1])
+            best_id,best_distance=ranked[0]
+            runner_up=ranked[1][1] if len(ranked)>1 else float("inf")
+            if (best_distance<=MAX_MATCH_DISTANCE and runner_up-best_distance>=MIN_RUNNER_UP_MARGIN
+                    and best_id not in seen):
+                seen.add(best_id);matches.append({"student_id":best_id,"confidence":round(float(1-best_distance),3),"box":box})
     return {"match":bool(matches),"faces":faces,"matches":matches,"message":"Face not recognized." if not matches else None}
 
 if __name__ == "__main__": print(json.dumps(recognize(sys.argv[1] if len(sys.argv)>1 else "")))
