@@ -2,16 +2,21 @@
 session_start();
 require "../config/db_conn.php";
 require "page-guard.php";
+require '../includes/student-profile-schema.php';
+ensureStudentProfileColumns($conn);
 
 if(!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']){
     die("Invalid CSRF token.");
 }
 
 $student_id = trim($_POST["student_id"]);
-$student_name = trim($_POST["student_name"]);
+$first_name = trim($_POST['first_name'] ?? '');
+$last_name = trim($_POST['last_name'] ?? '');
+$student_name = trim($first_name . ' ' . $last_name);
 $section = isset($_POST["student_section"]) ? $_POST["student_section"] : ""; 
+$grade = (int)($_POST['grade'] ?? 0);
 
-if(empty($student_id) || empty($student_name) || empty($section)){
+if(empty($student_id) || empty($first_name) || empty($last_name) || empty($section) || !in_array($grade,[7,8,9,10,11,12],true)){
     $_SESSION["toast"] = ["message" => "All fields are required.", "type" => "error"];
     header("Location: add-student.php");
     exit; 
@@ -60,9 +65,9 @@ if($filename) {
         copy($targetPath, $pythonPath);
         $db_path = "uploads/students/" . $filename;
 
-        $sql = "INSERT INTO students (STUDENT_ID, STUDENT_NAME, SECTION, IMAGE_PATH) VALUES (?, ?, ?, ?)";
+        $sql = "INSERT INTO students (STUDENT_ID, STUDENT_NAME, FIRST_NAME, LAST_NAME, GRADE, SECTION, IMAGE_PATH) VALUES (?, ?, ?, ?, ?, ?, ?)";
         $insert = $conn->prepare($sql);
-        $insert->bind_param("ssss", $student_id, $student_name, $section, $db_path);
+        $insert->bind_param("ssssiss", $student_id, $student_name, $first_name, $last_name, $grade, $section, $db_path);
 
         if($insert->execute()){
             $_SESSION["toast"] = ["message" => "Success: Student registered!", "type" => "success"];

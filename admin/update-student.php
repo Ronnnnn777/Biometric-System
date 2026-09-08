@@ -2,6 +2,8 @@
 session_start();
 require "../config/db_conn.php";
 require "page-guard.php";
+require '../includes/student-profile-schema.php';
+ensureStudentProfileColumns($conn);
 
 if(!isset($_POST["csrf_token"]) || $_POST["csrf_token"] !== $_SESSION["csrf_token"]){
     die("Invalid CSRF token.");
@@ -9,8 +11,17 @@ if(!isset($_POST["csrf_token"]) || $_POST["csrf_token"] !== $_SESSION["csrf_toke
 
 $id = $_POST["id"]; 
 $student_id = trim($_POST["student_id"]);
-$student_name = trim($_POST["student_name"]);
+$first_name = trim($_POST['first_name'] ?? '');
+$last_name = trim($_POST['last_name'] ?? '');
+$student_name = trim($first_name . ' ' . $last_name);
 $section = $_POST["section"];
+$grade = (int)($_POST['grade'] ?? 0);
+
+if(!$id || $student_id==='' || $first_name==='' || $last_name==='' || $section==='' || !in_array($grade,[7,8,9,10,11,12],true)){
+    $_SESSION['toast']=['message'=>'All student details are required.','type'=>'error'];
+    header("Location: edit-student.php?id=$id");
+    exit;
+}
 
 // 🛡️ GUARD: Duplicate Student ID check
 $check_sql = "SELECT ID FROM students WHERE STUDENT_ID = ? AND ID != ?";
@@ -59,8 +70,8 @@ if(isset($_FILES['student_image']) && $_FILES['student_image']['error'] == 0) {
 }
 
 // 3. Database Update
-$stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, SECTION = ?, IMAGE_PATH = ? WHERE ID = ?");
-$stmt->bind_param("ssssi", $student_id, $student_name, $section, $db_path, $id);
+$stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, LAST_NAME = ?, GRADE = ?, SECTION = ?, IMAGE_PATH = ? WHERE ID = ?");
+$stmt->bind_param("ssssissi", $student_id, $student_name, $first_name, $last_name, $grade, $section, $db_path, $id);
 
 if($stmt->execute()){
     $_SESSION["toast"] = ["message" => "Student profile updated successfully!", "type" => "success"];
