@@ -12,6 +12,8 @@ function ensureTeacherProfileColumns(mysqli $conn): void
     if(!isset($columns['FIRST_NAME']))$conn->query("ALTER TABLE teachers ADD COLUMN FIRST_NAME VARCHAR(80) NOT NULL DEFAULT '' AFTER TEACHER_NAME");
     if(!isset($columns['LAST_NAME']))$conn->query("ALTER TABLE teachers ADD COLUMN LAST_NAME VARCHAR(80) NOT NULL DEFAULT '' AFTER FIRST_NAME");
     if(!isset($columns['SUBJECT']))$conn->query("ALTER TABLE teachers ADD COLUMN SUBJECT VARCHAR(80) NULL AFTER SECTION");
+    if(!isset($columns['GRADE']))$conn->query("ALTER TABLE teachers ADD COLUMN GRADE TINYINT UNSIGNED NULL AFTER LAST_NAME");
+    if(!isset($columns['STRAND']))$conn->query("ALTER TABLE teachers ADD COLUMN STRAND VARCHAR(20) NOT NULL DEFAULT '' AFTER GRADE");
 
     $teachers=$conn->query("SELECT TEACHER_ID,TEACHER_NAME FROM teachers WHERE FIRST_NAME='' OR LAST_NAME=''");
     $update=$conn->prepare('UPDATE teachers SET FIRST_NAME=?,LAST_NAME=? WHERE TEACHER_ID=?');

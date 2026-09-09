@@ -1,6 +1,7 @@
 <?php
 session_start();
 require '../includes/csrf-token.php';
+require '../includes/student-placement-options.php';
 require 'page-guard.php';
 require 'components.php';
 $toast=$_SESSION['toast']['message']??null;
@@ -20,7 +21,10 @@ adminSidebar('students','Register student','Create a student profile for attenda
                 <label class="block text-sm font-bold text-slate-700">Student ID<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" name="student_id" placeholder="e.g. 2024-0001" required></label>
                 <label class="block text-sm font-bold text-slate-700">Grade<select class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" name="grade" required><option value="">Choose a grade</option><?php foreach([7,8,9,10,11,12] as $grade): ?><option value="<?= $grade ?>">Grade <?= $grade ?></option><?php endforeach; ?></select></label>
             </div>
-            <label class="block text-sm font-bold text-slate-700">Section<select class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" name="student_section" required><option value="">Choose a section</option><option>BSIT-4A</option><option>BSIT-4B</option><option>BSCS-4A</option><option>BSCS-4B</option></select></label>
+            <div class="grid gap-5 sm:grid-cols-2">
+                <label id="strand-field" class="hidden text-sm font-bold text-slate-700">Strand<select id="student-strand" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" name="strand" disabled><option value="">Choose a strand</option></select></label>
+                <label id="section-field" class="block text-sm font-bold text-slate-700 sm:col-span-2">Section<select id="student-section" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" name="student_section" required disabled><option value="">Choose a grade first</option></select></label>
+            </div>
             <div class="grid gap-5 sm:grid-cols-2"><label class="block text-sm font-bold text-slate-700">First name<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" name="first_name" autocomplete="given-name" required></label><label class="block text-sm font-bold text-slate-700">Last name<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" name="last_name" autocomplete="family-name" required></label></div>
             <div class="rounded-xl border border-slate-200 p-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
@@ -58,6 +62,12 @@ adminSidebar('students','Register student','Create a student profile for attenda
 <?php if($toast): ?><div data-auto-toast class="fixed bottom-5 right-5 rounded-xl bg-slate-900 px-5 py-4 font-semibold text-white shadow-xl transition-all duration-300"><?= htmlspecialchars($toast) ?></div><?php endif; ?>
 <style>#camera-controls:not(.hidden){display:flex}</style>
 <script>
+const placementOptions=<?= json_encode([7=>studentSectionsForGrade(7),8=>studentSectionsForGrade(8),9=>studentSectionsForGrade(9),10=>studentSectionsForGrade(10),11=>['Academic'=>studentSectionsForGrade(11,'Academic'),'Techpro'=>studentSectionsForGrade(11,'Techpro')],12=>['Academic'=>studentSectionsForGrade(12,'Academic'),'Techpro'=>studentSectionsForGrade(12,'Techpro')]]) ?>;
+const gradeSelect=document.querySelector('[name="grade"]'),sectionSelect=document.getElementById('student-section'),strandSelect=document.getElementById('student-strand'),sectionField=document.getElementById('section-field'),strandField=document.getElementById('strand-field');
+function setOptions(select,placeholder,items){select.innerHTML='';const first=document.createElement('option');first.value='';first.textContent=placeholder;select.appendChild(first);items.forEach(item=>{const option=document.createElement('option');option.value=item;option.textContent=item;select.appendChild(option)})}
+function updatePlacement(){const grade=gradeSelect.value,senior=grade==='11'||grade==='12';strandField.classList.toggle('hidden',!senior);strandSelect.disabled=!senior;strandSelect.required=senior;sectionField.classList.toggle('sm:col-span-2',!senior);if(!grade){setOptions(sectionSelect,'Choose a grade first',[]);sectionSelect.disabled=true;setOptions(strandSelect,'Choose a strand',[]);return}if(!senior){strandSelect.value='';setOptions(sectionSelect,'Choose a section',placementOptions[grade]||[]);sectionSelect.disabled=false;return}setOptions(strandSelect,'Choose a strand',['Techpro','Academic']);setOptions(sectionSelect,'Choose a strand first',[]);sectionSelect.disabled=true}
+function updateSeniorSections(){if(!(gradeSelect.value==='11'||gradeSelect.value==='12'))return;const sections=placementOptions[gradeSelect.value]?.[strandSelect.value]||[];setOptions(sectionSelect,strandSelect.value?'Choose a section':'Choose a strand first',sections);sectionSelect.disabled=!strandSelect.value}
+gradeSelect.addEventListener('change',updatePlacement);strandSelect.addEventListener('change',updateSeniorSections);updatePlacement();
 const input=document.getElementById('student_image'),fileName=document.getElementById('file-name'),preview=document.getElementById('main-preview'),video=document.getElementById('webcam'),useCamera=document.getElementById('use-camera'),cameraSelect=document.getElementById('camera-select'),capture=document.getElementById('capture-photo'),retake=document.getElementById('retake-photo'),controls=document.getElementById('camera-controls'),canvas=document.getElementById('photo-canvas'),captured=document.getElementById('captured_image'),status=document.getElementById('camera-status'),help=document.getElementById('preview-help');
 let stream=null;
 const stopCamera=()=>{stream?.getTracks().forEach(track=>track.stop());stream=null;video.srcObject=null;capture.disabled=true};
