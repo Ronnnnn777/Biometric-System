@@ -12,4 +12,8 @@ class Handler(BaseHTTPRequestHandler):
             body=json.dumps({"match":False,"matches":[],"message":"Recognition service error."}).encode(); self.send_response(500); self.send_header("Content-Type","application/json"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
     def log_message(self, format, *args): pass
 
-ThreadingHTTPServer(("127.0.0.1",8765),Handler).serve_forever()
+# Keep the current scanner service isolated from older instances that can
+# remain running after a code update.
+# Use a dedicated port so an older service left running by another Windows
+# session cannot keep the scanner on stale recognition rules.
+ThreadingHTTPServer(("127.0.0.1",8772),Handler).serve_forever()

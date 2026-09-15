@@ -14,17 +14,17 @@
     $stmt->execute();
     $today_count = $stmt->get_result()->fetch_assoc()["total_today"];
 
-    // 3. Hardware Heartbeat (Checks if camera sent a signal in the last 2 minutes)
-    // This matches your Capstone logic for monitoring the ESP32-CAM node
-    $camera = $conn->query("SELECT COUNT(*) AS active_count FROM camera_status WHERE status = 'Active' AND last_seen > NOW() - INTERVAL 2 MINUTE")->fetch_assoc()["active_count"];
+    // Browser cameras are selected locally by the administrator, so there is
+    // no ESP32 heartbeat table to query.
+    $camera = 0;
 
-    // 4. Send the data back to your JavaScript as a JSON object
+    // Send the data back to your JavaScript as a JSON object.
     echo json_encode([
         "totalStudents" => $total,
         "attendanceToday" => $today_count,
         "activeCameras" => $camera,
-        "statusText" => ($camera > 0 ? "CONNECTED" : "DISCONNECTED"),
-        "statusColor" => ($camera > 0 ? "#10b981" : "#ef4444")
+        "statusText" => "BROWSER CAMERA",
+        "statusColor" => "#64748b"
     ]);
 
 

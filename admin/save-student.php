@@ -16,9 +16,11 @@ $last_name = trim($_POST['last_name'] ?? '');
 $student_name = trim($first_name . ' ' . $last_name);
 $section = trim($_POST["student_section"] ?? '');
 $grade = (int)($_POST['grade'] ?? 0);
+$age = (int)($_POST['age'] ?? 0);
 $strand = trim($_POST['strand'] ?? '');
+$address = trim($_POST['address'] ?? '');
 
-if(empty($student_id) || empty($first_name) || empty($last_name) || !isValidStudentPlacement($grade, $strand, $section)){
+if(empty($student_id) || empty($first_name) || empty($last_name) || !isValidStudentAge($age) || $address==='' || strlen($address)>255 || !isValidStudentPlacement($grade, $strand, $section)){
     $_SESSION["toast"] = ["message" => "All fields are required.", "type" => "error"];
     header("Location: add-student.php");
     exit; 
@@ -67,9 +69,9 @@ if($filename) {
         copy($targetPath, $pythonPath);
         $db_path = "uploads/students/" . $filename;
 
-        $sql = "INSERT INTO students (STUDENT_ID, STUDENT_NAME, FIRST_NAME, LAST_NAME, GRADE, STRAND, SECTION, IMAGE_PATH) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO students (STUDENT_ID, STUDENT_NAME, FIRST_NAME, LAST_NAME, GRADE, AGE, STRAND, ADDRESS, SECTION, IMAGE_PATH) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $insert = $conn->prepare($sql);
-        $insert->bind_param("ssssisss", $student_id, $student_name, $first_name, $last_name, $grade, $strand, $section, $db_path);
+        $insert->bind_param("ssssiissss", $student_id, $student_name, $first_name, $last_name, $grade, $age, $strand, $address, $section, $db_path);
 
         if($insert->execute()){
             $_SESSION["toast"] = ["message" => "Success: Student registered!", "type" => "success"];

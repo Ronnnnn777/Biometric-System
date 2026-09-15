@@ -1,0 +1,28 @@
+# Public-site hardening for Apache/XAMPP.
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Keep the public entry point extensionless.  Redirect only browser
+    # requests for the physical PHP file, then internally serve /index.
+    RewriteCond %{THE_REQUEST} \s/+biometric/index\.php(?:[\s?]|$) [NC]
+    RewriteRule ^index\.php$ /biometric/index [R=301,L,NE]
+    RewriteRule ^index$ index.php [END]
+
+    # These directories contain application code, database artefacts, runtime
+    # output, or repository metadata; they are never public web resources.
+    RewriteRule ^(?:config|database|includes|storage|tools|tmp|output|\.git)(?:/|$) - [F,L,NC]
+</IfModule>
+
+<IfModule mod_authz_core.c>
+    # Never serve configuration, backups, logs, source helpers, or caches.
+    <FilesMatch "\.(?:bak|conf|env|ini|log|md|py|pkl|sql|yml|yaml)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

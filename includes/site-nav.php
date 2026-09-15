@@ -10,7 +10,6 @@
             <a class="block py-2 text-sm font-semibold <?= $currentPage === 'home' ? 'text-blue-600' : 'text-slate-600 hover:text-blue-600' ?>" href="index.php">Home</a>
             <a class="block py-2 text-sm font-semibold <?= $currentPage === 'features' ? 'text-blue-600' : 'text-slate-600 hover:text-blue-600' ?>" href="features.php">Features</a>
             <a class="block py-2 text-sm font-semibold <?= $currentPage === 'about' ? 'text-blue-600' : 'text-slate-600 hover:text-blue-600' ?>" href="about-us.php">About</a>
-            <a class="mt-2 block rounded-lg bg-blue-600 px-4 py-2.5 text-center text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 lg:mt-0" href="admin/login.php">Admin sign in</a>
         </div>
     </nav>
 </header>

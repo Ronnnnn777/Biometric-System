@@ -1,1 +1,27 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>About | Biometric Attendance</title><script src="https://cdn.tailwindcss.com"></script><script>tailwind.config={theme:{extend:{colors:{brand:{950:'#172554'}}}}}</script></head><body class="bg-slate-50 text-slate-800"><?php $currentPage='about'; require 'includes/site-nav.php'; ?><main><section class="bg-brand-950 px-5 py-20 text-white lg:px-8"><div class="mx-auto max-w-4xl"><p class="text-sm font-bold uppercase tracking-widest text-blue-300">About the system</p><h1 class="mt-4 text-4xl font-black tracking-tight sm:text-5xl">Attendance information people can actually use.</h1></div></section><section class="mx-auto grid max-w-4xl gap-8 px-5 py-16 text-lg leading-8 text-slate-600 lg:px-8"><p>The Biometric Authentication Attendance System improves the efficiency, security, and reliability of attendance monitoring in educational institutions.</p><p>Instead of relying on manual processes that take time and are vulnerable to proxy attendance and human error, staff have a central place to manage student profiles and review records.</p><p>Biometric registration and automated logging help provide clearer, more timely attendance information for administrators, teachers, and families.</p><a href="admin/login.php" class="w-fit rounded-xl bg-blue-600 px-5 py-3 text-base font-bold text-white shadow-sm transition hover:bg-blue-700">Go to administrator sign in</a></section></main><script>const m=document.querySelector('[data-site-menu]'),n=document.querySelector('[data-site-navigation]');m?.addEventListener('click',()=>n.classList.toggle('hidden'));</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>About | Biometric Attendance</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={theme:{extend:{colors:{brand:{950:'#172554'}}}}}</script>
+</head>
+<body class="bg-slate-50 text-slate-800">
+<?php $currentPage='about'; require 'includes/site-nav.php'; ?>
+<main>
+  <section class="bg-brand-950 px-5 py-20 text-white lg:px-8">
+    <div class="mx-auto max-w-4xl">
+      <p class="text-sm font-bold uppercase tracking-widest text-blue-300">About the system</p>
+      <h1 class="mt-4 text-4xl font-black tracking-tight sm:text-5xl">Attendance information people can actually use.</h1>
+    </div>
+  </section>
+  <section class="mx-auto grid max-w-4xl gap-8 px-5 py-16 text-lg leading-8 text-slate-600 lg:px-8">
+    <p>The Biometric Authentication Attendance System improves the efficiency, security, and reliability of attendance monitoring in educational institutions.</p>
+    <p>Instead of relying on manual processes that take time and are vulnerable to proxy attendance and human error, staff have a central place to manage student profiles and review records.</p>
+    <p>Biometric registration and automated logging help provide clearer, more timely attendance information for administrators, teachers, and families.</p>
+  </section>
+</main>
+<script>const m=document.querySelector('[data-site-menu]'),n=document.querySelector('[data-site-navigation]');m?.addEventListener('click',()=>n.classList.toggle('hidden'));</script>
+</body>
+</html>

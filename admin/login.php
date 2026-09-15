@@ -1,74 +1,19 @@
 <?php
-session_start();
-if(!empty($_SESSION['is-authenticated'])){header('Location: '.(($_SESSION['user-role']??'')==='teacher'?'../teacher/home.php':'home.php'));exit;}
-require '../config/db_conn.php';
-require '../includes/default-admin.php';
-require '../includes/csrf-token.php';
-ensureDefaultAdministrator($conn);
-$resetSuccess=$_SESSION['reset-success']??'';
-$loginError=$_SESSION['login-error']??'';
-unset($_SESSION['reset-success'],$_SESSION['login-error']);
-header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-header('Pragma: no-cache');
+session_start(); $appBase='/biometric'; $requestedPath=parse_url($_SERVER['REQUEST_URI']??'',PHP_URL_PATH)??'';
+if(preg_match('#/admin/login\.php$#i',$requestedPath)){header('Location: '.$appBase.'/',true,302);exit;}
+if(!empty($_SESSION['is-authenticated'])){header('Location: '.$appBase.(($_SESSION['user-role']??'')==='teacher'?'/teacher/home.php':'/admin/home.php'));exit;}
+require __DIR__.'/../config/db_conn.php'; require __DIR__.'/../includes/default-admin.php'; require __DIR__.'/../includes/csrf-token.php'; require __DIR__.'/../includes/staff-biometric.php';
+ensureDefaultAdministrator($conn); ensureStaffBiometricSchema($conn); $loginError=$_SESSION['login-error']??''; unset($_SESSION['login-error']);
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0'); header('Pragma: no-cache');
 ?>
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Sign in | Biometric</title><script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="min-h-screen bg-slate-950 text-slate-800">
-  <main class="grid min-h-screen lg:grid-cols-2">
-    <section class="hidden bg-gradient-to-br from-blue-600 via-blue-700 to-slate-950 p-12 text-white lg:flex lg:flex-col lg:justify-between">
-      <a href="../index.php" class="flex items-center gap-3 text-xl font-bold"><img src="../image/logo.png" alt="" class="h-11 w-11 rounded-xl">Biometric.</a>
-      <div><p class="text-sm font-bold uppercase tracking-widest text-blue-200">Attendance management</p><h1 class="mt-4 max-w-lg text-5xl font-black tracking-tight">A clearer view of every school day.</h1><p class="mt-6 max-w-md text-lg leading-8 text-blue-100">Register students, watch attendance, and find the records you need.</p></div>
-      <p class="text-sm text-blue-200">Secure school access</p>
-    </section>
-    <section class="flex items-center justify-center bg-slate-50 p-5">
-      <div class="w-full max-w-md"><div class="mt-6 rounded-2xl bg-white p-7 shadow-xl shadow-slate-900/10 sm:p-9">
-        <p class="text-sm font-bold uppercase tracking-widest text-blue-600">Welcome back</p><h2 class="mt-2 text-3xl font-black tracking-tight text-slate-900">Sign in</h2>
-        <p id="login-help" class="mt-2 text-slate-500">Use your email address and password to continue.</p>
-        <?php if($resetSuccess): ?><p class="mt-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700"><?= htmlspecialchars($resetSuccess) ?></p><?php endif; ?>
-        <?php if($loginError): ?><p class="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700"><?= htmlspecialchars($loginError) ?></p><?php endif; ?>
-        <form id="login-form" action="auth.php" method="post" class="mt-8 space-y-5">
-          <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-          <div><label for="username" class="mb-2 block text-sm font-bold text-slate-700">Email address</label><input class="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" type="email" name="username" id="username" autocomplete="username" required autofocus></div>
-          <div><label for="password" class="mb-2 block text-sm font-bold text-slate-700">Password</label><input class="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" type="password" name="password" id="password" autocomplete="current-password" required></div>
-          <div id="first-time-passwords" class="hidden space-y-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
-            <p class="text-sm font-semibold text-blue-900">First-time setup: choose a new administrator password.</p>
-            <label class="block text-sm font-bold text-slate-700">New Password<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password" name="new_password" id="new-password" minlength="8" autocomplete="new-password"></label>
-            <label class="block text-sm font-bold text-slate-700">Confirm New Password<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password" name="confirm_password" id="confirm-password" minlength="8" autocomplete="new-password"></label>
-          </div>
-          <div class="text-right"><a href="forgot-password.php" class="text-sm font-bold text-blue-600 hover:text-blue-700">Forgot password?</a></div>
-          <button id="login-button" class="w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white shadow-sm hover:bg-blue-700">Sign in</button>
-        </form>
-      </div></div>
-    </section>
-  </main>
-  <script>
-    const form=document.getElementById('login-form'),email=document.getElementById('username'),password=document.getElementById('password'),setup=document.getElementById('first-time-passwords'),newPassword=document.getElementById('new-password'),confirmPassword=document.getElementById('confirm-password'),button=document.getElementById('login-button'),help=document.getElementById('login-help');
-    const isDefaultCredentials=()=>email.value.trim().toLowerCase()==='admin@biometrics.com'&&password.value==='password';
-    function updateFirstTimeSetup(){
-      if(isDefaultCredentials()){
-        if(!setup.classList.contains('hidden'))return;
-        setup.classList.remove('hidden');newPassword.required=true;confirmPassword.required=true;
-        help.textContent='First-time setup is required. Create a new password to continue.';
-        button.textContent='Save new password and sign in';newPassword.focus();return;
-      }
-      if(!setup.classList.contains('hidden')){
-        setup.classList.add('hidden');newPassword.required=false;confirmPassword.required=false;newPassword.value='';confirmPassword.value='';
-        help.textContent='Use your email address and password to continue.';button.textContent='Sign in';
-      }
-    }
-    email.addEventListener('input',updateFirstTimeSetup);
-    password.addEventListener('input',updateFirstTimeSetup);
-    form.addEventListener('submit',event=>{
-      if(isDefaultCredentials()&&setup.classList.contains('hidden')){event.preventDefault();updateFirstTimeSetup();return;}
-      if(!setup.classList.contains('hidden')&&(newPassword.value!==confirmPassword.value||newPassword.value.length<8||newPassword.value==='password')){
-        event.preventDefault();help.textContent='Use matching passwords with at least 8 characters and do not reuse the default password.';newPassword.focus();
-      }
-    });
-    window.addEventListener('pageshow',event=>{if(event.persisted)window.location.reload()});
-  </script>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in | Biometric</title><base href="<?= htmlspecialchars($appBase) ?>/admin/"><script src="https://cdn.tailwindcss.com"></script></head>
+<body class="min-h-screen bg-slate-950 text-slate-800"><main class="grid min-h-screen lg:grid-cols-2"><section class="hidden bg-gradient-to-br from-blue-600 via-blue-700 to-slate-950 p-12 text-white lg:flex lg:flex-col lg:justify-between"><a href="../index" class="flex items-center gap-3 text-xl font-bold"><img src="../image/logo.png" alt="" class="h-11 w-11 rounded-xl">Biometric.</a><div><p class="text-sm font-bold uppercase tracking-widest text-blue-200">Attendance management</p><h1 class="mt-4 max-w-lg text-5xl font-black tracking-tight">A clearer view of every school day.</h1><p class="mt-6 max-w-md text-lg leading-8 text-blue-100">Register students, watch attendance, and find the records you need.</p></div><p class="text-sm text-blue-200">Secure school access</p></section><section class="flex items-center justify-center bg-slate-50 p-5"><div class="w-full max-w-md rounded-2xl bg-white p-7 shadow-xl shadow-slate-900/10 sm:p-9"><p class="text-sm font-bold uppercase tracking-widest text-blue-600">Welcome back</p><h1 class="mt-2 text-3xl font-black tracking-tight text-slate-900">Sign in</h1><p class="mt-2 text-slate-500">Use your email address and password to continue.</p><?php if($loginError): ?><p class="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700"><?= htmlspecialchars($loginError) ?></p><?php endif; ?><form id="password-form" action="auth.php" method="post" class="mt-8 space-y-5"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>"><div><label for="username" class="mb-2 block text-sm font-bold text-slate-700">Email address</label><input id="username" class="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" type="email" name="username" autocomplete="username" required autofocus></div><div><label for="password" class="mb-2 block text-sm font-bold text-slate-700">Password</label><input id="password" class="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" type="password" name="password" autocomplete="current-password" required></div><div id="first-time-passwords" class="hidden space-y-5 rounded-xl border border-blue-100 bg-blue-50 p-4"><p class="text-sm font-semibold text-blue-900">First-time setup: choose a new administrator password.</p><label class="block text-sm font-bold text-slate-700">New password<input id="new-password" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password" name="new_password" minlength="8" autocomplete="new-password"></label><label class="block text-sm font-bold text-slate-700">Confirm new password<input id="confirm-password" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password" name="confirm_password" minlength="8" autocomplete="new-password"></label></div><div class="text-right"><a href="forgot-password.php" class="text-sm font-bold text-blue-600 hover:text-blue-700">Forgot password?</a></div><button class="w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white shadow-sm hover:bg-blue-700">Sign in</button></form><div class="my-6 flex items-center gap-3 text-xs font-bold uppercase tracking-wider text-slate-400"><span class="h-px flex-1 bg-slate-200"></span>or<span class="h-px flex-1 bg-slate-200"></span></div><button id="open-biometric" type="button" class="w-full rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 font-bold text-violet-800 hover:bg-violet-100">Sign in with biometric</button></div></section></main>
+<div id="biometric-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/70 p-5"><div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl sm:p-8"><div class="flex items-start justify-between gap-4"><div><p class="text-sm font-bold uppercase tracking-widest text-violet-700">Staff access</p><h2 class="mt-1 text-2xl font-black text-slate-900">Biometric sign in</h2><p id="scanner-status" class="mt-2 text-sm text-slate-500">Starting camera…</p></div><button id="close-biometric" type="button" class="rounded-lg p-2 text-xl font-bold text-slate-500 hover:bg-slate-100" aria-label="Close">×</button></div><div class="relative mt-5 aspect-[4/3] overflow-hidden rounded-2xl bg-slate-950"><video id="scanner-video" class="h-full w-full object-cover" autoplay muted playsinline></video><canvas id="face-overlay" class="pointer-events-none absolute inset-0 h-full w-full"></canvas></div><p class="mt-4 text-center text-xs leading-5 text-slate-500">Look directly at the camera. Only enrolled administrator and teacher faces can access the system.</p></div></div>
+<script>
+const passwordForm=document.getElementById('password-form'),email=document.getElementById('username'),password=document.getElementById('password'),setup=document.getElementById('first-time-passwords'),newPassword=document.getElementById('new-password'),confirmPassword=document.getElementById('confirm-password');const defaults=()=>email.value.trim().toLowerCase()==='admin@biometrics.com'&&password.value==='password';function updateSetup(){const required=defaults();setup.classList.toggle('hidden',!required);newPassword.required=required;confirmPassword.required=required;if(!required){newPassword.value='';confirmPassword.value=''}}email.addEventListener('input',updateSetup);password.addEventListener('input',updateSetup);passwordForm.addEventListener('submit',event=>{if(defaults()&&(newPassword.value!==confirmPassword.value||newPassword.value.length<8||newPassword.value==='password')){event.preventDefault();alert('Choose matching passwords with at least 8 characters and do not reuse the default password.');newPassword.focus()}});
+const modal=document.getElementById('biometric-modal'),openButton=document.getElementById('open-biometric'),closeButton=document.getElementById('close-biometric'),video=document.getElementById('scanner-video'),overlay=document.getElementById('face-overlay'),status=document.getElementById('scanner-status'),csrf=<?= json_encode($_SESSION['csrf_token']) ?>;let stream=null,busy=false,scanning=false;
+function drawCorners(faces,frameWidth,frameHeight){const ctx=overlay.getContext('2d'),width=video.videoWidth||640,height=video.videoHeight||480;overlay.width=width;overlay.height=height;ctx.clearRect(0,0,width,height);if(!frameWidth||!frameHeight)return;const sx=width/frameWidth,sy=height/frameHeight;ctx.lineWidth=Math.max(3,width/180);ctx.strokeStyle='#34d399';faces.forEach(item=>{const box=item.box||item,x=box.left*sx,y=box.top*sy,w=(box.right-box.left)*sx,h=(box.bottom-box.top)*sy,l=Math.min(28,w*.25,h*.25);ctx.beginPath();ctx.moveTo(x+l,y);ctx.lineTo(x,y);ctx.lineTo(x,y+l);ctx.moveTo(x+w-l,y);ctx.lineTo(x+w,y);ctx.lineTo(x+w,y+l);ctx.moveTo(x,y+h-l);ctx.lineTo(x,y+h);ctx.lineTo(x+l,y+h);ctx.moveTo(x+w-l,y+h);ctx.lineTo(x+w,y+h);ctx.lineTo(x+w,y+h-l);ctx.stroke()})}
+async function scan(){if(!scanning||busy||!video.videoWidth)return;busy=true;try{const canvas=document.createElement('canvas'),ratio=Math.min(1,480/video.videoWidth);canvas.width=Math.round(video.videoWidth*ratio);canvas.height=Math.round(video.videoHeight*ratio);canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.88));if(!blob)return;const data=new FormData();data.append('csrf_token',csrf);data.append('biometric_frame',blob,'live-frame.jpg');const response=await fetch('biometric-login-match.php',{method:'POST',body:data,cache:'no-store'});const result=await response.json();drawCorners(result.faces||[],result.frame_width,result.frame_height);status.textContent=result.message||'Scanning…';if(result.ok){scanning=false;status.textContent='Identity confirmed. Opening your portal…';window.location.href=result.redirect;return}}catch(error){status.textContent='Scanner connection interrupted. Retrying…'}finally{busy=false;if(scanning)setTimeout(scan,650)}}
+async function openBiometric(){modal.classList.replace('hidden','flex');status.textContent='Starting camera…';try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});video.srcObject=stream;await video.play();scanning=true;status.textContent='Camera ready. Looking for an enrolled face…';scan()}catch(error){status.textContent='Camera access was not granted. Allow camera access and try again.'}}function closeBiometric(){scanning=false;busy=false;stream?.getTracks().forEach(track=>track.stop());stream=null;video.srcObject=null;overlay.getContext('2d').clearRect(0,0,overlay.width,overlay.height);modal.classList.replace('flex','hidden')}openButton.addEventListener('click',openBiometric);closeButton.addEventListener('click',closeBiometric);modal.addEventListener('click',event=>{if(event.target===modal)closeBiometric()});window.addEventListener('pagehide',closeBiometric);window.addEventListener('pageshow',event=>{if(event.persisted)window.location.reload()});
+</script></body></html>

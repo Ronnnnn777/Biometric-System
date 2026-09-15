@@ -17,9 +17,12 @@ $last_name = trim($_POST['last_name'] ?? '');
 $student_name = trim($first_name . ' ' . $last_name);
 $section = trim($_POST["section"] ?? '');
 $grade = (int)($_POST['grade'] ?? 0);
+$age = (int)($_POST['age'] ?? 0);
 $strand = trim($_POST['strand'] ?? '');
+$address = trim($_POST['address'] ?? '');
+$enrollmentStatus = trim($_POST['enrollment_status'] ?? 'Enrolled');
 
-if(!$id || $student_id==='' || $first_name==='' || $last_name==='' || !isValidStudentPlacement($grade, $strand, $section)){
+if(!$id || $student_id==='' || $first_name==='' || $last_name==='' || !isValidStudentAge($age) || $address==='' || strlen($address)>255 || !isValidStudentPlacement($grade, $strand, $section) || !isValidStudentEnrollmentStatus($enrollmentStatus)){
     $_SESSION['toast']=['message'=>'All student details are required.','type'=>'error'];
     header("Location: edit-student.php?id=$id");
     exit;
@@ -71,9 +74,28 @@ if(isset($_FILES['student_image']) && $_FILES['student_image']['error'] == 0) {
     }
 }
 
+// Keep additional camera-angle references alongside the main enrollment image.
+// recognize_face.py groups all files that start with the same student ID.
+if(isset($_FILES['face_reference_image']) && $_FILES['face_reference_image']['error'] === UPLOAD_ERR_OK) {
+    $reference=$_FILES['face_reference_image'];
+    $imageInfo=@getimagesize($reference['tmp_name']);
+    $validTypes=[IMAGETYPE_JPEG=>'jpg',IMAGETYPE_PNG=>'png'];
+    if(!$imageInfo || !isset($validTypes[$imageInfo[2]]) || $reference['size']>5*1024*1024){
+        $_SESSION['toast']=['message'=>'The camera-angle reference must be a JPEG or PNG under 5 MB.','type'=>'error'];
+        header("Location: edit-student.php?id=$id");
+        exit;
+    }
+    $referenceName=$student_id.'_emeet_'.date('YmdHis').'_'.bin2hex(random_bytes(3)).'.'.$validTypes[$imageInfo[2]];
+    if(!move_uploaded_file($reference['tmp_name'],$pythonDir.$referenceName)){
+        $_SESSION['toast']=['message'=>'Could not save the camera-angle reference.','type'=>'error'];
+        header("Location: edit-student.php?id=$id");
+        exit;
+    }
+}
+
 // 3. Database Update
-$stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, LAST_NAME = ?, GRADE = ?, STRAND = ?, SECTION = ?, IMAGE_PATH = ? WHERE ID = ?");
-$stmt->bind_param("ssssisssi", $student_id, $student_name, $first_name, $last_name, $grade, $strand, $section, $db_path, $id);
+$stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, LAST_NAME = ?, GRADE = ?, AGE = ?, STRAND = ?, ADDRESS = ?, SECTION = ?, ENROLLMENT_STATUS = ?, IMAGE_PATH = ? WHERE ID = ?");
+$stmt->bind_param("ssssiisssssi", $student_id, $student_name, $first_name, $last_name, $grade, $age, $strand, $address, $section, $enrollmentStatus, $db_path, $id);
 
 if($stmt->execute()){
     $_SESSION["toast"] = ["message" => "Student profile updated successfully!", "type" => "success"];
