@@ -1,4 +1,4 @@
-window.createQuietAttendanceRefresh = ({ rows, controls, exportLink, endpoint, getParams }) => {
+window.createQuietAttendanceRefresh = ({ rows, controls, exportLink, endpoint, getParams, onRowsUpdated = null }) => {
   let lastHtml = null;
   let controller = null;
   let requestNumber = 0;
@@ -30,6 +30,7 @@ window.createQuietAttendanceRefresh = ({ rows, controls, exportLink, endpoint, g
       await new Promise(requestAnimationFrame);
       rows.innerHTML = html;
       lastHtml = html;
+      onRowsUpdated?.();
       requestAnimationFrame(() => rows.classList.remove('opacity-60'));
     } catch (error) {
       if (error.name !== 'AbortError') {

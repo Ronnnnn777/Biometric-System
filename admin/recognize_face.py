@@ -3,6 +3,7 @@ import json
 import os
 import pickle
 import sys
+import threading
 import time
 
 import face_recognition
@@ -12,6 +13,13 @@ try:
     import cv2
 except ImportError:
     cv2 = None
+
+try:
+    import mediapipe as mp
+    from mediapipe.tasks import python as mp_python
+    from mediapipe.tasks.python import vision as mp_vision
+except ImportError:
+    mp = mp_python = mp_vision = None
 
 KNOWN_FACES_DIR = r"C:\Biometric_Capstone\known_faces"
 CACHE_PATH = os.path.join(os.path.dirname(__file__), "face_encoding_cache.pkl")
@@ -36,6 +44,10 @@ MAX_SCAN_WIDTH = 480
 MIN_FACE_SIZE = 32
 MIN_UNKNOWN_FACE_SHARPNESS = 25.0
 FAR_FACE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml") if cv2 is not None else None
+MEDIAPIPE_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "face_landmarker.task")
+_face_landmarker = None
+_face_landmarker_checked = False
+_face_landmarker_lock = threading.Lock()
 
 def normalize_lighting(image):
     """Recover facial detail from uneven, dim, or backlit illumination."""
@@ -81,6 +93,61 @@ def far_face_locations(image):
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     boxes = FAR_FACE_CASCADE.detectMultiScale(gray, scaleFactor=1.15, minNeighbors=4, minSize=(30, 30))
     return [(int(y), int(x + width), int(y + height), int(x)) for x, y, width, height in boxes]
+
+def get_face_landmarker():
+    """Load MediaPipe once for the scanner service; fall back safely if absent."""
+    global _face_landmarker, _face_landmarker_checked
+    if _face_landmarker_checked:
+        return _face_landmarker
+    with _face_landmarker_lock:
+        if _face_landmarker_checked:
+            return _face_landmarker
+        _face_landmarker_checked = True
+        if mp is None or not os.path.isfile(MEDIAPIPE_MODEL_PATH):
+            return None
+        try:
+            options = mp_vision.FaceLandmarkerOptions(
+                base_options=mp_python.BaseOptions(model_asset_path=MEDIAPIPE_MODEL_PATH),
+                running_mode=mp_vision.RunningMode.IMAGE,
+                num_faces=8,
+                min_face_detection_confidence=0.60,
+                min_face_presence_confidence=0.60,
+            )
+            _face_landmarker = mp_vision.FaceLandmarker.create_from_options(options)
+        except Exception:
+            _face_landmarker = None
+    return _face_landmarker
+
+def mediapipe_face_details(image):
+    """Return landmark-backed face boxes and whether each face is front-facing."""
+    landmarker = get_face_landmarker()
+    if landmarker is None:
+        return []
+    height, width = image.shape[:2]
+    try:
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(image))
+        with _face_landmarker_lock:
+            result = landmarker.detect(mp_image)
+    except Exception:
+        return []
+    details = []
+    for landmarks in result.face_landmarks:
+        if not landmarks:
+            continue
+        top = max(0, int(min(point.y for point in landmarks) * height))
+        right = min(width, int(max(point.x for point in landmarks) * width))
+        bottom = min(height, int(max(point.y for point in landmarks) * height))
+        left = max(0, int(min(point.x for point in landmarks) * width))
+        if right - left < MIN_FACE_SIZE or bottom - top < MIN_FACE_SIZE:
+            continue
+        # Landmark 33 and 263 are eye corners; 1 is the nose tip. A centered
+        # nose and level eyes provide a lightweight frontal-pose quality gate.
+        left_eye, right_eye, nose = landmarks[33], landmarks[263], landmarks[1]
+        eye_span = abs(right_eye.x - left_eye.x)
+        nose_position = (nose.x - min(left_eye.x, right_eye.x)) / eye_span if eye_span else -1
+        frontal = 0.30 <= nose_position <= 0.70 and abs(left_eye.y - right_eye.y) <= eye_span * 0.25
+        details.append({"location": (top, right, bottom, left), "frontal": frontal})
+    return details
 
 def location_overlap(first, second):
     top = max(first[0], second[0])
@@ -162,6 +229,12 @@ def known_faces():
     _cached_key, _cached_encodings, _cached_ids = key, encodings, ids
     return encodings, ids
 
+def refresh_known_faces():
+    """Make a newly enrolled face available to the live scanner immediately."""
+    global _next_fingerprint_check
+    _next_fingerprint_check = 0.0
+    return known_faces()
+
 def best_match(known, ids, candidates, max_distance=MAX_MATCH_DISTANCE, min_margin=MIN_RUNNER_UP_MARGIN):
     per_student = {}
     for candidate in candidates:
@@ -230,7 +303,13 @@ def recognize(image_path):
     normalized_frame = None
     detail_frame = None
     far_mode = False
-    locations = face_recognition.face_locations(scan_frame, number_of_times_to_upsample=0, model="hog")
+    # MediaPipe Face Landmarker provides stable landmark-backed face boxes and
+    # pose checks. HOG/Haar remain fallbacks for distant or difficult frames.
+    landmark_details = mediapipe_face_details(scan_frame)
+    locations = [detail["location"] for detail in landmark_details]
+    landmark_frontal = {detail["location"]: detail["frontal"] for detail in landmark_details}
+    if not locations:
+        locations = face_recognition.face_locations(scan_frame, number_of_times_to_upsample=0, model="hog")
     far_location_keys = set()
     # HOG is quick for close faces, but can miss a smaller child beside an
     # adult. Add lightweight Haar detections instead of treating the first
@@ -265,34 +344,36 @@ def recognize(image_path):
         # Give only that face the guarded far-match treatment.
         is_far = far_mode or location in far_location_keys or right - left < 50 or bottom - top < 50
         box = {"top": round(top * box_scale), "right": round(right * box_scale), "bottom": round(bottom * box_scale), "left": round(left * box_scale)}
-        eligible_faces.append((location, box, face_sharpness(scan_frame, location), is_far))
+        eligible_faces.append((location, box, face_sharpness(scan_frame, location), is_far, landmark_frontal.get(location)))
 
     # Encode every detected face in one call. This reduces native-call
     # overhead and processes a group walking past the camera as one frame.
     # Do not store an unreliable low-detail frame as an unregistered person.
     # It can still be recognized if the embedding is sufficiently confident.
-    detected_faces = [{"box": box} for _, box, _, _ in eligible_faces]
-    faces = [{"box": box} for _, box, sharpness, _ in eligible_faces if sharpness >= MIN_UNKNOWN_FACE_SHARPNESS]
-    fast_encodings = face_recognition.face_encodings(scan_frame, [location for location, _, _, _ in eligible_faces]) if eligible_faces else []
+    detected_faces = [{"box": box} for _, box, _, _, _ in eligible_faces]
+    faces = [{"box": box} for _, box, sharpness, _, _ in eligible_faces if sharpness >= MIN_UNKNOWN_FACE_SHARPNESS]
+    fast_encodings = face_recognition.face_encodings(scan_frame, [location for location, _, _, _, _ in eligible_faces]) if eligible_faces else []
     normalized_encodings = None
     detail_encodings = None
     normalized_matches = None
     detail_matches = None
     fast_matches = [None] * len(eligible_faces)
-    normal_indexes = [index for index, (_, _, _, is_far) in enumerate(eligible_faces) if not is_far and index < len(fast_encodings)]
-    far_indexes = [index for index, (_, _, _, is_far) in enumerate(eligible_faces) if is_far and index < len(fast_encodings)]
-    for indexes, max_distance, min_margin in ((normal_indexes, MAX_MATCH_DISTANCE, MIN_RUNNER_UP_MARGIN), (far_indexes, 0.55, 0.05)):
+    normal_indexes = [index for index, (_, _, _, is_far, _) in enumerate(eligible_faces) if not is_far and index < len(fast_encodings)]
+    far_indexes = [index for index, (_, _, _, is_far, _) in enumerate(eligible_faces) if is_far and index < len(fast_encodings)]
+    # A distant face is less reliable, never more reliable. Keep the same
+    # identity threshold and runner-up margin to avoid an incorrect student.
+    for indexes, max_distance, min_margin in ((normal_indexes, MAX_MATCH_DISTANCE, MIN_RUNNER_UP_MARGIN), (far_indexes, MAX_MATCH_DISTANCE, MIN_RUNNER_UP_MARGIN)):
         for index, match in zip(indexes, batch_best_matches(known, ids, [fast_encodings[index] for index in indexes], max_distance, min_margin)):
             fast_matches[index] = match
     matches, seen = [], set()
     face_matches = [None] * len(eligible_faces)
-    for index, (_, box, _, is_far) in enumerate(eligible_faces):
+    for index, (_, box, _, is_far, _) in enumerate(eligible_faces):
         match = fast_matches[index]
         if not match:
             if normalized_frame is None:
                 normalized_frame = normalize_lighting(scan_frame)
             if normalized_frame is not scan_frame and normalized_encodings is None:
-                normalized_encodings = face_recognition.face_encodings(normalized_frame, [location for location, _, _, _ in eligible_faces])
+                normalized_encodings = face_recognition.face_encodings(normalized_frame, [location for location, _, _, _, _ in eligible_faces])
             if normalized_encodings is not None and normalized_matches is None:
                 # Lighting correction must never make identity matching more
                 # permissive.  A backlit or low-detail face is safer to treat
@@ -304,7 +385,7 @@ def recognize(image_path):
             if detail_frame is None:
                 detail_frame = enhance_detail(scan_frame)
             if detail_frame is not scan_frame and detail_encodings is None:
-                detail_encodings = face_recognition.face_encodings(detail_frame, [location for location, _, _, _ in eligible_faces])
+                detail_encodings = face_recognition.face_encodings(detail_frame, [location for location, _, _, _, _ in eligible_faces])
             if detail_encodings is not None and detail_matches is None:
                 detail_matches = batch_best_matches(known, ids, detail_encodings, max_distance=0.45, min_margin=0.14)
             if detail_matches is not None:
@@ -317,8 +398,8 @@ def recognize(image_path):
     # evidence of a visitor. Require frontal landmarks before alerting admin.
     unregistered_faces = [
         {"box": box}
-        for index, (location, box, sharpness, _) in enumerate(eligible_faces)
-        if face_matches[index] is None and sharpness >= MIN_UNKNOWN_FACE_SHARPNESS and is_frontal_unknown_face(scan_frame, location)
+        for index, (location, box, sharpness, _, landmark_is_frontal) in enumerate(eligible_faces)
+        if face_matches[index] is None and sharpness >= MIN_UNKNOWN_FACE_SHARPNESS and (landmark_is_frontal if landmark_is_frontal is not None else is_frontal_unknown_face(scan_frame, location))
     ]
     message = None if matches else ("Camera image is too blurry. Hold still while the eMeet refocuses." if eligible_faces and not faces else "Face not recognized.")
     return {"match": bool(matches), "faces": faces, "detected_faces": detected_faces, "unregistered_faces": unregistered_faces, "matches": matches, "message": message}

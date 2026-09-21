@@ -2,6 +2,8 @@
     require 'page-guard.php';
     // Connect to your existing database config
     require "../config/db_conn.php";
+    require '../includes/attendance-schema.php';
+    ensureAttendanceTimeOutColumn($conn);
     header('Content-Type: application/json');
 
     // 1. Get Total Students count
@@ -14,6 +16,12 @@
     $stmt->execute();
     $today_count = $stmt->get_result()->fetch_assoc()["total_today"];
 
+    // 3. Count students whose attendance has been completed today.
+    $stmt = $conn->prepare("SELECT COUNT(DISTINCT STUDENT_ID) AS total_time_out FROM attendance WHERE DATE(TIME_IN) = ? AND TIME_OUT IS NOT NULL");
+    $stmt->bind_param("s", $today);
+    $stmt->execute();
+    $time_out_count = $stmt->get_result()->fetch_assoc()["total_time_out"];
+
     // Browser cameras are selected locally by the administrator, so there is
     // no ESP32 heartbeat table to query.
     $camera = 0;
@@ -22,6 +30,7 @@
     echo json_encode([
         "totalStudents" => $total,
         "attendanceToday" => $today_count,
+        "timeOutToday" => $time_out_count,
         "activeCameras" => $camera,
         "statusText" => "BROWSER CAMERA",
         "statusColor" => "#64748b"

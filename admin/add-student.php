@@ -29,14 +29,14 @@ adminSidebar('students','Register student','Create a student profile for attenda
             <div class="grid gap-5 sm:grid-cols-[140px_minmax(0,1fr)]"><label class="block text-sm font-bold text-slate-700">Age<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" type="number" name="age" min="3" max="120" inputmode="numeric" required></label><label class="block text-sm font-bold text-slate-700">Home address<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" name="address" autocomplete="street-address" maxlength="255" required></label></div>
             <div class="rounded-xl border border-slate-200 p-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div><p class="text-sm font-bold text-slate-700">Biometric image</p><p class="text-sm text-slate-500">Upload a clear face photo or use a connected camera.</p></div>
+                    <div><p class="text-sm font-bold text-slate-700">Biometric image</p><p class="text-sm text-slate-500">JPEG or PNG only (max 5 MB). Use one clear, upright, uncropped face with space around the head.</p></div>
                     <div class="flex flex-wrap items-center gap-2">
                         <select id="camera-select" class="max-w-48 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700" aria-label="Choose camera" disabled><option>Loading available cameras…</option></select>
                         <button id="use-camera" type="button" class="rounded-lg border border-blue-200 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50">Use camera</button>
                     </div>
                 </div>
                 <div class="mt-4 flex flex-wrap items-center gap-3">
-                    <input class="sr-only" type="file" name="student_image" id="student_image" accept="image/*">
+                    <input class="sr-only" type="file" name="student_image" id="student_image" accept="image/jpeg,image/png">
                     <label for="student_image" class="cursor-pointer rounded-lg bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100">Choose photo</label>
                     <span id="file-name" class="min-w-0 max-w-full truncate text-sm text-slate-500">No file chosen</span>
                     <input type="hidden" name="captured_image" id="captured_image">
@@ -57,7 +57,7 @@ adminSidebar('students','Register student','Create a student profile for attenda
             <button id="retake-photo" type="button" class="hidden flex-1 rounded-lg bg-white/15 px-4 py-3 text-sm font-bold text-white hover:bg-white/25">Retake photo</button>
         </div>
         <canvas id="photo-canvas" class="hidden"></canvas>
-        <p id="preview-help" class="mt-4 text-sm leading-6 text-slate-300">Use a well-lit, front-facing image for the best recognition result.</p>
+        <p id="preview-help" class="mt-4 text-sm leading-6 text-slate-300">Use one clear, front-facing, upright face. Keep the full face visible with space around the head; do not use a cropped or sideways image.</p>
     </aside>
 </div>
 <?php if($toast): ?><div data-auto-toast class="fixed bottom-5 right-5 rounded-xl bg-slate-900 px-5 py-4 font-semibold text-white shadow-xl transition-all duration-300"><?= htmlspecialchars($toast) ?></div><?php endif; ?>

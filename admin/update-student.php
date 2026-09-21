@@ -4,6 +4,7 @@ require "../config/db_conn.php";
 require "page-guard.php";
 require '../includes/student-profile-schema.php';
 require '../includes/student-placement-options.php';
+require '../includes/biometric-image.php';
 ensureStudentProfileColumns($conn);
 
 if(!isset($_POST["csrf_token"]) || $_POST["csrf_token"] !== $_SESSION["csrf_token"]){
@@ -50,11 +51,23 @@ $old_db_path = $old_res['IMAGE_PATH'] ?? '';
 
 $db_path = $old_db_path; 
 $pythonDir = "C:/Biometric_Capstone/known_faces/";
+$biometricFilesChanged=false;
+
+function refreshStudentRecognitionService(): void {
+    $context=stream_context_create(['http'=>['method'=>'POST','timeout'=>2,'ignore_errors'=>true]]);
+    @file_get_contents('http://127.0.0.1:8772/refresh',false,$context);
+}
 
 // 2. Process Image Update
 if(isset($_FILES['student_image']) && $_FILES['student_image']['error'] == 0) {
     $file = $_FILES['student_image'];
-    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $validationError=validateBiometricImage($file['tmp_name']);
+    if($validationError) {
+        $_SESSION['toast']=['message'=>$validationError,'type'=>'error'];
+        header("Location: edit-student.php?id=$id");
+        exit;
+    }
+    $ext = biometricImageExtension($file['tmp_name']);
     $clean_name = str_replace(' ', '_', $student_name);
     $new_filename = $student_id . "_" . $clean_name . "." . $ext;
     
@@ -69,8 +82,13 @@ if(isset($_FILES['student_image']) && $_FILES['student_image']['error'] == 0) {
     foreach($old_ai_files as $f) { if(is_file($f)) unlink($f); }
 
     if(move_uploaded_file($file['tmp_name'], $targetPath)) {
-        copy($targetPath, $pythonPath); 
+        if(!is_dir($pythonDir) || !copy($targetPath, $pythonPath)) {
+            $_SESSION['toast']=['message'=>'The replacement photo could not be added to face recognition.','type'=>'error'];
+            header("Location: edit-student.php?id=$id");
+            exit;
+        }
         $db_path = "uploads/students/" . $new_filename;
+        $biometricFilesChanged=true;
     }
 }
 
@@ -91,6 +109,7 @@ if(isset($_FILES['face_reference_image']) && $_FILES['face_reference_image']['er
         header("Location: edit-student.php?id=$id");
         exit;
     }
+    $biometricFilesChanged=true;
 }
 
 // 3. Database Update
@@ -98,6 +117,7 @@ $stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FI
 $stmt->bind_param("ssssiisssssi", $student_id, $student_name, $first_name, $last_name, $grade, $age, $strand, $address, $section, $enrollmentStatus, $db_path, $id);
 
 if($stmt->execute()){
+    if($biometricFilesChanged) refreshStudentRecognitionService();
     $_SESSION["toast"] = ["message" => "Student profile updated successfully!", "type" => "success"];
     header("Location: student-list.php");
     exit;

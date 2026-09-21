@@ -48,10 +48,13 @@ teacherShell('Attendance records');
   <div class="mt-6 overflow-x-auto">
     <table class="min-w-full text-left text-sm"><thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500"><tr><th class="px-4 py-3">Student ID</th><th class="px-4 py-3">Name</th><th class="px-4 py-3">Grade</th><th class="px-4 py-3">Section</th><th class="px-4 py-3">Date</th><th class="px-4 py-3">Time in</th><th class="px-4 py-3">Time out</th><th class="px-4 py-3">Status</th></tr></thead><tbody id="attendance-rows" class="divide-y divide-slate-100" aria-live="polite"></tbody></table>
   </div>
+  <div id="attendance-pagination"></div>
 </section>
 <script src="../js/quiet-attendance-refresh.js"></script>
+<script src="../js/table-pagination.js"></script>
 <script>
 const section=document.getElementById('section-filter'),student=document.getElementById('student-filter'),date=document.getElementById('date-filter'),rows=document.getElementById('attendance-rows'),exportLink=document.getElementById('export-link');
-createQuietAttendanceRefresh({rows,controls:[section,student,date],exportLink,endpoint:'get-attendance.php',getParams:()=>{const selected=section.value.split('|');return new URLSearchParams({section:selected[1]||'all',grade:selected[0]||'',student:student.value,date:date.value});}});
+const attendancePager=createTablePagination({rows,pager:document.getElementById('attendance-pagination'),label:'attendance records'});
+createQuietAttendanceRefresh({rows,controls:[section,student,date],exportLink,endpoint:'get-attendance.php',getParams:()=>{const selected=section.value.split('|');return new URLSearchParams({section:selected[1]||'all',grade:selected[0]||'',student:student.value,date:date.value});},onRowsUpdated:()=>attendancePager.refresh()});
 </script>
 <?php teacherFoot(); ?>
