@@ -6,7 +6,7 @@ require 'page-guard.php';
 require 'components.php';
 
 $today = date('Y-m-d');
-$stmt = $conn->prepare('SELECT s.*, (SELECT COUNT(*) FROM attendance a WHERE TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN)=?) attended_today FROM students s ORDER BY s.GRADE, s.SECTION, s.LAST_NAME, s.FIRST_NAME');
+$stmt = $conn->prepare('SELECT s.*, (SELECT COUNT(*) FROM attendance a WHERE TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN)=?) attended_today FROM students s ORDER BY s.LAST_NAME, s.FIRST_NAME, s.GRADE, s.SECTION');
 $stmt->bind_param('s', $today);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -40,7 +40,8 @@ adminSidebar('students', 'Students', 'Search profiles and filter by grade or sec
       <tbody id="student-rows" class="divide-y divide-slate-100">
         <?php while ($row = $result->fetch_assoc()): ?>
           <tr class="hover:bg-slate-50" data-grade="<?= (int) $row['GRADE'] ?>" data-section="<?= htmlspecialchars($row['SECTION'] ?? '') ?>" data-status="<?= htmlspecialchars($row['ENROLLMENT_STATUS'] ?? 'Enrolled') ?>">
-            <td class="px-5 py-4"><div class="flex items-center gap-3"><img src="../<?= htmlspecialchars($row['IMAGE_PATH']) ?>" alt="" class="h-10 w-10 rounded-full object-cover"><span class="font-bold text-slate-900"><?= htmlspecialchars($row['STUDENT_NAME']) ?></span></div></td>
+            <?php $displayName = trim(($row['LAST_NAME'] ?? '') . ', ' . ($row['FIRST_NAME'] ?? '') . (!empty($row['MIDDLE_NAME']) ? ', ' . $row['MIDDLE_NAME'] : ''), ', ') ?: $row['STUDENT_NAME']; ?>
+            <td class="px-5 py-4"><div class="flex items-center gap-3"><img src="../<?= htmlspecialchars($row['IMAGE_PATH']) ?>" alt="" class="h-10 w-10 rounded-full object-cover"><span class="font-bold text-slate-900"><?= htmlspecialchars($displayName) ?></span></div></td>
             <td class="px-5 py-4 text-slate-600"><?= htmlspecialchars($row['STUDENT_ID']) ?></td>
             <td class="px-5 py-4"><span class="rounded-full bg-violet-50 px-3 py-1 font-bold text-violet-700">Grade <?= htmlspecialchars($row['GRADE'] ?? '—') ?></span></td>
             <td class="px-5 py-4"><span class="rounded-full bg-blue-50 px-3 py-1 font-bold text-blue-700"><?= htmlspecialchars($row['SECTION'] ?? 'N/A') ?></span></td>
@@ -53,5 +54,5 @@ adminSidebar('students', 'Students', 'Search profiles and filter by grade or sec
     </table>
   </div>
 </div>
-<script src="../js/student-pagination.js?v=2"></script>
+<script src="../js/student-pagination.js?v=7"></script>
 <?php adminFoot(); ?>

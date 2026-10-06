@@ -47,7 +47,7 @@ foreach ($sections as $item) {
 if (!$sectionExists) $section = $sections[0]['SECTION'] ?? '';
 
 $today = date('Y-m-d');
-$stmt = $conn->prepare("SELECT s.*, (SELECT COUNT(*) FROM attendance a WHERE TRIM(a.STUDENT_ID) = TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN) = ?) attended_today FROM students s WHERE s.SECTION = ? AND s.GRADE = ? AND s.ENROLLMENT_STATUS='Enrolled' ORDER BY s.STUDENT_NAME");
+$stmt = $conn->prepare("SELECT s.*, (SELECT COUNT(*) FROM attendance a WHERE TRIM(a.STUDENT_ID) = TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN) = ?) attended_today FROM students s WHERE s.SECTION = ? AND s.GRADE = ? AND s.ENROLLMENT_STATUS='Enrolled' ORDER BY s.LAST_NAME, s.FIRST_NAME, s.STUDENT_NAME");
 $stmt->bind_param('ssi', $today, $section, $grade);
 $stmt->execute();
 $students = $stmt->get_result();
@@ -94,7 +94,8 @@ teacherShell('Students');
       <tbody id="student-rows" class="divide-y divide-slate-100">
       <?php while ($student = $students->fetch_assoc()): ?>
         <tr class="hover:bg-slate-50">
-          <td class="px-5 py-4"><div class="flex items-center gap-3"><img src="../<?= htmlspecialchars($student['IMAGE_PATH']) ?>" alt="" class="h-10 w-10 rounded-full object-cover"><span class="font-bold text-slate-900"><?= htmlspecialchars($student['STUDENT_NAME']) ?></span></div></td>
+          <?php $displayName = trim(($student['LAST_NAME'] ?? '') . ', ' . ($student['FIRST_NAME'] ?? '') . (!empty($student['MIDDLE_NAME']) ? ', ' . $student['MIDDLE_NAME'] : ''), ', ') ?: $student['STUDENT_NAME']; ?>
+          <td class="px-5 py-4"><div class="flex items-center gap-3"><img src="../<?= htmlspecialchars($student['IMAGE_PATH']) ?>" alt="" class="h-10 w-10 rounded-full object-cover"><span class="font-bold text-slate-900"><?= htmlspecialchars($displayName) ?></span></div></td>
           <td class="px-5 py-4 text-slate-600"><?= htmlspecialchars($student['STUDENT_ID']) ?></td>
           <td class="px-5 py-4"><span class="rounded-full bg-violet-50 px-3 py-1 font-bold text-violet-700">Grade <?= htmlspecialchars($student['GRADE'] ?? '—') ?></span></td>
           <td class="px-5 py-4"><span class="rounded-full bg-blue-50 px-3 py-1 font-bold text-blue-700"><?= htmlspecialchars($student['SECTION']) ?></span></td>
@@ -106,5 +107,5 @@ teacherShell('Students');
     </table>
   </div>
 </div>
-<script src="../js/student-pagination.js"></script>
+<script src="../js/student-pagination.js?v=7"></script>
 <?php teacherFoot(); ?>

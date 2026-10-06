@@ -7,13 +7,17 @@
   const grade = document.getElementById('grade-filter');
   const section = document.getElementById('section-filter');
   const status = document.getElementById('status-filter');
+  const sectionOptions = section ? Array.from(section.options).map(option => ({ value: option.value, label: option.textContent })) : [];
   const perPage = 15;
   let currentPage = 1;
-
-  const pager = document.createElement('nav');
-  pager.className = 'mt-5 flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 sm:flex-row sm:items-center sm:justify-between';
-  pager.setAttribute('aria-label', 'Student list pagination');
-  rowsContainer.closest('.overflow-hidden')?.insertAdjacentElement('afterend', pager);
+  const tableCard = rowsContainer.closest('.overflow-hidden');
+  const topPager = document.createElement('nav');
+  const bottomPager = document.createElement('nav');
+  topPager.setAttribute('aria-label', 'Student list pagination');
+  bottomPager.setAttribute('aria-label', 'Student list pagination');
+  tableCard?.insertAdjacentElement('beforebegin', topPager);
+  tableCard?.insertAdjacentElement('afterend', bottomPager);
+  const pagers = [topPager, bottomPager];
 
   const matches = row => {
     const query = search.value.trim().toLowerCase();
@@ -23,16 +27,55 @@
       && (!status || !status.value || row.dataset.status === status.value);
   };
 
-  function makeButton(label, disabled, onClick, primary = false) {
+  function updateSectionOptions() {
+    if (!section) return;
+    const selectedGrade = grade?.value || '';
+    const previousSection = section.value;
+    const availableSections = new Set(rows.filter(row => !selectedGrade || row.dataset.grade === selectedGrade).map(row => row.dataset.section).filter(Boolean));
+    section.replaceChildren();
+    sectionOptions.forEach(({ value, label }) => {
+      if (value && !availableSections.has(value)) return;
+      section.add(new Option(label, value));
+    });
+    section.value = availableSections.has(previousSection) ? previousSection : '';
+  }
+
+  function makeButton(label, disabled, onClick, active = false, ariaLabel = '') {
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = label;
     button.disabled = disabled;
-    button.className = 'rounded-lg px-3 py-2 text-sm font-bold transition ' + (primary
-      ? 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400'
-      : 'border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400');
+    button.setAttribute('aria-label', ariaLabel || `Page ${label}`);
+    if (active) button.setAttribute('aria-current', 'page');
+    button.className = 'grid h-9 min-w-9 place-items-center rounded-lg px-2 text-sm font-bold transition ' + (active ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300');
     button.onclick = onClick;
     return button;
+  }
+
+  function controls(totalPages, scrollToTable) {
+    const changePage = page => {
+      currentPage = page;
+      render();
+      if (scrollToTable) rowsContainer.closest('table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    const group = document.createElement('div');
+    group.className = 'flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm';
+    group.append(makeButton('‹', currentPage === 1, () => changePage(currentPage - 1), false, 'Previous page'));
+    const pageNumbers = [];
+    for (let page = 1; page <= totalPages; page++) if (page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1) pageNumbers.push(page);
+    let previous = 0;
+    pageNumbers.forEach(page => {
+      if (page - previous > 1) {
+        const ellipsis = document.createElement('span');
+        ellipsis.className = 'grid h-9 min-w-6 place-items-center text-sm font-bold text-slate-400';
+        ellipsis.textContent = '…';
+        group.append(ellipsis);
+      }
+      group.append(makeButton(String(page), false, () => changePage(page), page === currentPage));
+      previous = page;
+    });
+    group.append(makeButton('›', currentPage === totalPages, () => changePage(currentPage + 1), false, 'Next page'));
+    return group;
   }
 
   function render() {
@@ -42,31 +85,19 @@
     const first = (currentPage - 1) * perPage;
     const visibleRows = new Set(matchingRows.slice(first, first + perPage));
     rows.forEach(row => { row.hidden = !visibleRows.has(row); });
-
-    pager.replaceChildren();
-    const summary = document.createElement('p');
-    summary.className = 'text-sm font-semibold text-slate-600';
-    summary.textContent = matchingRows.length
-      ? `Showing ${first + 1}–${Math.min(first + perPage, matchingRows.length)} of ${matchingRows.length} students`
-      : 'No students match your filters.';
-
-    const controls = document.createElement('div');
-    controls.className = 'flex items-center gap-2';
-    const page = document.createElement('span');
-    page.className = 'px-2 text-sm font-bold text-slate-600';
-    page.textContent = `Page ${currentPage} of ${totalPages}`;
-    controls.append(
-      makeButton('Previous', currentPage === 1, () => { currentPage--; render(); }),
-      page,
-      makeButton('Next', currentPage === totalPages, () => { currentPage++; render(); }, true)
-    );
-    pager.append(summary, controls);
+    pagers.forEach((pager, index) => {
+      pager.replaceChildren();
+      pager.className = 'my-5 flex justify-center';
+      pager.hidden = !matchingRows.length;
+      if (matchingRows.length) pager.append(controls(totalPages, index > 0));
+    });
   }
 
   const resetPage = () => { currentPage = 1; render(); };
   search.oninput = resetPage;
-  if (grade) grade.onchange = resetPage;
+  if (grade) grade.onchange = () => { updateSectionOptions(); resetPage(); };
   if (section) section.onchange = resetPage;
   if (status) status.onchange = resetPage;
+  updateSectionOptions();
   render();
 })();

@@ -4,8 +4,12 @@ require 'page-guard.php';
 require '../config/db_conn.php';
 require '../includes/student-profile-schema.php';
 require '../includes/student-placement-options.php';
+require '../includes/teacher-assignment-schema.php';
+require '../includes/adviser-assignment-schema.php';
 require '../includes/student-import.php';
 ensureStudentProfileColumns($conn);
+ensureTeacherAssignmentSchema($conn);
+ensureAdviserAssignmentSchema($conn);
 
 if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
     http_response_code(403);
@@ -30,6 +34,8 @@ if (!in_array($extension, ['csv', 'xlsx'], true)) importRedirect(['error' => 'Us
 
 try {
     $allRows = studentImportReadRows($file['tmp_name'], $extension);
+    $schoolFormRows = $extension === 'xlsx' ? studentImportReadSchoolFormRows($file['tmp_name']) : null;
+    if ($schoolFormRows !== null) $allRows = $schoolFormRows;
 } catch (Throwable $error) {
     importRedirect(['error' => $error->getMessage()]);
 }
@@ -42,10 +48,16 @@ if (!isset($headerMap['student_id'], $headerMap['grade'], $headerMap['age'], $he
 }
 if (count($allRows) > 1000) importRedirect(['error' => 'Import up to 1,000 student rows at a time.']);
 
-$exists = $conn->prepare('SELECT 1 FROM students WHERE STUDENT_ID = ? LIMIT 1');
-$insert = $conn->prepare('INSERT INTO students (STUDENT_ID, STUDENT_NAME, FIRST_NAME, LAST_NAME, GRADE, AGE, STRAND, ADDRESS, SECTION, ENROLLMENT_STATUS, IMAGE_PATH) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+$schoolFormGrade = !empty($schoolFormRows) ? (int) studentImportCell($allRows[0] ?? [], $headerMap, 'grade') : 0;
+$schoolFormSection = !empty($schoolFormRows) ? studentImportCell($allRows[0] ?? [], $headerMap, 'section') : '';
+$schoolFormAdviser = !empty($schoolFormRows) ? studentImportSchoolFormAdviser($file['tmp_name']) : '';
+
+$exists = $conn->prepare('SELECT ID FROM students WHERE STUDENT_ID = ? LIMIT 1');
+$insert = $conn->prepare('INSERT INTO students (STUDENT_ID, STUDENT_NAME, FIRST_NAME, MIDDLE_NAME, LAST_NAME, GRADE, AGE, STRAND, ADDRESS, SECTION, ENROLLMENT_STATUS, IMAGE_PATH) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+$refreshExistingName = $conn->prepare("UPDATE students SET STUDENT_NAME=?, FIRST_NAME=?, MIDDLE_NAME=?, LAST_NAME=? WHERE STUDENT_ID=? AND MIDDLE_NAME=''");
 $seen = [];
 $inserted = 0;
+$updated = 0;
 $skipped = [];
 $defaultImage = 'image/student-preview.png';
 
@@ -55,6 +67,7 @@ try {
         $rowNumber = $index + 2;
         $studentId = studentImportCell($row, $headerMap, 'student_id');
         $firstName = studentImportCell($row, $headerMap, 'first_name');
+        $middleName = studentImportCell($row, $headerMap, 'middle_name');
         $lastName = studentImportCell($row, $headerMap, 'last_name');
         $fullName = studentImportCell($row, $headerMap, 'student_name');
         if (($firstName === '' || $lastName === '') && $fullName !== '') {
@@ -68,7 +81,7 @@ try {
         $address = studentImportCell($row, $headerMap, 'address');
         $section = studentImportCell($row, $headerMap, 'section');
         $enrollmentStatus = studentImportCell($row, $headerMap, 'enrollment_status') ?: 'Enrolled';
-        $studentName = trim($firstName . ' ' . $lastName);
+        $studentName = trim($firstName . ' ' . $middleName . ' ' . $lastName);
 
         if ($studentId === '' && $firstName === '' && $lastName === '' && $grade === 0 && $age === 0 && $address === '' && $section === '') continue;
         if ($studentId === '' || $firstName === '' || $lastName === '' || !isValidStudentAge($age) || $address === '' || !isValidStudentPlacement($grade, $strand, $section) || !isValidStudentEnrollmentStatus($enrollmentStatus)) {
@@ -87,11 +100,17 @@ try {
         $exists->bind_param('s', $studentId);
         $exists->execute();
         if ($exists->get_result()->num_rows) {
+            if (!empty($schoolFormRows) && $middleName !== '') {
+                $refreshExistingName->bind_param('sssss', $studentName, $firstName, $middleName, $lastName, $studentId);
+                $refreshExistingName->execute();
+                $updated += $refreshExistingName->affected_rows;
+                continue;
+            }
             $skipped[] = "Row {$rowNumber}: Student ID {$studentId} is already registered.";
             continue;
         }
 
-        $insert->bind_param('ssssiisssss', $studentId, $studentName, $firstName, $lastName, $grade, $age, $strand, $address, $section, $enrollmentStatus, $defaultImage);
+        $insert->bind_param('sssssiisssss', $studentId, $studentName, $firstName, $middleName, $lastName, $grade, $age, $strand, $address, $section, $enrollmentStatus, $defaultImage);
         $insert->execute();
         $inserted++;
     }
@@ -101,4 +120,35 @@ try {
     importRedirect(['error' => 'Nothing was imported because the database could not save the file: ' . $error->getMessage()]);
 }
 
-importRedirect(['inserted' => $inserted, 'skipped' => $skipped]);
+if ($schoolFormAdviser !== '' && $schoolFormGrade >= 7 && $schoolFormGrade <= 12 && $schoolFormSection !== '') {
+    rememberImportedAdviserAssignment($conn, $schoolFormAdviser, $schoolFormGrade, '', $schoolFormSection);
+    $adviserKey = studentImportPersonNameKey($schoolFormAdviser);
+    $matches = [];
+    $teachers = $conn->query('SELECT TEACHER_ID, TEACHER_NAME FROM teachers');
+    $adviserTokens = explode(' ', $adviserKey);
+    $adviserFirst = $adviserTokens[0] ?? '';
+    $adviserLast = $adviserTokens[count($adviserTokens) - 1] ?? '';
+    while ($teachers && $teacher = $teachers->fetch_assoc()) {
+        $teacherKey = studentImportPersonNameKey($teacher['TEACHER_NAME']);
+        $teacherTokens = explode(' ', $teacherKey);
+        $teacherFirst = $teacherTokens[0] ?? '';
+        $teacherLast = $teacherTokens[count($teacherTokens) - 1] ?? '';
+        if ($teacherKey === $adviserKey || ($adviserFirst !== '' && $adviserFirst === $teacherFirst && $adviserLast === $teacherLast)) $matches[] = $teacher;
+    }
+    if (count($matches) === 1) {
+        $teacherId = (int) $matches[0]['TEACHER_ID'];
+        $strand = '';
+        $subject = '';
+        $assign = $conn->prepare('INSERT IGNORE INTO teacher_assignments (TEACHER_ID, GRADE, STRAND, SECTION, SUBJECT) VALUES (?, ?, ?, ?, ?)');
+        $assign->bind_param('iisss', $teacherId, $schoolFormGrade, $strand, $schoolFormSection, $subject);
+        $assign->execute();
+        syncTeacherPrimaryAssignment($conn, $teacherId);
+        $_SESSION['toast'] = ['message' => 'Adviser ' . $matches[0]['TEACHER_NAME'] . ' was assigned to Grade ' . $schoolFormGrade . ' | ' . $schoolFormSection . '.', 'type' => 'success'];
+    } elseif (count($matches) === 0) {
+        $_SESSION['toast'] = ['message' => 'Students were imported, but adviser ' . $schoolFormAdviser . ' has no matching Teacher account yet.', 'type' => 'error'];
+    } else {
+        $_SESSION['toast'] = ['message' => 'Students were imported, but multiple Teacher accounts match adviser ' . $schoolFormAdviser . '. Review the assignment manually.', 'type' => 'error'];
+    }
+}
+
+importRedirect(['inserted' => $inserted, 'updated' => $updated, 'skipped' => $skipped, 'school_form' => !empty($schoolFormRows)]);

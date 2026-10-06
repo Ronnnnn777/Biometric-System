@@ -8,7 +8,8 @@ function ensureStudentProfileColumns(mysqli $conn): void
         $columns[strtoupper($column['Field'])] = true;
     }
     if (!isset($columns['FIRST_NAME'])) $conn->query("ALTER TABLE students ADD COLUMN FIRST_NAME VARCHAR(80) NOT NULL DEFAULT '' AFTER STUDENT_NAME");
-    if (!isset($columns['LAST_NAME'])) $conn->query("ALTER TABLE students ADD COLUMN LAST_NAME VARCHAR(80) NOT NULL DEFAULT '' AFTER FIRST_NAME");
+    if (!isset($columns['MIDDLE_NAME'])) $conn->query("ALTER TABLE students ADD COLUMN MIDDLE_NAME VARCHAR(80) NOT NULL DEFAULT '' AFTER FIRST_NAME");
+    if (!isset($columns['LAST_NAME'])) $conn->query("ALTER TABLE students ADD COLUMN LAST_NAME VARCHAR(80) NOT NULL DEFAULT '' AFTER MIDDLE_NAME");
     if (!isset($columns['GRADE'])) $conn->query("ALTER TABLE students ADD COLUMN GRADE TINYINT UNSIGNED NULL AFTER LAST_NAME");
     if (!isset($columns['AGE'])) $conn->query("ALTER TABLE students ADD COLUMN AGE TINYINT UNSIGNED NULL AFTER GRADE");
     if (!isset($columns['STRAND'])) $conn->query("ALTER TABLE students ADD COLUMN STRAND VARCHAR(20) NOT NULL DEFAULT '' AFTER AGE");

@@ -1,5 +1,5 @@
 <?php
-require 'page-guard.php';
+require 'scanner-guard.php';
 require '../config/db_conn.php';
 require '../includes/student-profile-schema.php';
 ensureStudentProfileColumns($conn);

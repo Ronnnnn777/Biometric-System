@@ -1,7 +1,7 @@
 <?php
 session_start(); $appBase='/biometric'; $requestedPath=parse_url($_SERVER['REQUEST_URI']??'',PHP_URL_PATH)??'';
 if(preg_match('#/admin/login\.php$#i',$requestedPath)){header('Location: '.$appBase.'/',true,302);exit;}
-if(!empty($_SESSION['is-authenticated'])){header('Location: '.$appBase.(($_SESSION['user-role']??'')==='teacher'?'/teacher/home.php':'/admin/home.php'));exit;}
+if(!empty($_SESSION['is-authenticated'])){$role=$_SESSION['user-role']??'';header('Location: '.$appBase.($role==='teacher'?'/teacher/home.php':($role==='camera'?'/camera/index.php':'/admin/home.php')));exit;}
 require __DIR__.'/../config/db_conn.php'; require __DIR__.'/../includes/default-admin.php'; require __DIR__.'/../includes/csrf-token.php'; require __DIR__.'/../includes/staff-biometric.php';
 ensureDefaultAdministrator($conn); ensureStaffBiometricSchema($conn); $loginError=$_SESSION['login-error']??''; unset($_SESSION['login-error']);
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0'); header('Pragma: no-cache');

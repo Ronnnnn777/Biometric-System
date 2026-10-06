@@ -13,8 +13,9 @@ if(!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_toke
 
 $student_id = trim($_POST["student_id"]);
 $first_name = trim($_POST['first_name'] ?? '');
+$middle_name = trim($_POST['middle_name'] ?? '');
 $last_name = trim($_POST['last_name'] ?? '');
-$student_name = trim($first_name . ' ' . $last_name);
+$student_name = trim($first_name . ' ' . $middle_name . ' ' . $last_name);
 $section = trim($_POST["student_section"] ?? '');
 $grade = (int)($_POST['grade'] ?? 0);
 $age = (int)($_POST['age'] ?? 0);
@@ -93,9 +94,9 @@ if($filename) {
         }
         $db_path = "uploads/students/" . $filename;
 
-        $sql = "INSERT INTO students (STUDENT_ID, STUDENT_NAME, FIRST_NAME, LAST_NAME, GRADE, AGE, STRAND, ADDRESS, SECTION, IMAGE_PATH) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO students (STUDENT_ID, STUDENT_NAME, FIRST_NAME, MIDDLE_NAME, LAST_NAME, GRADE, AGE, STRAND, ADDRESS, SECTION, IMAGE_PATH) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $insert = $conn->prepare($sql);
-        $insert->bind_param("ssssiissss", $student_id, $student_name, $first_name, $last_name, $grade, $age, $strand, $address, $section, $db_path);
+        $insert->bind_param("sssssiissss", $student_id, $student_name, $first_name, $middle_name, $last_name, $grade, $age, $strand, $address, $section, $db_path);
 
         if($insert->execute()){
             refreshStudentRecognitionService();

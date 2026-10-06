@@ -1,5 +1,8 @@
 # Local editor settings and tooling
 .vscode/
+android/AttendanceScanner/.gradle/
+android/AttendanceScanner/local.properties
+android/AttendanceScanner/**/build/
 .codex/
 .agents/
 node_modules/
@@ -19,3 +22,11 @@ uploads/students/*
 # Generated face-recognition runtime cache
 admin/face_encoding_cache.pkl
 admin/__pycache__/
+
+# Runtime-only biometric files and generated document previews
+storage/
+tmp/
+
+# One-off diagram helpers are local tooling; keep the operational backup script.
+tools/*
+!tools/run-daily-backup.ps1

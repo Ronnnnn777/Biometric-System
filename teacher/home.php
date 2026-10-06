@@ -2,10 +2,12 @@
 require 'page-guard.php';
 require '../config/db_conn.php';
 require '../includes/attendance-schema.php';
+require '../includes/csrf-token.php';
 require '../includes/student-profile-schema.php';
 require '../includes/teacher-profile-schema.php';
 require '../includes/teacher-assignment-schema.php';
 ensureAttendanceTimeOutColumn($conn);
+syncAutomaticAbsences($conn);
 ensureStudentProfileColumns($conn);
 ensureTeacherProfileColumns($conn);
 ensureTeacherAssignmentSchema($conn);
@@ -18,14 +20,14 @@ if (!$assignments) {
     exit('Your teacher account does not have an assigned grade and section.');
 }
 
-$sectionResult = $conn->prepare("SELECT DISTINCT s.GRADE, s.SECTION FROM students s INNER JOIN teacher_assignments ta ON ta.TEACHER_ID = ? AND ta.GRADE = s.GRADE WHERE s.SECTION IS NOT NULL AND s.SECTION <> '' AND s.ENROLLMENT_STATUS='Enrolled' ORDER BY s.GRADE, s.SECTION");
+$sectionResult = $conn->prepare("SELECT DISTINCT s.GRADE, s.SECTION FROM students s INNER JOIN teacher_assignments ta ON ta.TEACHER_ID = ? AND ta.GRADE = s.GRADE AND (ta.SUBJECT <> '' OR ta.SECTION = s.SECTION) WHERE s.SECTION IS NOT NULL AND s.SECTION <> '' AND s.ENROLLMENT_STATUS='Enrolled' ORDER BY s.GRADE, s.SECTION");
 $sectionResult->bind_param('i', $teacherId);
 $sectionResult->execute();
 $sections = [];
 $sectionRows = $sectionResult->get_result();
 while ($item = $sectionRows->fetch_assoc()) $sections[] = $item;
 
-$studentResult = $conn->prepare("SELECT DISTINCT s.STUDENT_ID, s.STUDENT_NAME, s.GRADE, s.SECTION FROM students s INNER JOIN teacher_assignments ta ON ta.TEACHER_ID = ? AND ta.GRADE = s.GRADE WHERE s.ENROLLMENT_STATUS='Enrolled' ORDER BY s.STUDENT_NAME");
+$studentResult = $conn->prepare("SELECT DISTINCT s.STUDENT_ID, s.STUDENT_NAME, s.GRADE, s.SECTION FROM students s INNER JOIN teacher_assignments ta ON ta.TEACHER_ID = ? AND ta.GRADE = s.GRADE AND (ta.SUBJECT <> '' OR ta.SECTION = s.SECTION) WHERE s.ENROLLMENT_STATUS='Enrolled' ORDER BY s.STUDENT_NAME");
 $studentResult->bind_param('i', $teacherId);
 $studentResult->execute();
 $students = [];
@@ -45,16 +47,19 @@ teacherShell('Attendance records');
     <label class="text-sm font-bold text-slate-700">Student<select id="student-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3"><option value="">All students</option><?php foreach ($students as $student): ?><option value="<?= htmlspecialchars($student['STUDENT_ID']) ?>"><?= htmlspecialchars($student['STUDENT_NAME'] . ' · ' . $student['STUDENT_ID'] . ' · Grade ' . $student['GRADE'] . ' | ' . $student['SECTION']) ?></option><?php endforeach; ?></select></label>
     <label class="text-sm font-bold text-slate-700">Date<input id="date-filter" type="date" value="<?= date('Y-m-d') ?>" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"></label>
   </div>
+  <div id="attendance-pagination-top"></div>
   <div class="mt-6 overflow-x-auto">
-    <table class="min-w-full text-left text-sm"><thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500"><tr><th class="px-4 py-3">Student ID</th><th class="px-4 py-3">Name</th><th class="px-4 py-3">Grade</th><th class="px-4 py-3">Section</th><th class="px-4 py-3">Date</th><th class="px-4 py-3">Time in</th><th class="px-4 py-3">Time out</th><th class="px-4 py-3">Status</th></tr></thead><tbody id="attendance-rows" class="divide-y divide-slate-100" aria-live="polite"></tbody></table>
+    <table class="min-w-full text-left text-sm"><thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500"><tr><th class="px-4 py-3">Student ID</th><th class="px-4 py-3">Name</th><th class="px-4 py-3">Grade</th><th class="px-4 py-3">Section</th><th class="px-4 py-3">Date</th><th class="px-4 py-3">Time in</th><th class="px-4 py-3">Time out</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Reason / action</th></tr></thead><tbody id="attendance-rows" class="divide-y divide-slate-100" aria-live="polite"></tbody></table>
   </div>
   <div id="attendance-pagination"></div>
 </section>
+<div id="attendance-remark-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5" role="dialog" aria-modal="true" aria-labelledby="attendance-remark-title"><form action="update-attendance-remark.php" method="post" class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><div class="flex items-start justify-between gap-4"><div><h2 id="attendance-remark-title" class="text-xl font-black text-slate-900">Attendance reason</h2><p class="mt-1 text-sm text-slate-500">Use this only for approved exceptions in your assigned classes.</p></div><button id="close-attendance-remark" type="button" class="rounded-lg px-2 text-2xl leading-none text-slate-400 hover:text-slate-800" aria-label="Close">&times;</button></div><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>"><input id="attendance-remark-id" type="hidden" name="attendance_id"><label class="mt-5 block text-sm font-bold text-slate-700">Attendance status<select id="attendance-remark-select" name="attendance_remark" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3"><option value="">Choose attendance status</option><option value="Excused late">Excused late</option><option value="Early dismissal">Early dismissal</option></select></label><label class="mt-5 block text-sm font-bold text-slate-700">Short reason / comment<textarea id="attendance-note" name="attendance_note" maxlength="255" rows="4" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 font-normal" placeholder="Example: Family emergency; arrived in the afternoon."></textarea></label><div class="mt-6 flex gap-3"><button class="flex-1 rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700">Save attendance note</button><button id="cancel-attendance-remark" type="button" class="rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700">Cancel</button></div></form></div>
 <script src="../js/quiet-attendance-refresh.js"></script>
-<script src="../js/table-pagination.js"></script>
+<script src="../js/table-pagination.js?v=5"></script>
 <script>
 const section=document.getElementById('section-filter'),student=document.getElementById('student-filter'),date=document.getElementById('date-filter'),rows=document.getElementById('attendance-rows'),exportLink=document.getElementById('export-link');
-const attendancePager=createTablePagination({rows,pager:document.getElementById('attendance-pagination'),label:'attendance records'});
+const attendancePager=createTablePagination({rows,pager:[document.getElementById('attendance-pagination-top'),document.getElementById('attendance-pagination')],label:'attendance records'});
 createQuietAttendanceRefresh({rows,controls:[section,student,date],exportLink,endpoint:'get-attendance.php',getParams:()=>{const selected=section.value.split('|');return new URLSearchParams({section:selected[1]||'all',grade:selected[0]||'',student:student.value,date:date.value});},onRowsUpdated:()=>attendancePager.refresh()});
+const remarkModal=document.getElementById('attendance-remark-modal'),closeRemark=()=>remarkModal.classList.replace('flex','hidden');rows.addEventListener('click',event=>{const button=event.target.closest('[data-attendance-edit]');if(!button)return;document.getElementById('attendance-remark-id').value=button.dataset.id;document.getElementById('attendance-remark-select').value=button.dataset.remark||'';document.getElementById('attendance-note').value=button.dataset.note||'';remarkModal.classList.replace('hidden','flex');});document.getElementById('close-attendance-remark').onclick=closeRemark;document.getElementById('cancel-attendance-remark').onclick=closeRemark;remarkModal.addEventListener('click',event=>{if(event.target===remarkModal)closeRemark()});
 </script>
 <?php teacherFoot(); ?>
