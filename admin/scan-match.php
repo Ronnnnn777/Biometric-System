@@ -29,14 +29,47 @@ if ($result===null && (microtime(true)-(float)($_SESSION['face_service_attempted
 if ($result===null) { $script=escapeshellarg(__DIR__.DIRECTORY_SEPARATOR.'recognize_face.py'); $raw=shell_exec($pythonCommand.' '.$script.' '.escapeshellarg($imagePath).' 2>NUL'); $result=json_decode($raw ?? '',true); }
 if($removeImage)@unlink($imagePath);
 $result=is_array($result)?$result:['match'=>false,'faces'=>[],'matches'=>[],'message'=>'Recognition service is unavailable. Check the local Python recognition service, then restart the scanner.'];
-$faces=$result['faces'] ?? [];$detectedFaces=$result['detected_faces'] ?? $faces;$unregisteredFaces=[];
+$faces=$result['faces'] ?? [];
+$detectedFaces=$result['detected_faces'] ?? $faces;
+// A strict unknown face is clear, frontal, and sharp enough for the recognizer
+// to safely classify as unknown. It is used only for the on-screen warning.
+$strictUnknownFaces=$result['unregistered_faces'] ?? [];
+// Unknown face snapshots and database entries are intentionally disabled.
+$unregisteredFaces=[];
 $recognized=$result['matches'] ?? [];
 // Raw face-detector boxes can occasionally be triggered by a bright window,
 // poster, or background texture.  They are kept for unregistered-face review
 // but are not sent to the visible corner overlay until identity is confirmed.
-if (!$recognized) { unset($_SESSION['auto_scan_departures'],$_SESSION['face_match_confirmations']); echo json_encode(['match'=>false,'faces'=>[],'preview_faces'=>$faces,'detected_faces'=>$detectedFaces,'matches'=>[],'unregistered'=>$unregisteredFaces,'message'=>$result['message'] ?? 'No recognized face.']); exit; }
+if (!$recognized) {
+    unset($_SESSION['face_match_confirmations']);
+    echo json_encode([
+        'match' => false,
+        'faces' => [],
+        'preview_faces' => $faces,
+        'detected_faces' => $detectedFaces,
+        'matches' => [],
+        'unregistered' => $unregisteredFaces,
+        'unrecognized' => !empty($strictUnknownFaces),
+        'message' => $result['message'] ?? 'No recognized face.',
+    ]);
+    exit;
+}
 $scanType=$_POST['scan_type']??'auto';if(!in_array($scanType,['auto','time_in','time_out'],true)){$scanType='auto';}
-$studentQuery=$conn->prepare('SELECT STUDENT_ID, STUDENT_NAME, IMAGE_PATH, ENROLLMENT_STATUS FROM students WHERE STUDENT_ID = ? LIMIT 1');$check=$conn->prepare('SELECT ID, TIME_IN, TIME_OUT FROM attendance WHERE STUDENT_ID = ? AND DATE(TIME_IN) = ? ORDER BY TIME_IN DESC LIMIT 1');$log=$conn->prepare('INSERT INTO attendance (STUDENT_ID, STUDENT_NAME, TIME_IN) VALUES (?, ?, NOW())');$timeOut=$conn->prepare('UPDATE attendance SET TIME_OUT=NOW() WHERE ID=? AND TIME_OUT IS NULL');$today=date('Y-m-d');$seen=[];$found=[];$recognizedBoxes=[];$now=microtime(true);$confirmations=$_SESSION['face_match_confirmations']??[];foreach($confirmations as $key=>$candidate)if($now-($candidate['seen_at']??0)>6)unset($confirmations[$key]);$autoDepartures=$_SESSION['auto_scan_departures']??[];$presentIds=[];foreach($recognized as $recognizedFace){$recognizedId=(string)($recognizedFace['student_id']??'');if($recognizedId!=='')$presentIds[$recognizedId]=true;}$departedIds=[];foreach($autoDepartures as $studentId=>$_)if(!isset($presentIds[$studentId])){$departedIds[]=$studentId;unset($autoDepartures[$studentId]);}foreach($departedIds as $studentId)unset($confirmations['auto|'.$studentId]);
+$studentQuery=$conn->prepare('SELECT STUDENT_ID, STUDENT_NAME, IMAGE_PATH, ENROLLMENT_STATUS FROM students WHERE STUDENT_ID = ? LIMIT 1');
+$check=$conn->prepare('SELECT ID, TIME_IN, LUNCH_OUT, AFTERNOON_TIME_IN, TIME_OUT FROM attendance WHERE STUDENT_ID = ? AND DATE(TIME_IN) = ? ORDER BY TIME_IN DESC LIMIT 1');
+$log=$conn->prepare('INSERT INTO attendance (STUDENT_ID, STUDENT_NAME, TIME_IN) VALUES (?, ?, NOW())');
+$lunchOut=$conn->prepare('UPDATE attendance SET LUNCH_OUT=NOW() WHERE ID=? AND LUNCH_OUT IS NULL');
+$afternoonTimeIn=$conn->prepare('UPDATE attendance SET AFTERNOON_TIME_IN=NOW() WHERE ID=? AND AFTERNOON_TIME_IN IS NULL');
+$timeOut=$conn->prepare('UPDATE attendance SET TIME_OUT=NOW() WHERE ID=? AND TIME_OUT IS NULL');
+$today=date('Y-m-d');
+$seen=[];
+$found=[];
+$recognizedBoxes=[];
+$now=microtime(true);
+$confirmations=$_SESSION['face_match_confirmations']??[];
+foreach($confirmations as $key=>$candidate) {
+    if($now-($candidate['seen_at']??0)>6) unset($confirmations[$key]);
+}
 foreach ($recognized as $recognizedFace) {
     $id = (string)($recognizedFace['student_id'] ?? '');
     $box = $recognizedFace['box'] ?? null;
@@ -45,8 +78,6 @@ foreach ($recognized as $recognizedFace) {
     if ($box) $recognizedBoxes[json_encode($box)] = true;
     if (!$id || isset($seen[$id])) continue;
     $seen[$id] = true;
-    if ($scanType === 'auto' && isset($autoDepartures[$id])) continue;
-
     $key = $scanType . '|' . $id;
     $candidate = $confirmations[$key] ?? ['count' => 0, 'seen_at' => 0];
     $candidate['count'] = $now - ($candidate['seen_at'] ?? 0) <= 5 ? (int)$candidate['count'] + 1 : 1;
@@ -69,27 +100,31 @@ foreach ($recognized as $recognizedFace) {
         $check->bind_param('ss', $student['STUDENT_ID'], $today);
         $check->execute();
         $record = $check->get_result()->fetch_assoc();
-        $cooldown = $record && $record['TIME_OUT'] === null ? attendanceTimeOutCooldownRemaining($record['TIME_IN']) : 0;
+        $cooldown = $record && $record['TIME_OUT'] === null ? attendanceTimeOutCooldownRemaining($record['AFTERNOON_TIME_IN'] ?? $record['TIME_IN']) : 0;
 
         if ($scanType === 'auto') {
-            if (!$record) {
+            $next = attendanceNextAutomaticAction($record);
+            $action = $next['action'];
+            $message = $next['message'];
+            if ($action === 'time_in') {
                 $log->bind_param('ss', $student['STUDENT_ID'], $student['STUDENT_NAME']);
                 $log->execute();
                 $logged = true;
-                $action = 'time_in';
-                $message = 'Time in recorded';
-            } elseif ($record['TIME_OUT'] === null && $cooldown > 0) {
-                $action = 'cooldown';
-                $message = attendanceTimeOutCooldownMessage($cooldown);
-            } elseif ($record['TIME_OUT'] === null) {
+            } elseif ($action === 'lunch_out') {
+                $lunchOut->bind_param('i', $record['ID']);
+                $lunchOut->execute();
+                $logged = $lunchOut->affected_rows > 0;
+                if (!$logged) $message = 'Lunch Out already recorded.';
+            } elseif ($action === 'afternoon_time_in') {
+                $afternoonTimeIn->bind_param('i', $record['ID']);
+                $afternoonTimeIn->execute();
+                $logged = $afternoonTimeIn->affected_rows > 0;
+                if (!$logged) $message = 'Afternoon Time In already recorded.';
+            } elseif ($action === 'time_out') {
                 $timeOut->bind_param('i', $record['ID']);
                 $timeOut->execute();
                 $logged = $timeOut->affected_rows > 0;
-                $action = 'time_out';
-                $message = $logged ? 'Time out recorded' : 'Time out already recorded';
-            } else {
-                $action = 'complete';
-                $message = 'Attendance already completed today';
+                if (!$logged) $message = 'Time Out already recorded.';
             }
         } elseif ($scanType === 'time_in') {
             if (!$record) {
@@ -115,12 +150,9 @@ foreach ($recognized as $recognizedFace) {
         }
     }
 
-    if ($scanType === 'auto') $autoDepartures[$id] = $now;
-    // The automatic scanner is silent during the protected five-minute period.
-    if ($scanType === 'auto' && $action === 'cooldown') continue;
     $found[] = ['student' => $student, 'logged' => $logged, 'action' => $action, 'message' => $message, 'confidence' => $recognizedFace['confidence'] ?? null, 'box' => $box];
 }
-$_SESSION['face_match_confirmations']=$confirmations;$_SESSION['auto_scan_departures']=$autoDepartures;
+$_SESSION['face_match_confirmations']=$confirmations;
 $unregistered=[];foreach($unregisteredFaces as $face){if(!isset($recognizedBoxes[json_encode($face['box']??[])]))$unregistered[]=$face;}
 if (!$found) { echo json_encode(['match'=>false,'faces'=>[],'preview_faces'=>$faces,'detected_faces'=>$detectedFaces,'recognized_faces'=>$recognized,'matches'=>[],'unregistered'=>$unregistered,'message'=>'Face detected. Confirming identity…']); exit; }
 $displayFaces=[];foreach($found as $matchedFace){if(isset($matchedFace['box']))$displayFaces[]=['box'=>$matchedFace['box']];}

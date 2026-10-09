@@ -38,6 +38,10 @@ _next_fingerprint_check = 0.0
 # rejects ambiguous identities.
 MAX_MATCH_DISTANCE = 0.45
 MIN_RUNNER_UP_MARGIN = 0.12
+# An unmatched face near an enrolled profile can be caused by lighting, focus,
+# or an older enrollment photo. It is ambiguous, not evidence of a visitor.
+# Only a face this far from every enrolled profile may raise an unknown warning.
+CLEAR_UNKNOWN_DISTANCE = 0.60
 # 480px leaves a face large enough for reliable recognition at the scanner's
 # normal distance while reducing HOG detector work on every daytime frame.
 MAX_SCAN_WIDTH = 480
@@ -272,6 +276,12 @@ def batch_best_matches(known, ids, candidates, max_distance=MAX_MATCH_DISTANCE, 
         matches.append((best_id, best_distance) if best_distance <= max_distance and runner_up - best_distance >= min_margin else None)
     return matches
 
+def nearest_known_distance(known, candidate):
+    if not known or candidate is None:
+        return float("inf")
+    distances = face_recognition.face_distance(known, candidate)
+    return float(np.min(distances)) if len(distances) else float("inf")
+
 def is_frontal_unknown_face(image, location):
     """Only create visitor alerts for a face turned sufficiently toward the camera."""
     try:
@@ -396,11 +406,16 @@ def recognize(image_path):
             matches.append({"student_id": match[0], "confidence": round(float(1 - match[1]), 3), "distance": round(float(match[1]), 3), "box": box, "far": is_far})
     # A side/partial face may be too ambiguous to identify, but it is not
     # evidence of a visitor. Require frontal landmarks before alerting admin.
-    unregistered_faces = [
-        {"box": box}
-        for index, (location, box, sharpness, _, landmark_is_frontal) in enumerate(eligible_faces)
-        if face_matches[index] is None and sharpness >= MIN_UNKNOWN_FACE_SHARPNESS and (landmark_is_frontal if landmark_is_frontal is not None else is_frontal_unknown_face(scan_frame, location))
-    ]
+    unregistered_faces = []
+    for index, (location, box, sharpness, _, landmark_is_frontal) in enumerate(eligible_faces):
+        if face_matches[index] is not None or sharpness < MIN_UNKNOWN_FACE_SHARPNESS:
+            continue
+        frontal = landmark_is_frontal if landmark_is_frontal is not None else is_frontal_unknown_face(scan_frame, location)
+        if not frontal:
+            continue
+        candidate = fast_encodings[index] if index < len(fast_encodings) else None
+        if nearest_known_distance(known, candidate) >= CLEAR_UNKNOWN_DISTANCE:
+            unregistered_faces.append({"box": box})
     message = None if matches else ("Camera image is too blurry. Hold still while the eMeet refocuses." if eligible_faces and not faces else "Face not recognized.")
     return {"match": bool(matches), "faces": faces, "detected_faces": detected_faces, "unregistered_faces": unregistered_faces, "matches": matches, "message": message}
 

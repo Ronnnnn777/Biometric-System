@@ -59,10 +59,7 @@ teacherShell('Students');
     <h2 class="text-2xl font-black text-slate-900">Students</h2>
     <p class="mt-1 text-slate-500">Choose an assigned grade and section to view its student list.</p>
   </div>
-  <div class="flex gap-3">
-    <a href="home.php" class="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Attendance logs</a>
-    <input id="student-search" class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm sm:w-72" placeholder="Search name or ID">
-  </div>
+  <a href="home.php" class="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Attendance logs</a>
 </div>
 
 <section class="mb-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -83,6 +80,11 @@ teacherShell('Students');
   </div>
 </section>
 
+<section class="table-filter-bar mb-6">
+  <div class="mb-3 flex items-center justify-between gap-3"><p class="text-sm font-black text-slate-800">Filters</p><button id="clear-student-filters" type="button" class="table-filter-reset">Clear filters</button></div>
+  <label class="table-filter-control block max-w-md text-sm font-bold text-slate-700">Search students<input id="student-search" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" placeholder="Name or student ID"></label>
+</section>
+
 <div class="mb-4">
   <h3 class="text-xl font-black text-slate-900">Grade <?= $grade ?> | <?= htmlspecialchars($section) ?> students</h3>
   <p class="mt-1 text-slate-500"><?= $students->num_rows ?> student<?= $students->num_rows === 1 ? '' : 's' ?> in this section</p>
@@ -91,7 +93,7 @@ teacherShell('Students');
   <div class="overflow-x-auto">
     <table class="min-w-full text-left text-sm">
       <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th class="px-5 py-4">Student</th><th class="px-5 py-4">ID</th><th class="px-5 py-4">Grade</th><th class="px-5 py-4">Section</th><th class="px-5 py-4">Today</th><th class="px-5 py-4"></th></tr></thead>
-      <tbody id="student-rows" class="divide-y divide-slate-100">
+      <tbody id="student-rows" class="divide-y divide-slate-100" data-empty-title="No students are in this section yet." data-empty-detail="Choose another assigned section to view its students.">
       <?php while ($student = $students->fetch_assoc()): ?>
         <tr class="hover:bg-slate-50">
           <?php $displayName = trim(($student['LAST_NAME'] ?? '') . ', ' . ($student['FIRST_NAME'] ?? '') . (!empty($student['MIDDLE_NAME']) ? ', ' . $student['MIDDLE_NAME'] : ''), ', ') ?: $student['STUDENT_NAME']; ?>
@@ -108,4 +110,5 @@ teacherShell('Students');
   </div>
 </div>
 <script src="../js/student-pagination.js?v=7"></script>
+<script>document.getElementById('clear-student-filters').onclick=()=>{const search=document.getElementById('student-search');search.value='';search.dispatchEvent(new Event('input'));};</script>
 <?php teacherFoot(); ?>

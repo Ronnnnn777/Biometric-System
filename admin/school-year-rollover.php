@@ -20,6 +20,7 @@ while($targetRows&&$row=$targetRows->fetch_assoc()) $targets[]=$row;
 $maps=[];
 $mapRows=$conn->query('SELECT * FROM school_year_rollover_maps');
 while($mapRows&&$row=$mapRows->fetch_assoc()) $maps[$row['FROM_GRADE'].'|'.$row['FROM_STRAND'].'|'.$row['FROM_SECTION']]=$row;
+$showReviewActions=($_GET['saved']??'')==='1';
 
 adminHead('School year rollover');
 adminSidebar('rollover','School year rollover','Map each current class to its official next-school-year class before confirming promotion.');
@@ -59,8 +60,14 @@ adminSidebar('rollover','School year rollover','Map each current class to its of
         </tbody>
       </table>
     </div>
-    <div class="mt-6 flex justify-end"><button class="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Save all mappings</button></div>
+    <div class="mt-6 flex flex-wrap items-center justify-end gap-3">
+      <?php if($showReviewActions): ?>
+        <a href="school-year-rollover-preview.php" class="rounded-xl bg-emerald-600 px-5 py-3 font-bold text-white hover:bg-emerald-700">Review and confirm rollover</a>
+        <a href="school-year-rollover.php" class="rounded-xl border border-slate-300 bg-white px-5 py-3 font-bold text-slate-700 hover:bg-slate-50">Return to mappings</a>
+      <?php else: ?>
+        <button class="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Save all mappings</button>
+      <?php endif; ?>
+    </div>
   </form>
 </section>
-<div class="mx-auto mt-6 flex max-w-5xl justify-end"><a href="school-year-rollover-preview.php" class="rounded-xl bg-rose-600 px-5 py-3 font-bold text-white hover:bg-rose-700">Review and confirm rollover</a></div>
 <?php adminFoot(); ?>

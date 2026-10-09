@@ -1,4 +1,6 @@
 <?php
+date_default_timezone_set('Asia/Manila');
+
 $dbhost="localhost";
 $dbuser="root";
 $dbpass="";
@@ -11,5 +13,8 @@ $conn = new mysqli($dbhost, $dbuser, $dbpass, $dbname, 3306);
 if ($conn->connect_error){
     die("Database Connection Failed.");
 }
+
+// Keep PHP calculations and database timestamps on the school's local time.
+$conn->query("SET time_zone = '+08:00'");
 
 ?>

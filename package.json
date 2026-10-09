@@ -1,0 +1,10 @@
+{
+  "name": "maruhat-biometric-attendance",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./css/tailwind-input.css -o ./css/tailwind.css"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}

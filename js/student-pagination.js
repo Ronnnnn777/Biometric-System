@@ -18,6 +18,10 @@
   tableCard?.insertAdjacentElement('beforebegin', topPager);
   tableCard?.insertAdjacentElement('afterend', bottomPager);
   const pagers = [topPager, bottomPager];
+  const emptyState = document.createElement('tr');
+  emptyState.hidden = true;
+  emptyState.innerHTML = '<td colspan="99" class="px-5 py-14 text-center"><p class="text-base font-black text-slate-800"></p><p class="mt-1 text-sm text-slate-500"></p><button type="button" class="mt-4 rounded-xl bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100"></button></td>';
+  rowsContainer.append(emptyState);
 
   const matches = row => {
     const query = search.value.trim().toLowerCase();
@@ -85,6 +89,19 @@
     const first = (currentPage - 1) * perPage;
     const visibleRows = new Set(matchingRows.slice(first, first + perPage));
     rows.forEach(row => { row.hidden = !visibleRows.has(row); });
+    const hasFilters = Boolean(search.value.trim() || grade?.value || section?.value || status?.value);
+    emptyState.hidden = matchingRows.length > 0;
+    if (!matchingRows.length) {
+      const title = emptyState.querySelector('p:first-child');
+      const detail = emptyState.querySelector('p:nth-child(2)');
+      const clear = emptyState.querySelector('button');
+      title.textContent = rows.length ? 'No students match the current filters.' : (rowsContainer.dataset.emptyTitle || 'No students have been added yet.');
+      detail.textContent = rows.length ? 'Try changing the search or filter options.' : (rowsContainer.dataset.emptyDetail || 'Add a student or import a class list to begin.');
+      const addUrl = rowsContainer.dataset.emptyActionUrl || '';
+      clear.hidden = rows.length ? !hasFilters : !addUrl;
+      clear.textContent = rows.length ? 'Clear filters' : 'Add student';
+      clear.onclick = () => rows.length ? document.getElementById('clear-student-filters')?.click() : window.location.assign(addUrl);
+    }
     pagers.forEach((pager, index) => {
       pager.replaceChildren();
       pager.className = 'my-5 flex justify-center';

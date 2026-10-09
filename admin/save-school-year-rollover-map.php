@@ -42,6 +42,7 @@ try{
     }
     $conn->commit();
     $_SESSION['toast']=['message'=>count($validated).' class mappings saved successfully.','type'=>'success'];
+    header('Location: school-year-rollover.php?saved=1');exit;
 }catch(Throwable $error){
     $conn->rollback();
     $_SESSION['toast']=['message'=>'Could not save the mappings. No changes were made.','type'=>'error'];

@@ -5,6 +5,8 @@ function ensureAttendanceTimeOutColumn(mysqli $conn): void
     $columns=[];$result=$conn->query('SHOW COLUMNS FROM attendance');
     while($result&&($column=$result->fetch_assoc()))$columns[strtoupper($column['Field'])]=true;
     if(!isset($columns['TIME_OUT']))$conn->query('ALTER TABLE attendance ADD COLUMN TIME_OUT DATETIME NULL DEFAULT NULL AFTER TIME_IN');
+    if(!isset($columns['LUNCH_OUT']))$conn->query('ALTER TABLE attendance ADD COLUMN LUNCH_OUT DATETIME NULL DEFAULT NULL AFTER TIME_IN');
+    if(!isset($columns['AFTERNOON_TIME_IN']))$conn->query('ALTER TABLE attendance ADD COLUMN AFTERNOON_TIME_IN DATETIME NULL DEFAULT NULL AFTER LUNCH_OUT');
     if(!isset($columns['ATTENDANCE_REMARK']))$conn->query("ALTER TABLE attendance ADD COLUMN ATTENDANCE_REMARK VARCHAR(40) NULL DEFAULT NULL AFTER TIME_OUT");
     if(!isset($columns['ATTENDANCE_NOTE']))$conn->query("ALTER TABLE attendance ADD COLUMN ATTENDANCE_NOTE VARCHAR(255) NULL DEFAULT NULL AFTER ATTENDANCE_REMARK");
     if(!isset($columns['IS_AUTO_ABSENT']))$conn->query("ALTER TABLE attendance ADD COLUMN IS_AUTO_ABSENT TINYINT(1) NOT NULL DEFAULT 0 AFTER ATTENDANCE_NOTE");
@@ -33,6 +35,8 @@ function syncAutomaticAbsences(mysqli $conn): void
 const ATTENDANCE_LATE_FROM = '07:21:00';
 const ATTENDANCE_ABSENCE_FINALIZE_AT = '23:59:00';
 const ATTENDANCE_TIME_OUT_COOLDOWN_SECONDS = 300;
+const ATTENDANCE_LUNCH_OUT_FROM = '11:40:00';
+const ATTENDANCE_AFTERNOON_TIME_IN_FROM = '12:20:00';
 
 /** Returns the number of seconds before a recorded time in may become a time out. */
 function attendanceTimeOutCooldownRemaining(?string $timeIn): int
@@ -47,6 +51,42 @@ function attendanceTimeOutCooldownMessage(int $remainingSeconds): string
 {
     $minutes = (int)ceil($remainingSeconds / 60);
     return 'Time in is protected for ' . $minutes . ' more minute' . ($minutes === 1 ? '' : 's') . '.';
+}
+
+/** Returns the next valid automatic attendance event for a daily record. */
+function attendanceNextAutomaticAction(?array $record, ?DateTimeImmutable $now = null): array
+{
+    if (!$record) return ['action' => 'time_in', 'message' => 'Time In recorded.', 'can_record' => true];
+
+    $now ??= new DateTimeImmutable('now');
+    $clock = $now->format('H:i:s');
+    $lunchOut = $record['LUNCH_OUT'] ?? null;
+    $afternoonTimeIn = $record['AFTERNOON_TIME_IN'] ?? null;
+    $timeOut = $record['TIME_OUT'] ?? null;
+
+    if (!$lunchOut) {
+        if ($clock < ATTENDANCE_LUNCH_OUT_FROM) {
+            return ['action' => 'morning_protected', 'message' => 'Lunch Out opens at 11:40 AM.', 'can_record' => false];
+        }
+        if ($clock < ATTENDANCE_AFTERNOON_TIME_IN_FROM) {
+            return ['action' => 'lunch_out', 'message' => 'Lunch Out recorded.', 'can_record' => true];
+        }
+    }
+
+    if ($lunchOut && !$afternoonTimeIn) {
+        if ($clock < ATTENDANCE_AFTERNOON_TIME_IN_FROM) {
+            return ['action' => 'waiting_afternoon', 'message' => 'Afternoon Time In opens at 12:20 PM.', 'can_record' => false];
+        }
+        return ['action' => 'afternoon_time_in', 'message' => 'Afternoon Time In recorded.', 'can_record' => true];
+    }
+
+    if ($timeOut) return ['action' => 'complete', 'message' => 'Attendance already completed today.', 'can_record' => false];
+
+    $protectionStart = $afternoonTimeIn ?: ($record['TIME_IN'] ?? null);
+    $remaining = attendanceTimeOutCooldownRemaining($protectionStart);
+    if ($remaining > 0) return ['action' => 'cooldown', 'message' => attendanceTimeOutCooldownMessage($remaining), 'can_record' => false];
+
+    return ['action' => 'time_out', 'message' => 'Time Out recorded.', 'can_record' => true];
 }
 
 function attendanceIsLate(string $timeIn): bool
@@ -68,21 +108,23 @@ function attendanceIsAbsent(?string $remark): bool
     return $remark === 'Absent';
 }
 
-function attendanceStatusLabel(string $timeIn, ?string $timeOut = null, ?string $remark = null): string
+function attendanceStatusLabel(string $timeIn, ?string $timeOut = null, ?string $remark = null, ?string $lunchOut = null, ?string $afternoonTimeIn = null): string
 {
     if (attendanceIsAbsent($remark)) return 'Absent';
     if (in_array($remark, attendanceRemarkOptions(), true)) return $remark;
     $late = attendanceIsLate($timeIn);
+    if (!empty($lunchOut) && empty($afternoonTimeIn)) return $late ? 'Late - Lunch out' : 'Lunch out';
     if ($late && !empty($timeOut)) return 'Late · Dismissed';
     if ($late) return 'Late';
     return empty($timeOut) ? 'Present' : 'Dismissed';
 }
 
-function attendanceStatusClass(string $timeIn, ?string $timeOut = null, ?string $remark = null): string
+function attendanceStatusClass(string $timeIn, ?string $timeOut = null, ?string $remark = null, ?string $lunchOut = null, ?string $afternoonTimeIn = null): string
 {
     if (attendanceIsAbsent($remark)) return 'bg-rose-50 text-rose-700';
     if ($remark === 'Excused late') return 'bg-violet-50 text-violet-700';
     if ($remark === 'Early dismissal') return 'bg-sky-50 text-sky-700';
+    if (!empty($lunchOut) && empty($afternoonTimeIn)) return 'bg-blue-50 text-blue-700';
     if (attendanceIsLate($timeIn)) return 'bg-rose-50 text-rose-700';
     return empty($timeOut) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700';
 }

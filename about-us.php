@@ -4,8 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>About | Biometric Attendance</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>tailwind.config={theme:{extend:{colors:{brand:{950:'#172554'}}}}}</script>
+  <link rel="stylesheet" href="css/tailwind.css">
 </head>
 <body class="bg-slate-50 text-slate-800">
 <?php $currentPage='about'; require 'includes/site-nav.php'; ?>

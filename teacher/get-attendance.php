@@ -18,5 +18,5 @@ if($result->num_rows):while($row=$result->fetch_assoc()):
   <td class="px-4 py-4"><p class="max-w-xs text-xs text-slate-600"><?= $note!==''?htmlspecialchars($note):'<span class="text-slate-400">No reason added</span>' ?></p><?php if(!$isAbsent): ?><button type="button" data-attendance-edit data-id="<?= (int)$row['ID'] ?>" data-remark="<?= htmlspecialchars($remark,ENT_QUOTES) ?>" data-note="<?= htmlspecialchars($note,ENT_QUOTES) ?>" class="mt-2 text-xs font-bold text-blue-600 hover:text-blue-800">Update</button><?php endif; ?></td>
 </tr>
 <?php endwhile;else: ?>
-<tr><td colspan="9" class="px-4 py-10 text-center text-slate-500">No attendance records found.</td></tr>
+<tr><td colspan="9" class="px-4 py-14 text-center"><p class="text-base font-black text-slate-800">No attendance records match the current filters.</p><p class="mt-1 text-sm text-slate-500">Try another date or adjust the grade, section, or student filter above.</p></td></tr>
 <?php endif; ?>
