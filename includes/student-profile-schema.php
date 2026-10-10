@@ -34,7 +34,7 @@ function isValidStudentAge(int $age): bool
 
 function studentEnrollmentStatuses(): array
 {
-    return ['Enrolled', 'Transferred', 'Dropped', 'Graduated'];
+    return ['Enrolled', 'Transferred', 'Dropped', 'Graduated', 'Archived'];
 }
 
 function isValidStudentEnrollmentStatus(string $status): bool

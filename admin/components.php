@@ -188,17 +188,17 @@ document.querySelectorAll('[data-auto-toast]').forEach(toast => {
     }, 4000);
 });
 
-const studentDeleteButton = document.getElementById('delete-button');
-const studentDeleteForm = document.getElementById('delete-form');
-if (studentDeleteButton && studentDeleteForm) {
+const studentArchiveButton = document.getElementById('archive-button');
+const studentArchiveForm = document.getElementById('archive-form');
+if (studentArchiveButton && studentArchiveForm) {
     const modal = document.createElement('div');
-    modal.id = 'delete-student-modal';
+    modal.id = 'archive-student-modal';
     modal.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5';
-    modal.innerHTML = '<div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"><h3 class="text-xl font-black text-slate-900">Delete student account?</h3><p class="mt-2 text-sm text-slate-500">This permanently removes the student profile and biometric image.</p><div class="mt-6 flex gap-3"><button type="button" id="cancel-delete-student" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold">Cancel</button><button type="button" id="confirm-delete-student" class="flex-1 rounded-xl bg-rose-600 px-4 py-3 font-bold text-white">Delete</button></div></div>';
+    modal.innerHTML = '<div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"><h3 class="text-xl font-black text-slate-900">Archive student profile?</h3><p class="mt-2 text-sm text-slate-500">The profile, image, and attendance history will be retained. The student will no longer be able to record attendance.</p><div class="mt-6 flex gap-3"><button type="button" id="cancel-archive-student" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold">Cancel</button><button type="button" id="confirm-archive-student" class="flex-1 rounded-xl bg-amber-600 px-4 py-3 font-bold text-white">Archive</button></div></div>';
     document.body.appendChild(modal);
-    studentDeleteButton.onclick = () => modal.classList.replace('hidden', 'flex');
-    document.getElementById('cancel-delete-student').onclick = () => modal.classList.replace('flex', 'hidden');
-    document.getElementById('confirm-delete-student').onclick = () => studentDeleteForm.submit();
+    studentArchiveButton.onclick = () => modal.classList.replace('hidden', 'flex');
+    document.getElementById('cancel-archive-student').onclick = () => modal.classList.replace('flex', 'hidden');
+    document.getElementById('confirm-archive-student').onclick = () => studentArchiveForm.submit();
 }
 </script>
 </body>

@@ -12,6 +12,26 @@ function ensureAttendanceTimeOutColumn(mysqli $conn): void
     if(!isset($columns['IS_AUTO_ABSENT']))$conn->query("ALTER TABLE attendance ADD COLUMN IS_AUTO_ABSENT TINYINT(1) NOT NULL DEFAULT 0 AFTER ATTENDANCE_NOTE");
     $conn->query("CREATE TABLE IF NOT EXISTS attendance_absence_settings (ID TINYINT UNSIGNED NOT NULL PRIMARY KEY, ENABLED_FROM DATE NOT NULL)");
     $conn->query("INSERT IGNORE INTO attendance_absence_settings (ID, ENABLED_FROM) VALUES (1, CURDATE())");
+    $conn->query("CREATE TABLE IF NOT EXISTS attendance_day_settings (ID TINYINT UNSIGNED NOT NULL PRIMARY KEY, WHOLE_DAY_ENABLED TINYINT(1) NOT NULL DEFAULT 0, UPDATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+    $conn->query("INSERT IGNORE INTO attendance_day_settings (ID, WHOLE_DAY_ENABLED) VALUES (1, 0)");
+}
+
+/** Whole-day mode records the lunch departure and afternoon return. Off means half-day attendance. */
+function attendanceUsesWholeDay(mysqli $conn): bool
+{
+    ensureAttendanceTimeOutColumn($conn);
+    $settings=$conn->query('SELECT WHOLE_DAY_ENABLED FROM attendance_day_settings WHERE ID=1 LIMIT 1');
+    $row=$settings?$settings->fetch_assoc():null;
+    return (int)($row['WHOLE_DAY_ENABLED']??0)===1;
+}
+
+function setWholeDayAttendance(mysqli $conn, bool $enabled): void
+{
+    ensureAttendanceTimeOutColumn($conn);
+    $value=$enabled?1:0;
+    $update=$conn->prepare('INSERT INTO attendance_day_settings (ID, WHOLE_DAY_ENABLED) VALUES (1, ?) ON DUPLICATE KEY UPDATE WHOLE_DAY_ENABLED=VALUES(WHOLE_DAY_ENABLED)');
+    $update->bind_param('i',$value);
+    $update->execute();
 }
 
 /** Adds a single Absent record for enrolled students who had no time-in on a completed weekday. */
@@ -54,7 +74,7 @@ function attendanceTimeOutCooldownMessage(int $remainingSeconds): string
 }
 
 /** Returns the next valid automatic attendance event for a daily record. */
-function attendanceNextAutomaticAction(?array $record, ?DateTimeImmutable $now = null): array
+function attendanceNextAutomaticAction(?array $record, ?DateTimeImmutable $now = null, bool $wholeDay = false): array
 {
     if (!$record) return ['action' => 'time_in', 'message' => 'Time In recorded.', 'can_record' => true];
 
@@ -63,6 +83,13 @@ function attendanceNextAutomaticAction(?array $record, ?DateTimeImmutable $now =
     $lunchOut = $record['LUNCH_OUT'] ?? null;
     $afternoonTimeIn = $record['AFTERNOON_TIME_IN'] ?? null;
     $timeOut = $record['TIME_OUT'] ?? null;
+
+    if (!$wholeDay) {
+        if ($timeOut) return ['action' => 'complete', 'message' => 'Attendance already completed today.', 'can_record' => false];
+        $remaining = attendanceTimeOutCooldownRemaining($record['TIME_IN'] ?? null);
+        if ($remaining > 0) return ['action' => 'cooldown', 'message' => attendanceTimeOutCooldownMessage($remaining), 'can_record' => false];
+        return ['action' => 'time_out', 'message' => 'Time Out recorded.', 'can_record' => true];
+    }
 
     if (!$lunchOut) {
         if ($clock < ATTENDANCE_LUNCH_OUT_FROM) {

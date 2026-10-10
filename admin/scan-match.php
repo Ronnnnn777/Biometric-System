@@ -62,6 +62,7 @@ $lunchOut=$conn->prepare('UPDATE attendance SET LUNCH_OUT=NOW() WHERE ID=? AND L
 $afternoonTimeIn=$conn->prepare('UPDATE attendance SET AFTERNOON_TIME_IN=NOW() WHERE ID=? AND AFTERNOON_TIME_IN IS NULL');
 $timeOut=$conn->prepare('UPDATE attendance SET TIME_OUT=NOW() WHERE ID=? AND TIME_OUT IS NULL');
 $today=date('Y-m-d');
+$wholeDayAttendance=attendanceUsesWholeDay($conn);
 $seen=[];
 $found=[];
 $recognizedBoxes=[];
@@ -103,7 +104,7 @@ foreach ($recognized as $recognizedFace) {
         $cooldown = $record && $record['TIME_OUT'] === null ? attendanceTimeOutCooldownRemaining($record['AFTERNOON_TIME_IN'] ?? $record['TIME_IN']) : 0;
 
         if ($scanType === 'auto') {
-            $next = attendanceNextAutomaticAction($record);
+            $next = attendanceNextAutomaticAction($record, null, $wholeDayAttendance);
             $action = $next['action'];
             $message = $next['message'];
             if ($action === 'time_in') {
