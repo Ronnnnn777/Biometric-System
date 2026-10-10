@@ -27,23 +27,24 @@ $completionRate = $todayCount ? round($timeOutCount / $todayCount * 100) : 0;
 adminHead('Dashboard');
 adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
 ?>
-<div class="mb-7">
-    <h2 class="text-2xl font-black text-slate-900">Good day, administrator.</h2>
-    <p class="mt-1 text-slate-500">Here is what is happening across the system.</p>
-</div>
+<section class="maruhat-dashboard-hero mb-7">
+    <p class="maruhat-eyebrow text-xs font-black uppercase">Maruhat National High School</p>
+    <h2 class="mt-3 text-3xl font-black sm:text-4xl">Good day, administrator.</h2>
+    <p class="mt-3 max-w-xl text-sm leading-6 text-blue-50">Your attendance overview for <?= htmlspecialchars(date('l, F j, Y')) ?>. Keep every school day organized, accurate, and ready for review.</p>
+</section>
 
 <section class="grid gap-5 md:grid-cols-3">
-    <article class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+    <article class="maruhat-stat rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
         <p class="text-sm font-bold text-slate-500">Registered students</p>
         <p id="stat-total" class="mt-3 text-4xl font-black text-slate-900"><?= $totalStudents ?></p>
         <p class="mt-2 text-sm text-slate-500">Student profiles in the system</p>
     </article>
-    <article class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+    <article class="maruhat-stat rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
         <p class="text-sm font-bold text-emerald-700">Today's time ins</p>
         <p id="stat-today" class="mt-3 text-4xl font-black text-slate-900"><?= $todayCount ?></p>
         <p class="mt-2 text-sm text-slate-500">Unique students who arrived today</p>
     </article>
-    <article class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+    <article class="maruhat-stat rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
         <p class="text-sm font-bold text-amber-700">Today's time outs</p>
         <p id="stat-time-out" class="mt-3 text-4xl font-black text-slate-900"><?= $timeOutCount ?></p>
         <p class="mt-2 text-sm text-slate-500">Students with completed attendance</p>

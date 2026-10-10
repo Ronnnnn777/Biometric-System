@@ -8,7 +8,11 @@
   const section = document.getElementById('section-filter');
   const status = document.getElementById('status-filter');
   const sectionOptions = section ? Array.from(section.options).map(option => ({ value: option.value, label: option.textContent })) : [];
-  const perPage = 15;
+  let sectionMap = window.studentSectionMap || {};
+  if (!Object.keys(sectionMap).length) {
+    try { sectionMap = JSON.parse(rowsContainer.dataset.sectionMap || '{}'); } catch (_) {}
+  }
+  const perPage = Number(rowsContainer.dataset.pageSize) || 15;
   let currentPage = 1;
   const tableCard = rowsContainer.closest('.overflow-hidden');
   const topPager = document.createElement('nav');
@@ -35,7 +39,9 @@
     if (!section) return;
     const selectedGrade = grade?.value || '';
     const previousSection = section.value;
-    const availableSections = new Set(rows.filter(row => !selectedGrade || row.dataset.grade === selectedGrade).map(row => row.dataset.section).filter(Boolean));
+    const availableSections = new Set(selectedGrade
+      ? (sectionMap[selectedGrade] || [])
+      : sectionOptions.map(option => option.value).filter(Boolean));
     section.replaceChildren();
     sectionOptions.forEach(({ value, label }) => {
       if (value && !availableSections.has(value)) return;

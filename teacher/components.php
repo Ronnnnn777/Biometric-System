@@ -8,18 +8,27 @@ function teacherHead(string $title): void { ?>
     <title><?= htmlspecialchars($title) ?> | Teacher portal</title>
     <link rel="stylesheet" href="../css/tailwind.css">
     <style>
+        :root { --maruhat-blue: #1f4f91; --maruhat-blue-deep: #102e5e; --maruhat-green: #27794a; --maruhat-gold: #d8a52d; }
+        body { background: radial-gradient(circle at 92% -8%, rgb(216 165 45 / .14), transparent 28rem), radial-gradient(circle at 42% 0%, rgb(31 79 145 / .09), transparent 36rem), #f5f8f5 !important; }
         select { padding-right: 3rem !important; }
-        main :is(a, button).bg-blue-600 { box-shadow: 0 1px 2px rgb(15 23 42 / .12); transition: background-color .15s, box-shadow .15s, transform .15s; }
-        main :is(a, button).bg-blue-600:hover { box-shadow: 0 8px 18px rgb(37 99 235 / .18); transform: translateY(-1px); }
+        main :is(a, button).bg-blue-600 { background-color: var(--maruhat-blue) !important; box-shadow: 0 1px 2px rgb(15 23 42 / .12); transition: background-color .15s, box-shadow .15s, transform .15s; }
+        main :is(a, button).bg-blue-600:hover { background-color: var(--maruhat-blue-deep) !important; box-shadow: 0 8px 18px rgb(31 79 145 / .22); transform: translateY(-1px); }
         main :is(a, button).bg-blue-600:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgb(191 219 254), 0 8px 18px rgb(37 99 235 / .18); }
-        .table-filter-bar { border: 1px solid #e2e8f0; border-radius: 1rem; background: #f8fafc; padding: 1rem; }
+        .table-filter-bar { border: 1px solid #d7e5da; border-radius: 1rem; background: linear-gradient(135deg, #fbfdfb, #f1f7f2); padding: 1rem; }
         .table-filter-control { min-width: 0; }
         .table-filter-control :is(input, select) { box-shadow: 0 1px 2px rgb(15 23 42 / .04); }
-        .table-filter-reset { align-self: end; border: 1px solid #93c5fd; border-radius: .75rem; padding: .75rem 1rem; font-size: .875rem; font-weight: 700; color: #1d4ed8; background: #eff6ff; box-shadow: 0 1px 2px rgb(37 99 235 / .08); transition: background-color .15s, box-shadow .15s; }
-        .table-filter-reset:hover { background: #dbeafe; box-shadow: 0 4px 10px rgb(37 99 235 / .12); }
+        .table-filter-reset { align-self: end; border: 1px solid #9fc7ad; border-radius: .75rem; padding: .75rem 1rem; font-size: .875rem; font-weight: 700; color: #21623e; background: #edf8f0; box-shadow: 0 1px 2px rgb(39 121 74 / .08); transition: background-color .15s, box-shadow .15s; }
+        .table-filter-reset:hover { background: #dff2e4; box-shadow: 0 4px 10px rgb(39 121 74 / .14); }
         .table-filter-reset:focus-visible { outline: 0; box-shadow: 0 0 0 4px #bfdbfe; }
         .portal-menu-button { transition: background-color .15s, border-color .15s, color .15s; }
-        .portal-menu-button:hover { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
+        .portal-menu-button:hover { border-color: #9fc7ad; background: #edf8f0; color: #21623e; }
+        [data-teacher-nav] { background: linear-gradient(165deg, var(--maruhat-blue-deep), var(--maruhat-blue) 58%, #17396e) !important; border-right: 3px solid var(--maruhat-gold); }
+        [data-teacher-nav] a.bg-blue-600 { background: linear-gradient(100deg, #2d6fbd, var(--maruhat-green)) !important; box-shadow: inset 4px 0 var(--maruhat-gold), 0 10px 20px rgb(7 28 63 / .3) !important; }
+        [data-teacher-nav] a:not(.bg-blue-600):hover { background: rgb(255 255 255 / .11) !important; }
+        [data-teacher-nav] img { box-shadow: 0 0 0 2px rgb(216 165 45 / .72), 0 8px 18px rgb(0 0 0 / .25); }
+        main { min-height: 100vh; background: radial-gradient(circle at 100% 14%, rgb(216 165 45 / .22), transparent 22rem), radial-gradient(circle at 8% 88%, rgb(39 121 74 / .18), transparent 28rem), linear-gradient(135deg, #e8f1fd 0%, #eef8f0 50%, #fff8e7 100%); }
+        main > header { position: relative; border-bottom-color: #c8dceb !important; box-shadow: 0 3px 14px rgb(31 79 145 / .06); }
+        main > header::after { position: absolute; right: 0; bottom: -2px; left: 0; height: 2px; content: ''; background: linear-gradient(90deg, var(--maruhat-blue), var(--maruhat-green), var(--maruhat-gold)); }
         @media (min-width: 1024px) {
             [data-teacher-nav] { transition: transform .2s ease, width .2s ease, padding .2s ease; }
             [data-teacher-nav].desktop-collapsed { width: 0 !important; padding-left: 0 !important; padding-right: 0 !important; overflow: hidden !important; }

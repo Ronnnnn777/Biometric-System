@@ -40,27 +40,32 @@ header('Pragma: no-cache');
     <title>Sign in | Biometric</title>
     <base href="<?= htmlspecialchars($appBase) ?>/admin/">
     <link rel="stylesheet" href="../css/tailwind.css">
+    <style>
+        .login-shell { min-height: 100vh; background: radial-gradient(circle at center, #1e3a5f 0%, #0f172a 48%, #020617 100%); }
+        .login-card { position: relative; border: 1px solid rgb(255 255 255 / .1); background: radial-gradient(circle at center, #1e3a5f 0%, #0f172a 48%, #020617 100%); box-shadow: 0 24px 58px rgb(0 0 0 / .38); }
+        .login-card :is(.text-slate-900, .text-slate-700) { color: #fff !important; }
+        .login-card .text-slate-500 { color: #cbd5e1 !important; }
+        .login-card .text-emerald-700 { color: #bfdbfe !important; }
+        .login-brand-mark { box-shadow: 0 0 0 2px rgb(216 165 45 / .7); }
+        .login-input { transition: border-color .16s, box-shadow .16s, background-color .16s; }
+        .login-input { border-color: rgb(255 255 255 / .25) !important; background: rgb(15 23 42 / .82) !important; color: #fff !important; }
+        .login-input:focus { border-color: rgb(147 197 253 / .9) !important; box-shadow: 0 0 0 3px rgb(147 197 253 / .16); }
+        .login-primary { background: #2563eb; transition: background-color .16s, transform .16s; }
+        .login-primary:hover { background: #1d4ed8; transform: translateY(-1px); }
+        .login-biometric { border-color: rgb(255 255 255 / .28); background: rgb(255 255 255 / .1); color: #fff; }
+        .login-biometric:hover { background: rgb(255 255 255 / .2); }
+        .login-card #first-time-passwords { border-color: rgb(147 197 253 / .3); background: rgb(30 58 95 / .7); }
+    </style>
 </head>
-<body class="min-h-screen bg-slate-950 text-slate-800">
-    <main class="grid min-h-screen lg:grid-cols-2">
-        <section class="hidden bg-gradient-to-br from-blue-600 via-blue-700 to-slate-950 p-12 text-white lg:flex lg:flex-col lg:justify-between">
-            <a href="../index" class="flex items-center gap-3 text-xl font-bold">
-                <img src="../image/logo.png" alt="" class="h-11 w-11 rounded-xl">
-                Biometric.
-            </a>
-            <div>
-                <p class="text-sm font-bold uppercase tracking-widest text-blue-200">Attendance management</p>
-                <h1 class="mt-4 max-w-lg text-5xl font-black tracking-tight">A clearer view of every school day.</h1>
-                <p class="mt-6 max-w-md text-lg leading-8 text-blue-100">Register students, watch attendance, and find the records you need.</p>
-            </div>
-            <p class="text-sm text-blue-200">Secure school access</p>
-        </section>
-
-        <section class="flex items-center justify-center bg-slate-50 p-5">
-            <div class="w-full max-w-md rounded-2xl bg-white p-7 shadow-xl shadow-slate-900/10 sm:p-9">
-                <p class="text-sm font-bold uppercase tracking-widest text-blue-600">Welcome back</p>
+<body class="login-shell text-slate-800">
+    <main class="flex min-h-screen items-center justify-center p-5 sm:p-8">
+        <section class="w-full max-w-md">
+            <div class="login-card overflow-hidden rounded-2xl bg-white">
+                <div class="pointer-events-none absolute inset-0 grid place-items-center"><img src="../image/logo.png" alt="" class="w-80 max-w-[72%] opacity-[.10] saturate-75"></div>
+                <div class="relative z-10 p-7 sm:p-9">
+                <div class="mb-7"><p class="text-sm font-bold uppercase tracking-widest text-emerald-700">Maruhat Integrated School</p>
                 <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-900">Sign in</h1>
-                <p class="mt-2 text-slate-500">Use your email address and password to continue.</p>
+                <p class="mt-2 leading-6 text-slate-500">Enter your account details to continue.</p></div>
 
                 <?php if ($loginError): ?>
                     <p class="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700"><?= htmlspecialchars($loginError) ?></p>
@@ -70,11 +75,11 @@ header('Pragma: no-cache');
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                     <div>
                         <label for="username" class="mb-2 block text-sm font-bold text-slate-700">Email address</label>
-                        <input id="username" class="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" type="email" name="username" autocomplete="username" required autofocus>
+                        <input id="username" class="login-input w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 outline-none" type="email" name="username" autocomplete="username" required autofocus>
                     </div>
                     <div>
                         <label for="password" class="mb-2 block text-sm font-bold text-slate-700">Password</label>
-                        <input id="password" class="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" type="password" name="password" autocomplete="current-password" required>
+                        <input id="password" class="login-input w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 outline-none" type="password" name="password" autocomplete="current-password" required>
                     </div>
                     <div id="first-time-passwords" class="hidden space-y-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
                         <p class="text-sm font-semibold text-blue-900">First-time setup: choose a new administrator password.</p>
@@ -88,14 +93,16 @@ header('Pragma: no-cache');
                         </label>
                     </div>
                     <div class="text-right"><a href="forgot-password.php" class="text-sm font-bold text-blue-600 hover:text-blue-700">Forgot password?</a></div>
-                    <button class="w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white shadow-sm hover:bg-blue-700">Sign in</button>
+                    <button class="login-primary w-full rounded-xl px-4 py-3 font-bold text-white">Sign in</button>
                 </form>
 
                 <div class="my-6 flex items-center gap-3 text-xs font-bold uppercase tracking-wider text-slate-400">
                     <span class="h-px flex-1 bg-slate-200"></span>or<span class="h-px flex-1 bg-slate-200"></span>
                 </div>
-                <button id="open-biometric" type="button" class="w-full rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 font-bold text-violet-800 hover:bg-violet-100">Sign in with biometric</button>
+                <button id="open-biometric" type="button" class="login-biometric w-full rounded-xl border px-4 py-3 font-bold transition">Sign in with biometric</button>
+                </div>
             </div>
+            <p class="mt-5 text-center text-xs leading-5 text-slate-400">For authorized school staff only.</p>
         </section>
     </main>
 

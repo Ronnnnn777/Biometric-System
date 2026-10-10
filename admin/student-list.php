@@ -1,18 +1,24 @@
 <?php
 require '../config/db_conn.php';
 require '../includes/student-profile-schema.php';
+require '../includes/section-catalog-schema.php';
 ensureStudentProfileColumns($conn);
+ensureSectionCatalogColumns($conn);
 require 'page-guard.php';
 require 'components.php';
 
 $today = date('Y-m-d');
-$stmt = $conn->prepare('SELECT s.*, (SELECT COUNT(*) FROM attendance a WHERE TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN)=?) attended_today FROM students s ORDER BY s.LAST_NAME, s.FIRST_NAME, s.GRADE, s.SECTION');
+$stmt = $conn->prepare("SELECT s.*, (SELECT COUNT(*) FROM attendance a WHERE TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN)=?) attended_today FROM students s WHERE COALESCE(s.ENROLLMENT_STATUS,'Enrolled')<>'Archived' ORDER BY s.LAST_NAME, s.FIRST_NAME, s.GRADE, s.SECTION");
 $stmt->bind_param('s', $today);
 $stmt->execute();
 $result = $stmt->get_result();
 $sections = [];
-$sectionResult = $conn->query("SELECT DISTINCT SECTION FROM students WHERE SECTION IS NOT NULL AND SECTION<>'' ORDER BY SECTION");
-while ($item = $sectionResult->fetch_assoc()) $sections[] = $item['SECTION'];
+$sectionMap = [];
+$sectionResult = $conn->query("SELECT GRADE, SECTION FROM sections WHERE IS_ACTIVE=1 AND GRADE BETWEEN 7 AND 12 UNION SELECT DISTINCT GRADE, SECTION FROM students WHERE GRADE BETWEEN 7 AND 12 AND SECTION IS NOT NULL AND SECTION<>'' ORDER BY GRADE, SECTION");
+while ($item = $sectionResult->fetch_assoc()) {
+  $sections[] = $item['SECTION'];
+  $sectionMap[(string) (int) $item['GRADE']][] = $item['SECTION'];
+}
 
 adminHead('Students');
 adminSidebar('students', 'Students', 'Search profiles and filter by grade or section');
@@ -31,7 +37,7 @@ adminSidebar('students', 'Students', 'Search profiles and filter by grade or sec
       <label class="table-filter-control text-sm font-bold text-slate-700">Search<input id="student-search" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" placeholder="Name or student ID"></label>
       <label class="table-filter-control text-sm font-bold text-slate-700">Grade<select id="grade-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm"><option value="">All grades</option><?php foreach ([7, 8, 9, 10, 11, 12] as $grade): ?><option value="<?= $grade ?>">Grade <?= $grade ?></option><?php endforeach; ?></select></label>
       <label class="table-filter-control text-sm font-bold text-slate-700">Section<select id="section-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm"><option value="">All sections</option><?php foreach ($sections as $section): ?><option><?= htmlspecialchars($section) ?></option><?php endforeach; ?></select></label>
-      <label class="table-filter-control text-sm font-bold text-slate-700">Enrollment status<select id="status-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm"><option value="">All statuses</option><?php foreach (studentEnrollmentStatuses() as $status): ?><option><?= htmlspecialchars($status) ?></option><?php endforeach; ?></select></label>
+      <label class="table-filter-control text-sm font-bold text-slate-700">Enrollment status<select id="status-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm"><option value="">All statuses</option><?php foreach (studentEnrollmentStatuses() as $status): if($status==='Archived') continue; ?><option><?= htmlspecialchars($status) ?></option><?php endforeach; ?></select></label>
     </div>
   </div>
 </div>
@@ -40,7 +46,7 @@ adminSidebar('students', 'Students', 'Search profiles and filter by grade or sec
   <div class="overflow-x-auto">
     <table class="min-w-full text-left text-sm">
       <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr><th class="px-5 py-4">Student</th><th class="px-5 py-4">ID</th><th class="px-5 py-4">Grade</th><th class="px-5 py-4">Section</th><th class="px-5 py-4">Status</th><th class="px-5 py-4">Today</th><th class="px-5 py-4"></th></tr></thead>
-      <tbody id="student-rows" class="divide-y divide-slate-100" data-empty-action-url="add-student.php" data-empty-title="No students have been added yet." data-empty-detail="Add a student or import a class list to begin.">
+      <tbody id="student-rows" class="divide-y divide-slate-100" data-section-map="<?= htmlspecialchars(json_encode($sectionMap), ENT_QUOTES) ?>" data-empty-action-url="add-student.php" data-empty-title="No students have been added yet." data-empty-detail="Add a student or import a class list to begin.">
         <?php while ($row = $result->fetch_assoc()): ?>
           <tr class="hover:bg-slate-50" data-grade="<?= (int) $row['GRADE'] ?>" data-section="<?= htmlspecialchars($row['SECTION'] ?? '') ?>" data-status="<?= htmlspecialchars($row['ENROLLMENT_STATUS'] ?? 'Enrolled') ?>">
             <?php $displayName = trim(($row['LAST_NAME'] ?? '') . ', ' . ($row['FIRST_NAME'] ?? '') . (!empty($row['MIDDLE_NAME']) ? ', ' . $row['MIDDLE_NAME'] : ''), ', ') ?: $row['STUDENT_NAME']; ?>
@@ -57,6 +63,6 @@ adminSidebar('students', 'Students', 'Search profiles and filter by grade or sec
     </table>
   </div>
 </div>
-<script src="../js/student-pagination.js?v=7"></script>
+<script src="../js/student-pagination.js?v=8"></script>
 <script>document.getElementById('clear-student-filters').onclick=()=>{const search=document.getElementById('student-search'),grade=document.getElementById('grade-filter'),section=document.getElementById('section-filter'),status=document.getElementById('status-filter');search.value='';grade.value='';grade.dispatchEvent(new Event('change'));section.value='';section.dispatchEvent(new Event('change'));status.value='';status.dispatchEvent(new Event('change'));search.dispatchEvent(new Event('input'));};</script>
 <?php adminFoot(); ?>

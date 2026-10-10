@@ -20,6 +20,9 @@ while ($row = $gradeResult->fetch_assoc()) $grades[] = (int) $row['GRADE'];
 $studentResult = $conn->query('SELECT STUDENT_ID, STUDENT_NAME, GRADE, SECTION FROM students WHERE GRADE BETWEEN 7 AND 12 ORDER BY LAST_NAME, FIRST_NAME, STUDENT_NAME');
 $students = [];
 while ($row = $studentResult->fetch_assoc()) $students[] = $row;
+$latestAttendanceResult = $conn->query('SELECT MAX(DATE(TIME_IN)) AS latest_date FROM attendance');
+$latestAttendance = $latestAttendanceResult ? $latestAttendanceResult->fetch_assoc() : null;
+$defaultAttendanceDate = $latestAttendance['latest_date'] ?? date('Y-m-d');
 
 adminHead('Attendance log');
 adminSidebar('attendance', 'Attendance log', 'Filter and export attendance records.');
@@ -27,15 +30,15 @@ adminSidebar('attendance', 'Attendance log', 'Filter and export attendance recor
 <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
   <div class="flex flex-col justify-between gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-end">
     <div><h2 class="text-2xl font-black text-slate-900">Attendance log</h2><p class="mt-1 text-slate-500">Records update quietly when attendance changes.</p></div>
-    <a id="export-link" href="export-attendance.php?date=<?= date('Y-m-d') ?>&grade=all&section=all" class="rounded-xl bg-emerald-600 px-4 py-3 text-center text-sm font-bold text-white shadow-sm hover:bg-emerald-700">Export spreadsheet</a>
+    <a id="export-link" href="export-attendance.php?date=<?= htmlspecialchars($defaultAttendanceDate) ?>&grade=all&section=all" class="rounded-xl bg-emerald-600 px-4 py-3 text-center text-sm font-bold text-white shadow-sm hover:bg-emerald-700">Export spreadsheet</a>
   </div>
   <div class="table-filter-bar mt-5">
     <div class="mb-3 flex items-center justify-between gap-3"><p class="text-sm font-black text-slate-800">Filters</p><button id="clear-attendance-filters" type="button" class="table-filter-reset">Clear filters</button></div>
-    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       <label class="table-filter-control text-sm font-bold text-slate-700">Grade<select id="grade-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3"><option value="all">All grades</option><?php foreach ($grades as $grade): ?><option value="<?= $grade ?>">Grade <?= $grade ?></option><?php endforeach; ?></select></label>
       <label class="table-filter-control text-sm font-bold text-slate-700">Section<select id="section-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3"><option value="all">All sections</option><?php foreach ($sections as $section): ?><option value="<?= htmlspecialchars($section['section']) ?>" data-grade="<?= $section['grade'] ?>"><?= htmlspecialchars($section['section']) ?></option><?php endforeach; ?></select></label>
       <label class="table-filter-control text-sm font-bold text-slate-700">Student<select id="student-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3"><option value="">All students</option><?php foreach ($students as $student): ?><option value="<?= htmlspecialchars($student['STUDENT_ID']) ?>"><?= htmlspecialchars($student['STUDENT_NAME'] . ' · ' . $student['STUDENT_ID']) ?></option><?php endforeach; ?></select></label>
-      <label class="table-filter-control text-sm font-bold text-slate-700">Date<input id="date-filter" type="date" value="<?= date('Y-m-d') ?>" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"></label>
+      <label class="table-filter-control text-sm font-bold text-slate-700">Date<input id="date-filter" type="date" value="<?= htmlspecialchars($defaultAttendanceDate) ?>" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"></label>
     </div>
   </div>
   <div id="attendance-pagination-top"></div>
@@ -54,9 +57,9 @@ const attendanceStudents=<?= json_encode($students) ?>;
 function updateAttendanceStudents(){const grade=gradeFilter.value,section=sectionFilter.value,previous=studentFilter.value;studentFilter.replaceChildren(new Option('All students',''));attendanceStudents.filter(item=>(grade==='all'||String(item.GRADE)===grade)&&(section==='all'||item.SECTION===section)).forEach(item=>studentFilter.add(new Option(item.STUDENT_NAME+' · '+item.STUDENT_ID,item.STUDENT_ID,false,item.STUDENT_ID===previous)));if(!Array.from(studentFilter.options).some(option=>option.selected))studentFilter.value='';}
 function updateAttendanceSections(){const grade=gradeFilter.value,previous=sectionFilter.value;sectionFilter.replaceChildren(new Option('All sections','all'));attendanceSections.filter(item=>grade==='all'||String(item.grade)===grade).forEach(item=>sectionFilter.add(new Option(item.section,item.section,false,item.section===previous)));if(!Array.from(sectionFilter.options).some(option=>option.selected))sectionFilter.value='all';updateAttendanceStudents();}
 gradeFilter.addEventListener('change',updateAttendanceSections);sectionFilter.addEventListener('change',updateAttendanceStudents);updateAttendanceStudents();
-const attendancePager=createTablePagination({rows,pager:[document.getElementById('attendance-pagination-top'),document.getElementById('attendance-pagination')],label:'attendance records'});
+const attendancePager=createTablePagination({rows,pager:[document.getElementById('attendance-pagination-top'),document.getElementById('attendance-pagination')],label:'attendance records',perPage:10});
 createQuietAttendanceRefresh({rows,controls:[gradeFilter,sectionFilter,studentFilter,dateFilter],exportLink,endpoint:'get-latest-attendance.php',getParams:()=>new URLSearchParams({grade:gradeFilter.value,section:sectionFilter.value,student:studentFilter.value,date:dateFilter.value}),onRowsUpdated:()=>attendancePager.refresh()});
-document.getElementById('clear-attendance-filters').onclick=()=>{gradeFilter.value='all';updateAttendanceSections();studentFilter.value='';dateFilter.value=<?= json_encode(date('Y-m-d')) ?>;[gradeFilter,sectionFilter,studentFilter,dateFilter].forEach(control=>control.dispatchEvent(new Event('change')));};
+document.getElementById('clear-attendance-filters').onclick=()=>{gradeFilter.value='all';updateAttendanceSections();studentFilter.value='';dateFilter.value=<?= json_encode($defaultAttendanceDate) ?>;[gradeFilter,sectionFilter,studentFilter,dateFilter].forEach(control=>control.dispatchEvent(new Event('change')));};
 const remarkModal=document.getElementById('attendance-remark-modal'),closeRemark=()=>remarkModal.classList.replace('flex','hidden');rows.addEventListener('click',event=>{const button=event.target.closest('[data-attendance-edit]');if(!button)return;document.getElementById('attendance-remark-id').value=button.dataset.id;document.getElementById('attendance-remark-select').value=button.dataset.remark||'';document.getElementById('attendance-note').value=button.dataset.note||'';remarkModal.classList.replace('hidden','flex');});document.getElementById('close-attendance-remark').onclick=closeRemark;document.getElementById('cancel-attendance-remark').onclick=closeRemark;remarkModal.addEventListener('click',event=>{if(event.target===remarkModal)closeRemark()});
 </script>
 <?php adminFoot(); ?>
