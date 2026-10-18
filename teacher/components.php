@@ -52,6 +52,8 @@ function teacherHead(string $title): void { ?>
 function teacherShell(string $title): void {
     $page = basename($_SERVER['PHP_SELF']);
     $assignmentLabels = [];
+    $toast = $_SESSION['toast'] ?? null;
+    unset($_SESSION['toast']);
     global $conn;
 
     if (isset($conn) && $conn instanceof mysqli && function_exists('teacherAssignments')) {
@@ -75,17 +77,17 @@ function teacherShell(string $title): void {
 ?>
 <div class="lg:flex">
     <aside data-teacher-nav class="fixed inset-y-0 left-0 z-40 flex w-72 -translate-x-full flex-col overflow-y-auto bg-slate-950 p-5 text-slate-200 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0">
-        <a href="home.php" class="mb-9 flex items-center gap-3 px-2 text-lg font-bold text-white">
+        <a href="students.php" class="mb-9 flex items-center gap-3 px-2 text-lg font-bold text-white">
             <img src="../image/logo.png" alt="Maruhat National High School logo" class="h-10 w-10 rounded-xl bg-white object-contain p-0.5 shadow-sm">
             <span>Biometric<span class="text-blue-400">.</span><span class="block text-xs font-normal text-slate-400">Teacher portal</span></span>
         </a>
 
         <nav class="space-y-1" aria-label="Teacher navigation">
-            <a href="home.php" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold <?= $page === 'home.php' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-                <span aria-hidden="true">&#9673;</span>Attendance logs
-            </a>
             <a href="students.php" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold <?= in_array($page, ['students.php', 'student-profile.php'], true) ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
                 <span aria-hidden="true">&#9783;</span>Students
+            </a>
+            <a href="home.php" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold <?= $page === 'home.php' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
+                <span aria-hidden="true">&#9673;</span>Attendance logs
             </a>
             <a href="settings.php" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold <?= $page === 'settings.php' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
                 <span aria-hidden="true">&#9881;</span>Settings
@@ -119,6 +121,9 @@ function teacherShell(string $title): void {
         </header>
 
         <div class="mx-auto max-w-6xl p-5 lg:p-8">
+            <?php if ($toast): ?>
+            <div data-auto-toast class="fixed bottom-5 right-5 z-50 rounded-xl px-5 py-4 font-bold text-white shadow-xl <?= ($toast['type'] ?? 'success') === 'error' ? 'bg-rose-600' : 'bg-emerald-600' ?>" role="status"><?= htmlspecialchars($toast['message'] ?? '') ?></div>
+            <?php endif; ?>
 <?php }
 
 function teacherFoot(): void { ?>
@@ -184,6 +189,9 @@ teacherMenu?.addEventListener('click', () => {
 teacherOverlay?.addEventListener('click', () => setTeacherMenu(false));
 teacherDesktop.addEventListener('change', syncTeacherNavigationForViewport);
 document.addEventListener('keydown', event => { if (event.key === 'Escape') setTeacherMenu(false); });
+document.querySelectorAll('[data-auto-toast]').forEach(toast => {
+    setTimeout(() => toast.remove(), 4500);
+});
 </script>
 </body>
 </html>

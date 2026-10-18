@@ -1,11 +1,97 @@
 <?php
-require 'scanner-guard.php';
-require '../config/db_conn.php';
-require '../includes/student-profile-schema.php';
+http_response_code(410);
+exit('Manual attendance is managed by teachers from their student lists.');
+require "scanner-guard.php";
+require "../config/db_conn.php";
+require "../includes/student-profile-schema.php";
 ensureStudentProfileColumns($conn);
-require '../includes/attendance-schema.php';
+require "../includes/attendance-schema.php";
 ensureAttendanceTimeOutColumn($conn);
-header('Content-Type: application/json');
-if(!hash_equals($_SESSION['csrf_token'] ?? '',$_POST['csrf_token'] ?? '')){http_response_code(403);echo json_encode(['message'=>'Invalid request.']);exit;}
-$id=trim($_POST['student_id'] ?? '');$stmt=$conn->prepare('SELECT STUDENT_ID, STUDENT_NAME, IMAGE_PATH, ENROLLMENT_STATUS FROM students WHERE STUDENT_ID=? LIMIT 1');$stmt->bind_param('s',$id);$stmt->execute();$student=$stmt->get_result()->fetch_assoc();if(!$student){echo json_encode(['message'=>'Student not found.']);exit;}if(($student['ENROLLMENT_STATUS'] ?? 'Enrolled')!=='Enrolled'){echo json_encode(['message'=>'This student is '.strtolower($student['ENROLLMENT_STATUS']).' and cannot record attendance.']);exit;}
-$today=date('Y-m-d');$check=$conn->prepare('SELECT ID,TIME_IN,LUNCH_OUT,AFTERNOON_TIME_IN,TIME_OUT FROM attendance WHERE STUDENT_ID=? AND DATE(TIME_IN)=? ORDER BY TIME_IN DESC LIMIT 1');$check->bind_param('ss',$student['STUDENT_ID'],$today);$check->execute();$record=$check->get_result()->fetch_assoc();$next=attendanceNextAutomaticAction($record,null,attendanceUsesWholeDay($conn));$action=$next['action'];$logged=false;$message=$next['message'];if($action==='time_in'){$save=$conn->prepare('INSERT INTO attendance (STUDENT_ID,STUDENT_NAME,TIME_IN) VALUES (?,?,NOW())');$save->bind_param('ss',$student['STUDENT_ID'],$student['STUDENT_NAME']);$save->execute();$logged=$save->affected_rows>0;}elseif($action==='lunch_out'){$save=$conn->prepare('UPDATE attendance SET LUNCH_OUT=NOW() WHERE ID=? AND LUNCH_OUT IS NULL');$save->bind_param('i',$record['ID']);$save->execute();$logged=$save->affected_rows>0;}elseif($action==='afternoon_time_in'){$save=$conn->prepare('UPDATE attendance SET AFTERNOON_TIME_IN=NOW() WHERE ID=? AND AFTERNOON_TIME_IN IS NULL');$save->bind_param('i',$record['ID']);$save->execute();$logged=$save->affected_rows>0;}elseif($action==='time_out'){$save=$conn->prepare('UPDATE attendance SET TIME_OUT=NOW() WHERE ID=? AND TIME_OUT IS NULL');$save->bind_param('i',$record['ID']);$save->execute();$logged=$save->affected_rows>0;}if(!$logged&&$next['can_record'])$message='Attendance was already updated. Please select the student again.';echo json_encode(['student'=>$student,'logged'=>$logged,'action'=>$action,'message'=>$message]);
+header("Content-Type: application/json");
+if (!hash_equals($_SESSION["csrf_token"] ?? "", $_POST["csrf_token"] ?? "")) {
+    http_response_code(403);
+    echo json_encode(["message" => "Invalid request."]);
+    exit();
+}
+$id = trim($_POST["student_id"] ?? "");
+$stmt = $conn->prepare(
+    "SELECT STUDENT_ID, STUDENT_NAME, IMAGE_PATH, ENROLLMENT_STATUS FROM students WHERE STUDENT_ID=? LIMIT 1",
+);
+$stmt->bind_param("s", $id);
+$stmt->execute();
+$student = $stmt->get_result()->fetch_assoc();
+if (!$student) {
+    echo json_encode(["message" => "Student not found."]);
+    exit();
+}
+if (($student["ENROLLMENT_STATUS"] ?? "Enrolled") !== "Enrolled") {
+    echo json_encode([
+        "message" =>
+            "This student is " .
+            strtolower($student["ENROLLMENT_STATUS"]) .
+            " and cannot record attendance.",
+    ]);
+    exit();
+}
+$today = date("Y-m-d");
+$check = $conn->prepare(
+    "SELECT ID,TIME_IN,LUNCH_OUT,AFTERNOON_TIME_IN,TIME_OUT,ATTENDANCE_REMARK FROM attendance WHERE STUDENT_ID=? AND DATE(TIME_IN)=? ORDER BY TIME_IN DESC LIMIT 1",
+);
+$check->bind_param("ss", $student["STUDENT_ID"], $today);
+$check->execute();
+$record = $check->get_result()->fetch_assoc();
+if ($record && ($record["ATTENDANCE_REMARK"] ?? "") === "Absent") {
+    $clear = $conn->prepare(
+        "DELETE FROM attendance WHERE ID=? AND ATTENDANCE_REMARK='Absent' AND IS_AUTO_ABSENT=0",
+    );
+    $clear->bind_param("i", $record["ID"]);
+    $clear->execute();
+    $record = null;
+}
+$next = attendanceNextAutomaticAction(
+    $record,
+    null,
+    attendanceUsesWholeDay($conn),
+);
+$action = $next["action"];
+$logged = false;
+$message = $next["message"];
+if ($action === "time_in") {
+    $save = $conn->prepare(
+        "INSERT INTO attendance (STUDENT_ID,STUDENT_NAME,TIME_IN) VALUES (?,?,NOW())",
+    );
+    $save->bind_param("ss", $student["STUDENT_ID"], $student["STUDENT_NAME"]);
+    $save->execute();
+    $logged = $save->affected_rows > 0;
+} elseif ($action === "lunch_out") {
+    $save = $conn->prepare(
+        "UPDATE attendance SET LUNCH_OUT=NOW() WHERE ID=? AND LUNCH_OUT IS NULL",
+    );
+    $save->bind_param("i", $record["ID"]);
+    $save->execute();
+    $logged = $save->affected_rows > 0;
+} elseif ($action === "afternoon_time_in") {
+    $save = $conn->prepare(
+        "UPDATE attendance SET AFTERNOON_TIME_IN=NOW() WHERE ID=? AND AFTERNOON_TIME_IN IS NULL",
+    );
+    $save->bind_param("i", $record["ID"]);
+    $save->execute();
+    $logged = $save->affected_rows > 0;
+} elseif ($action === "time_out") {
+    $save = $conn->prepare(
+        "UPDATE attendance SET TIME_OUT=NOW() WHERE ID=? AND TIME_OUT IS NULL",
+    );
+    $save->bind_param("i", $record["ID"]);
+    $save->execute();
+    $logged = $save->affected_rows > 0;
+}
+if (!$logged && $next["can_record"]) {
+    $message =
+        "Attendance was already updated. Please select the student again.";
+}
+echo json_encode([
+    "student" => $student,
+    "logged" => $logged,
+    "action" => $action,
+    "message" => $message,
+]);

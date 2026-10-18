@@ -1,4 +1,6 @@
 <?php
+http_response_code(410);
+exit('Manual attendance is managed by teachers from their student lists.');
 require 'scanner-guard.php';
 require '../config/db_conn.php';
 require '../includes/student-profile-schema.php';

@@ -231,7 +231,7 @@ function studentImportReadSchoolFormRows(string $path): ?array
         $section = ucwords(strtolower(studentImportSchoolFormMeta($rows, 'SECTION')));
         if ($grade < 1 || $section === '') continue;
 
-        $importRows = [["Student ID", "First Name", "Middle Name", "Last Name", "Grade", "Age", "Strand", "Address", "Section", "Status"]];
+        $importRows = [["LRN", "First Name", "Middle Name", "Last Name", "Grade", "Age", "Strand", "Address", "Section", "Status"]];
         $emptyRows = 0;
         for ($index = $headerRow + 1; $index < count($rows); $index++) {
             $row = $rows[$index];

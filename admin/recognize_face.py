@@ -8,6 +8,7 @@ import time
 
 import face_recognition
 import numpy as np
+from PIL import Image, ImageOps
 
 try:
     import cv2
@@ -32,12 +33,16 @@ _next_fingerprint_check = 0.0
 # This remains substantially stricter than face_recognition's default 0.60.
 # The margin prevents a brighter/darker image from being attributed to a
 # similarly-looking enrolled student.
-# Webcam frames of the enrolled student can vary slightly from the enrollment
-# portrait.  0.45 accepts those stable near-matches while remaining well below
-# face_recognition's normal 0.60 cutoff; the runner-up margin below still
-# rejects ambiguous identities.
-MAX_MATCH_DISTANCE = 0.45
-MIN_RUNNER_UP_MARGIN = 0.12
+# Phone-camera frames can vary from the enrollment portrait because of the
+# front camera's exposure, lens distortion, and a slightly different angle.
+# Keep this below face_recognition's normal 0.60 cutoff. Borderline matches
+# are still confirmed in two consecutive frames by scan-match.php.
+MAX_MATCH_DISTANCE = 0.54
+MIN_RUNNER_UP_MARGIN = 0.09
+# Lighting/detail fallbacks are deliberately a little stricter than the main
+# camera pass: image enhancement should recover a student, not create one.
+ENHANCED_MATCH_DISTANCE = 0.52
+ENHANCED_RUNNER_UP_MARGIN = 0.10
 # An unmatched face near an enrolled profile can be caused by lighting, focus,
 # or an older enrollment photo. It is ambiguous, not evidence of a visitor.
 # Only a face this far from every enrolled profile may raise an unknown warning.
@@ -308,7 +313,11 @@ def is_frontal_unknown_face(image, location):
 def recognize(image_path):
     if not image_path or not os.path.isfile(image_path):
         return {"match": False, "faces": [], "matches": [], "message": "No camera frame received."}
-    frame = face_recognition.load_image_file(image_path)
+    # Phone cameras write portrait orientation in EXIF.  Face-recognition
+    # reads raw pixels, so normalize first or a portrait phone scan can reach
+    # the detector sideways.
+    with Image.open(image_path) as source:
+        frame = np.asarray(ImageOps.exif_transpose(source).convert("RGB"))
     scan_frame, box_scale = resize_for_scan(frame)
     normalized_frame = None
     detail_frame = None
@@ -388,7 +397,7 @@ def recognize(image_path):
                 # Lighting correction must never make identity matching more
                 # permissive.  A backlit or low-detail face is safer to treat
                 # as unregistered than to attribute it to another student.
-                normalized_matches = batch_best_matches(known, ids, normalized_encodings, max_distance=0.45, min_margin=0.14)
+                normalized_matches = batch_best_matches(known, ids, normalized_encodings, max_distance=ENHANCED_MATCH_DISTANCE, min_margin=ENHANCED_RUNNER_UP_MARGIN)
             if normalized_matches is not None:
                 match = normalized_matches[index] if index < len(normalized_matches) else None
         if not match:
@@ -397,7 +406,7 @@ def recognize(image_path):
             if detail_frame is not scan_frame and detail_encodings is None:
                 detail_encodings = face_recognition.face_encodings(detail_frame, [location for location, _, _, _, _ in eligible_faces])
             if detail_encodings is not None and detail_matches is None:
-                detail_matches = batch_best_matches(known, ids, detail_encodings, max_distance=0.45, min_margin=0.14)
+                detail_matches = batch_best_matches(known, ids, detail_encodings, max_distance=ENHANCED_MATCH_DISTANCE, min_margin=ENHANCED_RUNNER_UP_MARGIN)
             if detail_matches is not None:
                 match = detail_matches[index] if index < len(detail_matches) else None
         face_matches[index] = match

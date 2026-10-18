@@ -1,14 +1,61 @@
 <?php
-require 'scanner-guard.php';
-require '../config/db_conn.php';
-require '../includes/student-profile-schema.php';
+http_response_code(410);
+exit('Manual attendance is managed by teachers from their student lists.');
+require "scanner-guard.php";
+require "../config/db_conn.php";
+require "../includes/student-profile-schema.php";
 ensureStudentProfileColumns($conn);
-require '../includes/attendance-schema.php';
+require "../includes/attendance-schema.php";
 ensureAttendanceTimeOutColumn($conn);
-header('Content-Type: application/json');
-$id=trim($_GET['id'] ?? '');
-if($id===''){echo json_encode(['student'=>null,'message'=>'Enter a student ID.']);exit;}
-$stmt=$conn->prepare('SELECT STUDENT_ID, STUDENT_NAME, IMAGE_PATH, ENROLLMENT_STATUS FROM students WHERE STUDENT_ID=? LIMIT 1');$stmt->bind_param('s',$id);$stmt->execute();$student=$stmt->get_result()->fetch_assoc();
-if(!$student){echo json_encode(['student'=>null,'message'=>'No student was found with that ID.']);exit;}
-if(($student['ENROLLMENT_STATUS'] ?? 'Enrolled')!=='Enrolled'){echo json_encode(['student'=>null,'message'=>'This student is '.strtolower($student['ENROLLMENT_STATUS']).' and cannot record attendance.']);exit;}
-$today=date('Y-m-d');$check=$conn->prepare('SELECT ID,TIME_IN,LUNCH_OUT,AFTERNOON_TIME_IN,TIME_OUT FROM attendance WHERE STUDENT_ID=? AND DATE(TIME_IN)=? ORDER BY TIME_IN DESC LIMIT 1');$check->bind_param('ss',$student['STUDENT_ID'],$today);$check->execute();$record=$check->get_result()->fetch_assoc();$next=attendanceNextAutomaticAction($record,null,attendanceUsesWholeDay($conn));echo json_encode(['student'=>$student,'next_action'=>$next['action'],'next_message'=>$next['message'],'can_record'=>$next['can_record']]);
+header("Content-Type: application/json");
+$id = trim($_GET["id"] ?? "");
+if ($id === "") {
+    echo json_encode(["student" => null, "message" => "Enter an LRN."]);
+    exit();
+}
+$stmt = $conn->prepare(
+    "SELECT STUDENT_ID, STUDENT_NAME, IMAGE_PATH, ENROLLMENT_STATUS FROM students WHERE STUDENT_ID=? LIMIT 1",
+);
+$stmt->bind_param("s", $id);
+$stmt->execute();
+$student = $stmt->get_result()->fetch_assoc();
+if (!$student) {
+    echo json_encode([
+        "student" => null,
+        "message" => "No student was found with that ID.",
+    ]);
+    exit();
+}
+if (($student["ENROLLMENT_STATUS"] ?? "Enrolled") !== "Enrolled") {
+    echo json_encode([
+        "student" => null,
+        "message" =>
+            "This student is " .
+            strtolower($student["ENROLLMENT_STATUS"]) .
+            " and cannot record attendance.",
+    ]);
+    exit();
+}
+$today = date("Y-m-d");
+$check = $conn->prepare(
+    "SELECT ID, TIME_IN, LUNCH_OUT, AFTERNOON_TIME_IN, TIME_OUT
+       FROM attendance
+      WHERE STUDENT_ID=?
+        AND DATE(TIME_IN)=?
+      ORDER BY TIME_IN DESC
+      LIMIT 1",
+);
+$check->bind_param("ss", $student["STUDENT_ID"], $today);
+$check->execute();
+$record = $check->get_result()->fetch_assoc();
+$next = attendanceNextAutomaticAction(
+    $record,
+    null,
+    attendanceUsesWholeDay($conn),
+);
+echo json_encode([
+    "student" => $student,
+    "next_action" => $next["action"],
+    "next_message" => $next["message"],
+    "can_record" => $next["can_record"],
+]);

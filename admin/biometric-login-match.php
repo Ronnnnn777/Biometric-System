@@ -3,10 +3,11 @@ session_start();
 require '../config/db_conn.php';
 require '../includes/default-admin.php';
 require '../includes/staff-biometric.php';
+require '../includes/teacher-profile-schema.php';
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) { http_response_code(400); echo json_encode(['ok'=>false,'message'=>'Invalid scanner request.']); exit; }
-ensureDefaultAdministrator($conn); ensureStaffBiometricSchema($conn);
+ensureDefaultAdministrator($conn); ensureStaffBiometricSchema($conn); ensureTeacherProfileColumns($conn);
 $frame = staffCameraImage();
 if ($frame === null) { http_response_code(400); echo json_encode(['ok'=>false,'message'=>'Invalid camera frame.']); exit; }
 $result = recognizeStaffLive($frame); @unlink($frame);
@@ -31,8 +32,8 @@ foreach ($matches as $match) {
         if(!$account) continue; session_regenerate_id(true); $_SESSION['is-authenticated']=true; $_SESSION['user-role']='administrator'; $_SESSION['admin-user']=$account['ADMIN_USER'];
         echo json_encode(['ok'=>true,'redirect'=>'home.php','faces'=>$faces]); exit;
     }
-    $stmt=$conn->prepare('SELECT TEACHER_ID,TEACHER_NAME,SECTION FROM teachers WHERE TEACHER_ID=? LIMIT 1');$stmt->bind_param('i',$id);$stmt->execute();$account=$stmt->get_result()->fetch_assoc();
+    $stmt=$conn->prepare("SELECT TEACHER_ID,TEACHER_NAME,SECTION FROM teachers WHERE TEACHER_ID=? AND COALESCE(TEACHER_STATUS,'Active')='Active' LIMIT 1");$stmt->bind_param('i',$id);$stmt->execute();$account=$stmt->get_result()->fetch_assoc();
     if(!$account) continue; session_regenerate_id(true); $_SESSION['is-authenticated']=true; $_SESSION['user-role']='teacher'; $_SESSION['teacher-id']=$account['TEACHER_ID']; $_SESSION['teacher-name']=$account['TEACHER_NAME']; $_SESSION['teacher-section']=$account['SECTION'];
-    echo json_encode(['ok'=>true,'redirect'=>'../teacher/home.php','faces'=>$faces]); exit;
+    echo json_encode(['ok'=>true,'redirect'=>'../teacher/students.php','faces'=>$faces]); exit;
 }
 echo json_encode(['ok'=>false,'faces'=>$faces,'message'=>$result['message']??'Face not recognized.','frame_width'=>$result['frame_width']??0,'frame_height'=>$result['frame_height']??0]);

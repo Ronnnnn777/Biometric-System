@@ -1,9 +1,246 @@
 <?php
-require 'page-guard.php';require '../config/db_conn.php';require '../includes/teacher-profile-schema.php';require '../includes/teacher-assignment-schema.php';require '../includes/student-placement-options.php';require '../includes/section-catalog-schema.php';ensureTeacherProfileColumns($conn);ensureSectionCatalogColumns($conn);seedDefaultTeacherSections($conn);ensureTeacherAssignmentSchema($conn);require 'components.php';
-$id=(int)($_GET['id']??0);$stmt=$conn->prepare('SELECT * FROM teachers WHERE TEACHER_ID=?');$stmt->bind_param('i',$id);$stmt->execute();$teacher=$stmt->get_result()->fetch_assoc();if(!$teacher){http_response_code(404);exit('Teacher not found.');}$assignments=teacherAssignments($conn,$id);$placement=teacherSectionPlacementOptions($conn);adminHead('Teacher profile');adminSidebar('teachers','Teacher profile','Update account details and grade-section assignments.');
+require "page-guard.php";
+require "../config/db_conn.php";
+require "../includes/teacher-profile-schema.php";
+require "../includes/teacher-assignment-schema.php";
+require "../includes/student-placement-options.php";
+require "../includes/section-catalog-schema.php";
+ensureTeacherProfileColumns($conn);
+ensureSectionCatalogColumns($conn);
+seedDefaultTeacherSections($conn);
+ensureTeacherAssignmentSchema($conn);
+require "components.php";
+$id = (int) ($_GET["id"] ?? 0);
+$stmt = $conn->prepare("SELECT * FROM teachers WHERE TEACHER_ID=?");
+$stmt->bind_param("i", $id);
+$stmt->execute();
+$teacher = $stmt->get_result()->fetch_assoc();
+if (!$teacher) {
+    http_response_code(404);
+    exit("Teacher not found.");
+}
+$assignments = teacherAssignments($conn, $id);
+$placement = teacherSectionPlacementOptions($conn);
+adminHead("Teacher profile");
+adminSidebar(
+    "teachers",
+    "Teacher profile",
+    "Update account details and grade-section assignments.",
+);
 ?>
-<div class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]"><section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8"><h2 class="text-2xl font-black text-slate-900"><?= htmlspecialchars($teacher['TEACHER_NAME']) ?></h2><form action="update-teacher.php" method="post" class="mt-7 space-y-5"><input type="hidden" name="id" value="<?= $teacher['TEACHER_ID'] ?>"><div class="grid gap-4 sm:grid-cols-2"><label class="block text-sm font-bold text-slate-700">First name<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="first_name" value="<?= htmlspecialchars($teacher['FIRST_NAME']) ?>" required></label><label class="block text-sm font-bold text-slate-700">Last name<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="last_name" value="<?= htmlspecialchars($teacher['LAST_NAME']) ?>" required></label></div><label class="block text-sm font-bold text-slate-700">Email address<input class="mt-2 w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3" value="<?= htmlspecialchars($teacher['TEACHER_USER']) ?>" disabled></label><div class="rounded-2xl border border-slate-200 p-5"><div class="flex flex-wrap items-center justify-between gap-3"><div><h3 class="font-black text-slate-900">Grade and section assignments</h3><p class="mt-1 text-sm text-slate-500">The teacher can access only the placements listed here.</p></div><button id="add-assignment" type="button" class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100">+ Add assignment</button></div><div id="assignment-list" class="mt-4 space-y-4"></div></div><button class="w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Save profile</button></form></section><aside class="space-y-5"><form action="update-teacher.php" method="post" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200"><input type="hidden" name="id" value="<?= $teacher['TEACHER_ID'] ?>"><input type="hidden" name="password_only" value="1"><h3 class="text-lg font-black text-slate-900">Change password</h3><div class="mt-4 space-y-4"><label class="block text-sm font-bold text-slate-700">Current password<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password" name="current_password" required></label><label class="block text-sm font-bold text-slate-700">New password<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password" name="teacher_pass" minlength="8" required></label><label class="block text-sm font-bold text-slate-700">Confirm new password<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password" name="teacher_confirm" minlength="8" required></label></div><button class="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700">Update password</button></form><form action="delete-teacher.php" method="post" class="rounded-2xl bg-blue-950 p-6" id="delete-teacher-form"><input type="hidden" name="id" value="<?= $teacher['TEACHER_ID'] ?>"><h3 class="font-bold text-white">Danger zone</h3><p class="mt-2 text-sm text-blue-200">Remove this teacher's access permanently.</p><button type="button" id="open-delete-teacher" class="mt-5 w-full rounded-xl border border-rose-300/40 px-4 py-3 font-bold text-rose-200 hover:bg-rose-500/20">Delete account</button></form></aside></div><div id="delete-teacher-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"><div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"><h3 class="text-xl font-black text-slate-900">Delete teacher account?</h3><p class="mt-2 text-sm text-slate-500">This permanently removes the teacher account and access.</p><div class="mt-6 flex gap-3"><button type="button" id="cancel-delete-teacher" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold">Cancel</button><button type="button" id="confirm-delete-teacher" class="flex-1 rounded-xl bg-rose-600 px-4 py-3 font-bold text-white">Delete</button></div></div></div>
-<script>document.addEventListener('DOMContentLoaded',()=>{const passwordForm=document.querySelector('aside form[action="update-teacher.php"]');const passwordLabel=passwordForm?.querySelector('label');if(passwordLabel){passwordLabel.firstChild.nodeValue='Administrator password';passwordForm.querySelector('h3')?.insertAdjacentHTML('afterend','<p class="mt-2 text-sm text-slate-500">Use your current administrator password to change this teacher account password.</p>');}});</script>
+<div class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+        <h2 class="text-2xl font-black text-slate-900"><?= htmlspecialchars(
+    $teacher["TEACHER_NAME"],
+) ?></h2>
+        <form action="update-teacher.php" method="post" class="mt-7 space-y-5"><input type="hidden" name="id" value="<?= $teacher[
+    "TEACHER_ID"
+] ?>">
+            <div class="grid gap-4 sm:grid-cols-2"><label class="block text-sm font-bold text-slate-700">First
+                    name<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="first_name" value="<?= htmlspecialchars(
+    $teacher["FIRST_NAME"],
+) ?>" required></label><label class="block text-sm font-bold text-slate-700">Last name<input
+                        class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="last_name" value="<?= htmlspecialchars(
+    $teacher["LAST_NAME"],
+) ?>" required></label></div><label class="block text-sm font-bold text-slate-700">Email address<input
+                    class="mt-2 w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3" value="<?= htmlspecialchars(
+    $teacher["TEACHER_USER"],
+) ?>" disabled></label>
+            <div class="rounded-2xl border border-slate-200 p-5">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h3 class="font-black text-slate-900">Grade and section assignments</h3>
+                        <p class="mt-1 text-sm text-slate-500">The teacher can access only the placements listed here.
+                        </p>
+                    </div><button id="add-assignment" type="button"
+                        class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100">+
+                        Add assignment</button>
+                </div>
+                <div id="assignment-list" class="mt-4 space-y-4"></div>
+            </div><button class="w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Save
+                profile</button>
+        </form>
+    </section>
+    <aside class="space-y-5">
+        <form action="update-teacher.php" method="post"
+            class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200"><input type="hidden" name="id" value="<?= $teacher[
+    "TEACHER_ID"
+] ?>"><input type="hidden" name="password_only" value="1">
+            <h3 class="text-lg font-black text-slate-900">Change password</h3>
+            <div class="mt-4 space-y-4"><label class="block text-sm font-bold text-slate-700">Current password<input
+                        class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password"
+                        name="current_password" required></label><label
+                    class="block text-sm font-bold text-slate-700">New password<input
+                        class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password"
+                        name="teacher_pass" minlength="8" required></label><label
+                    class="block text-sm font-bold text-slate-700">Confirm new password<input
+                        class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password"
+                        name="teacher_confirm" minlength="8" required></label></div><button
+                class="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700">Update
+                password</button>
+        </form>
+        <form action="delete-teacher.php" method="post" class="rounded-2xl bg-blue-950 p-6" id="delete-teacher-form">
+            <input type="hidden" name="id" value="<?= $teacher[
+    "TEACHER_ID"
+] ?>">
+            <h3 class="font-bold text-white">Danger zone</h3>
+            <p class="mt-2 text-sm text-blue-200">Remove this teacher's access permanently.</p><button type="button"
+                id="open-delete-teacher"
+                class="mt-5 w-full rounded-xl border border-rose-300/40 px-4 py-3 font-bold text-rose-200 hover:bg-rose-500/20">Delete
+                account</button>
+        </form>
+    </aside>
+</div>
+<div id="delete-teacher-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5">
+    <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <h3 class="text-xl font-black text-slate-900">Delete teacher account?</h3>
+        <p class="mt-2 text-sm text-slate-500">This permanently removes the teacher account and access.</p>
+        <div class="mt-6 flex gap-3"><button type="button" id="cancel-delete-teacher"
+                class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold">Cancel</button><button
+                type="button" id="confirm-delete-teacher"
+                class="flex-1 rounded-xl bg-rose-600 px-4 py-3 font-bold text-white">Delete</button></div>
+    </div>
+</div>
 <script>
-const placementOptions=<?= json_encode($placement) ?>,subjectOptions=<?= json_encode(teacherSubjects()) ?>,savedAssignments=<?= json_encode(array_map(fn($a)=>['grade'=>(int)$a['GRADE'],'strand'=>$a['STRAND'],'section'=>$a['SECTION'],'subject'=>$a['SUBJECT']],$assignments)) ?>,assignmentList=document.getElementById('assignment-list');function setOptions(select,placeholder,items,value=''){select.innerHTML='';select.add(new Option(placeholder,''));items.forEach(item=>select.add(new Option(item,item,item===value,item===value)))}function addAssignment(saved={}){const row=document.createElement('div');row.className='assignment-row rounded-xl border border-slate-200 bg-slate-50 p-4';row.innerHTML='<div class="flex items-center justify-between gap-3"><p class="font-bold text-slate-800">Assignment</p><button type="button" class="remove-assignment text-sm font-bold text-rose-600 hover:text-rose-700">Remove</button></div><div class="mt-4 grid gap-4 sm:grid-cols-2"><label class="text-sm font-bold text-slate-700">Grade<select class="assignment-grade mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="assignment_grade[]" required><option value="">Choose a grade</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option></select></label><label class="text-sm font-bold text-slate-700"><span class="assignment-label">Subject assigned</span><select class="assignment-value mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" required></select></label><label class="text-sm font-bold text-slate-700 sm:col-span-2">Assigned section<select class="assignment-section mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="assignment_section[]" required></select></label></div><select class="assignment-strand" name="assignment_strand[]" hidden></select><select class="assignment-subject" name="assignment_subject[]" hidden></select>';assignmentList.appendChild(row);const grade=row.querySelector('.assignment-grade'),value=row.querySelector('.assignment-value'),label=row.querySelector('.assignment-label'),section=row.querySelector('.assignment-section'),strand=row.querySelector('.assignment-strand'),subject=row.querySelector('.assignment-subject');grade.value=saved.grade||'';function update(restore=false){const senior=grade.value==='11'||grade.value==='12';label.textContent=senior?'Strand assigned':'Subject assigned';setOptions(value,grade.value?(senior?'Choose a strand':'Choose a subject'):'Choose a grade first',senior?['Techpro','Academic']:subjectOptions,restore?(senior?(saved.strand||''):(saved.subject||'')):'');setOptions(strand,'',senior?['Techpro','Academic']:[],senior?(restore?(saved.strand||''):''):'');setOptions(subject,'',senior?[]:subjectOptions,senior?'':(restore?(saved.subject||''):''));if(!grade.value){setOptions(section,'Choose a grade first',[]);section.disabled=true;return}if(senior){setOptions(section,value.value?'Choose a section':'Choose a strand first',placementOptions[grade.value]?.[value.value]||[],restore?(saved.section||''):'');section.disabled=!value.value}else{setOptions(section,'Choose a section',placementOptions[grade.value]||[],restore?(saved.section||''):'');section.disabled=false}}grade.onchange=()=>update();value.onchange=()=>{const senior=grade.value==='11'||grade.value==='12';if(senior){strand.value=value.value;setOptions(section,value.value?'Choose a section':'Choose a strand first',placementOptions[grade.value]?.[value.value]||[]);section.disabled=!value.value}else subject.value=value.value};update(true);row.querySelector('.remove-assignment').onclick=()=>{if(assignmentList.children.length>1)row.remove()};}document.getElementById('add-assignment').onclick=()=>addAssignment();(savedAssignments.length?savedAssignments:[{}]).forEach(addAssignment);document.getElementById('open-delete-teacher').onclick=()=>document.getElementById('delete-teacher-modal').classList.replace('hidden','flex');document.getElementById('cancel-delete-teacher').onclick=()=>document.getElementById('delete-teacher-modal').classList.replace('flex','hidden');document.getElementById('confirm-delete-teacher').onclick=()=>document.getElementById('delete-teacher-form').submit();
+    document.addEventListener('DOMContentLoaded', () => {
+        const passwordForm = document.querySelector('aside form[action="update-teacher.php"]');
+        const passwordLabel = passwordForm?.querySelector('label');
+        if (passwordLabel) {
+            passwordLabel.firstChild.nodeValue = 'Administrator password';
+            passwordForm.querySelector('h3')?.insertAdjacentHTML('afterend',
+                '<p class="mt-2 text-sm text-slate-500">Use your current administrator password to change this teacher account password.</p>'
+                );
+        }
+    });
+</script>
+<script>
+    const placementOptions = < ? = json_encode(
+            $placement,
+        ) ? > ,
+        subjectOptions = < ? = json_encode(
+            teacherSubjects(),
+        ) ? > ,
+        savedAssignments = < ? = json_encode(
+            array_map(
+                fn($a) => [
+                    "grade" => (int) $a["GRADE"],
+                    "strand" => $a["STRAND"],
+                    "section" => $a["SECTION"],
+                    "subject" => $a["SUBJECT"],
+                ],
+                $assignments,
+            ),
+        ) ? > ,
+        assignmentList = document.getElementById('assignment-list');
+
+    function setOptions(select, placeholder, items, value = '') {
+        select.innerHTML = '';
+        select.add(new Option(placeholder, ''));
+        items.forEach(item => select.add(new Option(item, item, item === value, item === value)))
+    }
+
+    function addAssignment(saved = {}) {
+        const row = document.createElement('div');
+        row.className = 'assignment-row rounded-xl border border-slate-200 bg-slate-50 p-4';
+        row.innerHTML =
+            `<div class="flex items-center justify-between gap-3">
+                <p class="font-bold text-slate-800">Assignment</p>
+                <button type="button" class="remove-assignment text-sm font-bold text-rose-600 hover:text-rose-700">Remove</button>
+            </div>
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                <label class="text-sm font-bold text-slate-700">Grade
+                    <select class="assignment-grade mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="assignment_grade[]" required>
+                        <option value="">Choose a grade</option>
+                        <option value="7">Grade 7</option>
+                        <option value="8">Grade 8</option>
+                        <option value="9">Grade 9</option>
+                        <option value="10">Grade 10</option>
+                        <option value="11">Grade 11</option>
+                        <option value="12">Grade 12</option>
+                    </select>
+                </label>
+                <label class="text-sm font-bold text-slate-700">
+                    <span class="assignment-label">Subject assigned</span>
+                    <select class="assignment-value mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" required></select>
+                </label>
+                <label class="text-sm font-bold text-slate-700 sm:col-span-2">Assigned section
+                    <select class="assignment-section mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="assignment_section[]" required></select>
+                </label>
+            </div>
+            <select class="assignment-strand" name="assignment_strand[]" hidden></select>
+            <select class="assignment-subject" name="assignment_subject[]" hidden></select>`;
+        assignmentList.appendChild(row);
+        const grade = row.querySelector('.assignment-grade'),
+            value = row.querySelector('.assignment-value'),
+            label = row.querySelector('.assignment-label'),
+            section = row.querySelector('.assignment-section'),
+            strand = row.querySelector('.assignment-strand'),
+            subject = row.querySelector('.assignment-subject');
+        grade.value = saved.grade || '';
+
+        function update(restore = false) {
+            const senior = grade.value === '11' || grade.value === '12';
+            label.textContent = senior ? 'Strand assigned' : 'Subject assigned';
+            setOptions(value, grade.value ? (senior ? 'Choose a strand' : 'Choose a subject') : 'Choose a grade first',
+                senior ? ['Techpro', 'Academic'] : subjectOptions, restore ? (senior ? (saved.strand || '') : (saved
+                    .subject || '')) : '');
+            setOptions(strand, '', senior ? ['Techpro', 'Academic'] : [], senior ? (restore ? (saved.strand || '') :
+                '') : '');
+            setOptions(subject, '', senior ? [] : subjectOptions, senior ? '' : (restore ? (saved.subject || '') : ''));
+            if (!grade.value) {
+                setOptions(section, 'Choose a grade first', []);
+                section.disabled = true;
+                return
+            }
+            if (senior) {
+                setOptions(section, value.value ? 'Choose a section' : 'Choose a strand first', placementOptions[grade
+                    .value]?.[value.value] || [], restore ? (saved.section || '') : '');
+                section.disabled = !value.value
+            } else {
+                setOptions(section, 'Choose a section', placementOptions[grade.value] || [], restore ? (saved.section ||
+                    '') : '');
+                section.disabled = false
+            }
+        }
+        grade.onchange = () => update();
+        value.onchange = () => {
+            const senior = grade.value === '11' || grade.value === '12';
+            if (senior) {
+                strand.value = value.value;
+                setOptions(section, value.value ? 'Choose a section' : 'Choose a strand first', placementOptions[
+                    grade.value]?.[value.value] || []);
+                section.disabled = !value.value
+            } else subject.value = value.value
+        };
+        update(true);
+        row.querySelector('.remove-assignment').onclick = () => {
+            if (assignmentList.children.length > 1) row.remove()
+        };
+    }
+    document.getElementById('add-assignment').onclick = () => addAssignment();
+    (savedAssignments.length ? savedAssignments : [{}]).forEach(addAssignment);
+    document.getElementById('open-delete-teacher').onclick = () => document.getElementById('delete-teacher-modal')
+        .classList.replace('hidden', 'flex');
+    document.getElementById('cancel-delete-teacher').onclick = () => document.getElementById('delete-teacher-modal')
+        .classList.replace('flex', 'hidden');
+    document.getElementById('confirm-delete-teacher').onclick = () => document.getElementById('delete-teacher-form')
+        .submit();
+</script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const archiveForm = document.getElementById('delete-teacher-form');
+        if (archiveForm) {
+            archiveForm.querySelector('h3').textContent = 'Archive account';
+            archiveForm.querySelector('p').textContent =
+                'Keep this teacher account and assignments for reference, but remove sign-in access.';
+            document.getElementById('open-delete-teacher').textContent = 'Archive teacher';
+            document.getElementById('delete-teacher-modal').querySelector('h3').textContent =
+                'Archive teacher account?';
+            document.getElementById('delete-teacher-modal').querySelector('p').textContent =
+                'This keeps the teacher profile and assignments, but prevents future sign-ins.';
+            document.getElementById('confirm-delete-teacher').textContent = 'Archive';
+            document.getElementById('confirm-delete-teacher').className =
+                'flex-1 rounded-xl bg-amber-500 px-4 py-3 font-bold text-white hover:bg-amber-600';
+        }
+    });
 </script><?php adminFoot(); ?>

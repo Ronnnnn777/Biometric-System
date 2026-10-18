@@ -1,15 +1,163 @@
 <?php
-require 'page-guard.php';if($_SESSION['user-role']!=='administrator'){http_response_code(403);exit('Administrators only.');}
-require '../config/db_conn.php';require '../includes/teacher-profile-schema.php';require '../includes/teacher-assignment-schema.php';require '../includes/student-placement-options.php';require '../includes/section-catalog-schema.php';ensureTeacherProfileColumns($conn);ensureSectionCatalogColumns($conn);seedDefaultTeacherSections($conn);ensureTeacherAssignmentSchema($conn);require 'components.php';
-$placement=teacherSectionPlacementOptions($conn);adminHead('Add teacher');adminSidebar('teachers','Add teacher','Create a teacher account. Grade and section access can be added later or assigned from a School Form import.');
+require "page-guard.php";
+if ($_SESSION["user-role"] !== "administrator") {
+    http_response_code(403);
+    exit("Administrators only.");
+}
+require "../config/db_conn.php";
+require "../includes/teacher-profile-schema.php";
+require "../includes/teacher-assignment-schema.php";
+require "../includes/student-placement-options.php";
+require "../includes/section-catalog-schema.php";
+ensureTeacherProfileColumns($conn);
+ensureSectionCatalogColumns($conn);
+seedDefaultTeacherSections($conn);
+ensureTeacherAssignmentSchema($conn);
+require "components.php";
+$placement = teacherSectionPlacementOptions($conn);
+adminHead("Add teacher");
+adminSidebar(
+    "teachers",
+    "Add teacher",
+    "Create a teacher account. Grade and section access can be added later or assigned from a School Form import.",
+);
 ?>
-<section class="mx-auto max-w-3xl rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8"><p class="text-sm font-bold uppercase tracking-widest text-blue-600">People & permissions</p><h2 class="mt-2 text-2xl font-black text-slate-900">Create teacher account</h2><p class="mt-2 text-slate-500">Create the account first. Grade and section access is optional and can be added later or assigned automatically from a School Form import.</p><form action="save-teacher.php" method="post" class="mt-7 space-y-5"><div class="grid gap-4 sm:grid-cols-2"><label class="block text-sm font-bold text-slate-700">First name<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="first_name" maxlength="80" autocomplete="given-name" required></label><label class="block text-sm font-bold text-slate-700">Last name<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="last_name" maxlength="80" autocomplete="family-name" required></label></div><label class="block text-sm font-bold text-slate-700">Email address<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="email" name="teacher_user" maxlength="100" required></label><div class="rounded-xl border border-slate-200 p-4"><p class="text-sm font-bold text-slate-700">Password</p><div class="mt-3 grid gap-4 sm:grid-cols-2"><label class="block text-sm font-semibold text-slate-600">Password<input id="teacher-pass" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password" name="teacher_pass" minlength="8" required></label><label class="block text-sm font-semibold text-slate-600">Confirm password<input id="teacher-confirm" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password" name="teacher_confirm" minlength="8" required></label></div></div><div class="rounded-2xl border border-slate-200 p-5"><div class="flex flex-wrap items-center justify-between gap-3"><div><h3 class="font-black text-slate-900">Grade and section assignments</h3><p class="mt-1 text-sm text-slate-500">Optional. Add a subject assignment only when needed.</p></div><button id="add-assignment" type="button" class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100">+ Add assignment</button></div><div id="assignment-list" class="mt-4 space-y-4"></div></div><button class="w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Create teacher account</button></form></section>
+<section class="mx-auto max-w-3xl rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+    <p class="text-sm font-bold uppercase tracking-widest text-blue-600">People & permissions</p>
+    <h2 class="mt-2 text-2xl font-black text-slate-900">Create teacher account</h2>
+    <p class="mt-2 text-slate-500">Create the account first. Grade and section access is optional and can be added later
+        or assigned automatically from a School Form import.</p>
+    <form action="save-teacher.php" method="post" class="mt-7 space-y-5">
+        <div class="grid gap-4 sm:grid-cols-2"><label class="block text-sm font-bold text-slate-700">First name<input
+                    class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="first_name" maxlength="80"
+                    autocomplete="given-name" required></label><label
+                class="block text-sm font-bold text-slate-700">Last name<input
+                    class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="last_name" maxlength="80"
+                    autocomplete="family-name" required></label></div><label
+            class="block text-sm font-bold text-slate-700">Email address<input
+                class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="email" name="teacher_user"
+                maxlength="100" required></label>
+        <div class="rounded-xl border border-slate-200 p-4">
+            <p class="text-sm font-bold text-slate-700">Password</p>
+            <div class="mt-3 grid gap-4 sm:grid-cols-2"><label
+                    class="block text-sm font-semibold text-slate-600">Password<input id="teacher-pass"
+                        class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password"
+                        name="teacher_pass" minlength="8" required></label><label
+                    class="block text-sm font-semibold text-slate-600">Confirm password<input id="teacher-confirm"
+                        class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password"
+                        name="teacher_confirm" minlength="8" required></label></div>
+        </div>
+        <div class="rounded-2xl border border-slate-200 p-5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h3 class="font-black text-slate-900">Grade and section assignments</h3>
+                    <p class="mt-1 text-sm text-slate-500">Optional. Add a subject assignment only when needed.</p>
+                </div><button id="add-assignment" type="button"
+                    class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100">+
+                    Add assignment</button>
+            </div>
+            <div id="assignment-list" class="mt-4 space-y-4"></div>
+        </div><button class="w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Create
+            teacher account</button>
+    </form>
+</section>
 <script>
-const placementOptions=<?= json_encode($placement) ?>,subjectOptions=<?= json_encode(teacherSubjects()) ?>,assignmentList=document.getElementById('assignment-list');
-function setOptions(select,placeholder,items,value=''){select.innerHTML='';select.add(new Option(placeholder,''));items.forEach(item=>select.add(new Option(item,item,item===value,item===value)))}
-function addAssignment(saved={}){const row=document.createElement('div');row.className='assignment-row rounded-xl border border-slate-200 bg-slate-50 p-4';row.innerHTML='<div class="flex items-center justify-between gap-3"><p class="font-bold text-slate-800">Assignment</p><button type="button" class="remove-assignment text-sm font-bold text-rose-600 hover:text-rose-700">Remove</button></div><div class="mt-4 grid gap-4 sm:grid-cols-2"><label class="text-sm font-bold text-slate-700">Grade<select class="assignment-grade mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="assignment_grade[]" required><option value="">Choose a grade</option><option value="7">Grade 7</option><option value="8">Grade 8</option><option value="9">Grade 9</option><option value="10">Grade 10</option><option value="11">Grade 11</option><option value="12">Grade 12</option></select></label><label class="text-sm font-bold text-slate-700"><span class="assignment-label">Subject assigned</span><select class="assignment-value mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" required></select></label><label class="text-sm font-bold text-slate-700 sm:col-span-2">Assigned section<select class="assignment-section mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="assignment_section[]" required></select></label></div><select class="assignment-strand" name="assignment_strand[]" hidden></select><select class="assignment-subject" name="assignment_subject[]" hidden></select>';assignmentList.appendChild(row);const grade=row.querySelector('.assignment-grade'),value=row.querySelector('.assignment-value'),label=row.querySelector('.assignment-label'),section=row.querySelector('.assignment-section'),strand=row.querySelector('.assignment-strand'),subject=row.querySelector('.assignment-subject');grade.value=saved.grade||'';
-function update(restore=false){const senior=grade.value==='11'||grade.value==='12';label.textContent=senior?'Strand assigned':'Subject assigned';setOptions(value,grade.value?(senior?'Choose a strand':'Choose a subject'):'Choose a grade first',senior?['Techpro','Academic']:subjectOptions,restore?(senior?(saved.strand||''):(saved.subject||'')):'');setOptions(strand,'',senior?['Techpro','Academic']:[],senior?(restore?(saved.strand||''):''):'');setOptions(subject,'',senior?[]:subjectOptions,senior?'':(restore?(saved.subject||''):''));if(!grade.value){setOptions(section,'Choose a grade first',[]);section.disabled=true;return}if(senior){setOptions(section,value.value?'Choose a section':'Choose a strand first',placementOptions[grade.value]?.[value.value]||[],restore?(saved.section||''):'');section.disabled=!value.value}else{setOptions(section,'Choose a section',placementOptions[grade.value]||[],restore?(saved.section||''):'');section.disabled=false}}
-grade.onchange=()=>update();value.onchange=()=>{const senior=grade.value==='11'||grade.value==='12';if(senior){strand.value=value.value;setOptions(section,value.value?'Choose a section':'Choose a strand first',placementOptions[grade.value]?.[value.value]||[]);section.disabled=!value.value}else subject.value=value.value};update(true);row.querySelector('.remove-assignment').onclick=()=>row.remove();}
-document.getElementById('add-assignment').onclick=()=>addAssignment();document.querySelector('form').onsubmit=e=>{if(document.getElementById('teacher-pass').value!==document.getElementById('teacher-confirm').value){e.preventDefault();alert('Passwords do not match.')}};
+    const placementOptions = < ? = json_encode(
+            $placement,
+        ) ? > ,
+        subjectOptions = < ? = json_encode(
+            teacherSubjects(),
+        ) ? > ,
+        assignmentList = document.getElementById('assignment-list');
+
+    function setOptions(select, placeholder, items, value = '') {
+        select.innerHTML = '';
+        select.add(new Option(placeholder, ''));
+        items.forEach(item => select.add(new Option(item, item, item === value, item === value)))
+    }
+
+    function addAssignment(saved = {}) {
+        const row = document.createElement('div');
+        row.className = 'assignment-row rounded-xl border border-slate-200 bg-slate-50 p-4';
+        row.innerHTML =
+            `<div class="flex items-center justify-between gap-3">
+                <p class="font-bold text-slate-800">Assignment</p>
+                <button type="button" class="remove-assignment text-sm font-bold text-rose-600 hover:text-rose-700">Remove</button>
+            </div>
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                <label class="text-sm font-bold text-slate-700">Grade
+                    <select class="assignment-grade mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="assignment_grade[]" required>
+                        <option value="">Choose a grade</option>
+                        <option value="7">Grade 7</option>
+                        <option value="8">Grade 8</option>
+                        <option value="9">Grade 9</option>
+                        <option value="10">Grade 10</option>
+                        <option value="11">Grade 11</option>
+                        <option value="12">Grade 12</option>
+                    </select>
+                </label>
+                <label class="text-sm font-bold text-slate-700">
+                    <span class="assignment-label">Subject assigned</span>
+                    <select class="assignment-value mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" required></select>
+                </label>
+                <label class="text-sm font-bold text-slate-700 sm:col-span-2">Assigned section
+                    <select class="assignment-section mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="assignment_section[]" required></select>
+                </label>
+            </div>
+            <select class="assignment-strand" name="assignment_strand[]" hidden></select>
+            <select class="assignment-subject" name="assignment_subject[]" hidden></select>`;
+        assignmentList.appendChild(row);
+        const grade = row.querySelector('.assignment-grade'),
+            value = row.querySelector('.assignment-value'),
+            label = row.querySelector('.assignment-label'),
+            section = row.querySelector('.assignment-section'),
+            strand = row.querySelector('.assignment-strand'),
+            subject = row.querySelector('.assignment-subject');
+        grade.value = saved.grade || '';
+
+        function update(restore = false) {
+            const senior = grade.value === '11' || grade.value === '12';
+            label.textContent = senior ? 'Strand assigned' : 'Subject assigned';
+            setOptions(value, grade.value ? (senior ? 'Choose a strand' : 'Choose a subject') : 'Choose a grade first',
+                senior ? ['Techpro', 'Academic'] : subjectOptions, restore ? (senior ? (saved.strand || '') : (saved
+                    .subject || '')) : '');
+            setOptions(strand, '', senior ? ['Techpro', 'Academic'] : [], senior ? (restore ? (saved.strand || '') :
+                '') : '');
+            setOptions(subject, '', senior ? [] : subjectOptions, senior ? '' : (restore ? (saved.subject || '') : ''));
+            if (!grade.value) {
+                setOptions(section, 'Choose a grade first', []);
+                section.disabled = true;
+                return
+            }
+            if (senior) {
+                setOptions(section, value.value ? 'Choose a section' : 'Choose a strand first', placementOptions[grade
+                    .value]?.[value.value] || [], restore ? (saved.section || '') : '');
+                section.disabled = !value.value
+            } else {
+                setOptions(section, 'Choose a section', placementOptions[grade.value] || [], restore ? (saved.section ||
+                    '') : '');
+                section.disabled = false
+            }
+        }
+        grade.onchange = () => update();
+        value.onchange = () => {
+            const senior = grade.value === '11' || grade.value === '12';
+            if (senior) {
+                strand.value = value.value;
+                setOptions(section, value.value ? 'Choose a section' : 'Choose a strand first', placementOptions[
+                    grade.value]?.[value.value] || []);
+                section.disabled = !value.value
+            } else subject.value = value.value
+        };
+        update(true);
+        row.querySelector('.remove-assignment').onclick = () => row.remove();
+    }
+    document.getElementById('add-assignment').onclick = () => addAssignment();
+    document.querySelector('form').onsubmit = e => {
+        if (document.getElementById('teacher-pass').value !== document.getElementById('teacher-confirm').value) {
+            e.preventDefault();
+            alert('Passwords do not match.')
+        }
+    };
 </script>
 <?php adminFoot(); ?>

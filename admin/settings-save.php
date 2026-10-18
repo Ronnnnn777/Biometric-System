@@ -1,15 +1,319 @@
 <?php
-session_start(); require 'page-guard.php'; require '../config/db_conn.php'; require '../includes/camera-portal-schema.php'; require '../includes/attendance-schema.php'; ensureCameraPortalSchema($conn); ensureAttendanceTimeOutColumn($conn);
-require '../includes/student-placement-options.php'; require '../includes/section-catalog-schema.php'; require '../includes/teacher-assignment-schema.php'; require '../includes/staff-biometric.php'; ensureSectionCatalogColumns($conn); seedDefaultTeacherSections($conn); ensureTeacherAssignmentSchema($conn);
-if(!hash_equals($_SESSION['csrf_token']??'',$_POST['csrf_token']??'')){http_response_code(400);exit('Invalid request.');}
-$conn->query("CREATE TABLE IF NOT EXISTS admin_security (ADMIN_USER VARCHAR(50) PRIMARY KEY, SECURITY_QUESTION VARCHAR(255) NOT NULL, SECURITY_ANSWER VARCHAR(255) NOT NULL, UPDATED_AT TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
-$action=$_POST['action']??'';$user=$_SESSION['admin-user']??'';
-if($action==='password'){$current=$_POST['current_password']??'';$new=$_POST['new_password']??'';$confirm=$_POST['confirm_password']??'';$stmt=$conn->prepare('SELECT ADMIN_PASS FROM admins WHERE ADMIN_USER=?');$stmt->bind_param('s',$user);$stmt->execute();$row=$stmt->get_result()->fetch_assoc();if(!$row||!password_verify($current,$row['ADMIN_PASS'])||strlen($new)<8||$new!==$confirm){$_SESSION['toast']=['message'=>'Current password is incorrect or new passwords do not match.','type'=>'error'];}else{$hash=password_hash($new,PASSWORD_DEFAULT);$up=$conn->prepare('UPDATE admins SET ADMIN_PASS=? WHERE ADMIN_USER=?');$up->bind_param('ss',$hash,$user);$up->execute();$_SESSION['toast']=['message'=>'Administrator password updated successfully.','type'=>'success'];}}
-elseif($action==='camera_portal'){$current=(string)($_POST['current_password']??'');$email=mb_strtolower(trim((string)($_POST['camera_email']??'')));$password=(string)($_POST['camera_password']??'');$confirm=(string)($_POST['confirm_camera_password']??'');$stmt=$conn->prepare('SELECT ADMIN_PASS FROM admins WHERE ADMIN_USER=?');$stmt->bind_param('s',$user);$stmt->execute();$row=$stmt->get_result()->fetch_assoc();$errors=[];if(!filter_var($email,FILTER_VALIDATE_EMAIL)||mb_strlen($email)>80)$errors[]='Enter a valid camera portal email address.';if(strlen($password)<8)$errors[]='Camera portal password must have at least 8 characters.';if($password!==$confirm)$errors[]='Camera portal password confirmation does not match.';if(!$row||!password_verify($current,$row['ADMIN_PASS']))$errors[]='Administrator password is incorrect.';if($errors){$_SESSION['toast']=['message'=>implode(' ',$errors),'type'=>'error'];}else{$hash=password_hash($password,PASSWORD_DEFAULT);$up=$conn->prepare('INSERT INTO camera_portal_accounts (ID,USERNAME,PASSWORD_HASH) VALUES (1,?,?) ON DUPLICATE KEY UPDATE USERNAME=VALUES(USERNAME),PASSWORD_HASH=VALUES(PASSWORD_HASH)');$up->bind_param('ss',$email,$hash);$up->execute();$_SESSION['toast']=['message'=>'Camera portal account saved successfully.','type'=>'success'];}}
-elseif($action==='security_question'){$current=$_POST['current_password']??'';$question=trim($_POST['security_question']??'');$answer=mb_strtolower(trim($_POST['security_answer']??''));$stmt=$conn->prepare('SELECT ADMIN_PASS FROM admins WHERE ADMIN_USER=?');$stmt->bind_param('s',$user);$stmt->execute();$row=$stmt->get_result()->fetch_assoc();if(!$row||!password_verify($current,$row['ADMIN_PASS'])||$question===''||$answer===''){$_SESSION['toast']=['message'=>'Enter your current password, question, and answer.','type'=>'error'];}else{$hash=password_hash($answer,PASSWORD_DEFAULT);$up=$conn->prepare('INSERT INTO admin_security (ADMIN_USER,SECURITY_QUESTION,SECURITY_ANSWER) VALUES (?,?,?) ON DUPLICATE KEY UPDATE SECURITY_QUESTION=VALUES(SECURITY_QUESTION),SECURITY_ANSWER=VALUES(SECURITY_ANSWER)');$up->bind_param('sss',$user,$question,$hash);$up->execute();$_SESSION['toast']=['message'=>'Security question saved successfully.','type'=>'success'];}}
-elseif($action==='biometric'){$current=$_POST['current_password']??'';$stmt=$conn->prepare('SELECT ADMIN_ID,ADMIN_PASS FROM admins WHERE ADMIN_USER=? LIMIT 1');$stmt->bind_param('s',$user);$stmt->execute();$row=$stmt->get_result()->fetch_assoc();if(!$row||!password_verify($current,$row['ADMIN_PASS'])){$_SESSION['toast']=['message'=>'Enter your current password to enroll biometric sign-in.','type'=>'error'];}elseif(enrollStaffBiometric($conn,'administrator',(int)$row['ADMIN_ID'],$biometricError)){$_SESSION['toast']=['message'=>'Biometric sign-in enrolled. Your password and camera verification are now required.','type'=>'success'];}else{$_SESSION['toast']=['message'=>$biometricError,'type'=>'error'];}}
-elseif($action==='attendance_mode'){$halfDay=isset($_POST['half_day_enabled']);setWholeDayAttendance($conn,!$halfDay);if(isset($_POST['ajax'])){header('Content-Type: application/json');echo json_encode(['saved'=>true,'half_day'=>$halfDay]);exit;}$_SESSION['toast']=['message'=>$halfDay?'Half-day attendance is enabled: students use the standard time-in/time-out flow.':'Whole-day attendance is enabled: lunch out at 11:40 AM and afternoon time in at 12:20 PM.','type'=>'success'];}
-elseif($action==='add_section'){$section=trim($_POST['section']??'');$grade=(int)($_POST['grade']??0);$strand=trim($_POST['strand']??'');$senior=in_array($grade,[11,12],true);$validGrade=in_array($grade,[7,8,9,10,11,12],true);$validStrand=$senior?in_array($strand,studentStrandsForGrade($grade),true):$strand==='';if($section!==''&&$validGrade&&$validStrand){$add=$conn->prepare('INSERT IGNORE INTO sections (SECTION,GRADE,STRAND) VALUES (?,?,?)');$add->bind_param('sis',$section,$grade,$strand);$add->execute();$_SESSION['toast']=['message'=>'Section added successfully.','type'=>'success'];}else{$_SESSION['toast']=['message'=>'Choose a valid grade and, for senior high, a strand.','type'=>'error'];}}
-elseif($action==='rename_section'){$old=trim($_POST['old_section']??'');$new=trim($_POST['section']??'');if($old!==''&&$new!==''){$up=$conn->prepare('UPDATE students SET SECTION=? WHERE SECTION=?');$up->bind_param('ss',$new,$old);$up->execute();$up=$conn->prepare('UPDATE teachers SET SECTION=? WHERE SECTION=?');$up->bind_param('ss',$new,$old);$up->execute();$up=$conn->prepare('UPDATE teacher_assignments SET SECTION=? WHERE SECTION=?');$up->bind_param('ss',$new,$old);$up->execute();$up=$conn->prepare('UPDATE sections SET SECTION=? WHERE SECTION=?');$up->bind_param('ss',$new,$old);$up->execute();$_SESSION['toast']=['message'=>'Section updated successfully.','type'=>'success'];}}
-elseif($action==='delete_section'){$section=trim($_POST['delete_target']??$_POST['section']??'');$check=$conn->prepare('SELECT (SELECT COUNT(*) FROM students WHERE SECTION=?) + (SELECT COUNT(*) FROM teachers WHERE SECTION=?) + (SELECT COUNT(*) FROM teacher_assignments WHERE SECTION=?) count');$check->bind_param('sss',$section,$section,$section);$check->execute();if(($check->get_result()->fetch_assoc()['count']??1)==0){$base=$conn->prepare('SELECT BASE_SECTION FROM sections WHERE SECTION=?');$base->bind_param('s',$section);$base->execute();$row=$base->get_result()->fetch_assoc();if(($row['BASE_SECTION']??'')!==''){$del=$conn->prepare('UPDATE sections SET IS_ACTIVE=0 WHERE SECTION=?');}else{$del=$conn->prepare('DELETE FROM sections WHERE SECTION=?');}$del->bind_param('s',$section);$del->execute();$_SESSION['toast']=['message'=>'Section removed successfully.','type'=>'success'];}else{$_SESSION['toast']=['message'=>'Move linked students and teachers before removing this section.','type'=>'error'];}}
-header('Location: settings.php'); exit;
+session_start();
+require "page-guard.php";
+require "../config/db_conn.php";
+require "../includes/attendance-schema.php";
+require "../includes/mobile-scanner-settings.php";
+ensureAttendanceTimeOutColumn($conn);
+ensureMobileScannerSettingsSchema($conn);
+require "../includes/student-placement-options.php";
+require "../includes/section-catalog-schema.php";
+require "../includes/teacher-assignment-schema.php";
+require "../includes/staff-biometric.php";
+ensureSectionCatalogColumns($conn);
+seedDefaultTeacherSections($conn);
+ensureTeacherAssignmentSchema($conn);
+if (!hash_equals($_SESSION["csrf_token"] ?? "", $_POST["csrf_token"] ?? "")) {
+    http_response_code(400);
+    exit("Invalid request.");
+}
+$conn->query(
+    "CREATE TABLE IF NOT EXISTS admin_security (ADMIN_USER VARCHAR(50) PRIMARY KEY, SECURITY_QUESTION VARCHAR(255) NOT NULL, SECURITY_ANSWER VARCHAR(255) NOT NULL, UPDATED_AT TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)",
+);
+$action = $_POST["action"] ?? "";
+$user = $_SESSION["admin-user"] ?? "";
+if ($action === "password") {
+    $current = $_POST["current_password"] ?? "";
+    $new = $_POST["new_password"] ?? "";
+    $confirm = $_POST["confirm_password"] ?? "";
+    $stmt = $conn->prepare("SELECT ADMIN_PASS FROM admins WHERE ADMIN_USER=?");
+    $stmt->bind_param("s", $user);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (
+        !$row ||
+        !password_verify($current, $row["ADMIN_PASS"]) ||
+        strlen($new) < 8 ||
+        $new !== $confirm
+    ) {
+        $_SESSION["toast"] = [
+            "message" =>
+                "Current password is incorrect or new passwords do not match.",
+            "type" => "error",
+        ];
+    } else {
+        $hash = password_hash($new, PASSWORD_DEFAULT);
+        $up = $conn->prepare(
+            "UPDATE admins SET ADMIN_PASS=? WHERE ADMIN_USER=?",
+        );
+        $up->bind_param("ss", $hash, $user);
+        $up->execute();
+        $_SESSION["toast"] = [
+            "message" => "Administrator password updated successfully.",
+            "type" => "success",
+        ];
+    }
+} elseif ($action === "security_question") {
+    $current = $_POST["current_password"] ?? "";
+    $question = trim($_POST["security_question"] ?? "");
+    $answer = mb_strtolower(trim($_POST["security_answer"] ?? ""));
+    $stmt = $conn->prepare("SELECT ADMIN_PASS FROM admins WHERE ADMIN_USER=?");
+    $stmt->bind_param("s", $user);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (
+        !$row ||
+        !password_verify($current, $row["ADMIN_PASS"]) ||
+        $question === "" ||
+        $answer === ""
+    ) {
+        $_SESSION["toast"] = [
+            "message" => "Enter your current password, question, and answer.",
+            "type" => "error",
+        ];
+    } else {
+        $hash = password_hash($answer, PASSWORD_DEFAULT);
+        $up = $conn->prepare(
+            "INSERT INTO admin_security (ADMIN_USER,SECURITY_QUESTION,SECURITY_ANSWER) VALUES (?,?,?) ON DUPLICATE KEY UPDATE SECURITY_QUESTION=VALUES(SECURITY_QUESTION),SECURITY_ANSWER=VALUES(SECURITY_ANSWER)",
+        );
+        $up->bind_param("sss", $user, $question, $hash);
+        $up->execute();
+        $_SESSION["toast"] = [
+            "message" => "Security question saved successfully.",
+            "type" => "success",
+        ];
+    }
+} elseif ($action === "biometric") {
+    $current = $_POST["current_password"] ?? "";
+    $stmt = $conn->prepare(
+        "SELECT ADMIN_ID,ADMIN_PASS FROM admins WHERE ADMIN_USER=? LIMIT 1",
+    );
+    $stmt->bind_param("s", $user);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (!$row || !password_verify($current, $row["ADMIN_PASS"])) {
+        $_SESSION["toast"] = [
+            "message" =>
+                "Enter your current password to enroll biometric sign-in.",
+            "type" => "error",
+        ];
+    } elseif (
+        enrollStaffBiometric(
+            $conn,
+            "administrator",
+            (int) $row["ADMIN_ID"],
+            $biometricError,
+        )
+    ) {
+        $_SESSION["toast"] = [
+            "message" =>
+                "Biometric sign-in enrolled. Your password and camera verification are now required.",
+            "type" => "success",
+        ];
+    } else {
+        $_SESSION["toast"] = ["message" => $biometricError, "type" => "error"];
+    }
+} elseif ($action === "attendance_mode") {
+    $halfDay = isset($_POST["half_day_enabled"]);
+    setWholeDayAttendance($conn, !$halfDay);
+    if (isset($_POST["ajax"])) {
+        header("Content-Type: application/json");
+        echo json_encode(["saved" => true, "half_day" => $halfDay]);
+        exit();
+    }
+    $_SESSION["toast"] = [
+        "message" => $halfDay
+            ? "Half-day attendance is enabled: students use the standard time-in/time-out flow."
+            : "Whole-day attendance is enabled: lunch out at 11:40 AM and afternoon time in at 12:20 PM.",
+        "type" => "success",
+    ];
+} elseif ($action === "add_mobile_scanner") {
+    $name = trim((string) ($_POST["mobile_scanner_name"] ?? ""));
+    $id = trim((string) ($_POST["mobile_scanner_id"] ?? ""));
+    if (
+        $name === "" ||
+        $id === "" ||
+        mb_strlen($name) > 80 ||
+        mb_strlen($id) > 60
+    ) {
+        $_SESSION["toast"] = [
+            "message" => "Enter a valid phone name and scanner ID.",
+            "type" => "error",
+        ];
+    } else {
+        $add = $conn->prepare(
+            "INSERT IGNORE INTO authorized_mobile_scanners (SCANNER_NAME,SCANNER_ID) VALUES (?,?)",
+        );
+        $add->bind_param("ss", $name, $id);
+        $add->execute();
+        $_SESSION["toast"] = [
+            "message" => $add->affected_rows
+                ? "Authorized phone added."
+                : "That scanner ID is already added.",
+            "type" => $add->affected_rows ? "success" : "error",
+        ];
+    }
+} elseif ($action === "remove_mobile_scanner") {
+    $id = trim((string) ($_POST["mobile_scanner_id"] ?? ""));
+    $remove = $conn->prepare(
+        "DELETE FROM authorized_mobile_scanners WHERE SCANNER_ID=?",
+    );
+    $remove->bind_param("s", $id);
+    $remove->execute();
+    $_SESSION["toast"] = [
+        "message" => $remove->affected_rows
+            ? "Authorized phone removed."
+            : "Phone was not found.",
+        "type" => $remove->affected_rows ? "success" : "error",
+    ];
+} elseif ($action === "mobile_scanner_configuration") {
+    $url = normaliseMobileScannerServerUrl(
+        (string) ($_POST["mobile_scanner_server_url"] ?? ""),
+    );
+    $current = mobileScannerConfiguration($conn);
+    $name = trim(
+        (string) ($_POST["mobile_scanner_name"] ?? $current["scanner_name"]),
+    );
+    $id = trim(
+        (string) ($_POST["mobile_scanner_id"] ?? $current["scanner_id"]),
+    );
+    if ($url === null) {
+        $_SESSION["toast"] = [
+            "message" => "Enter a valid IP address.",
+            "type" => "error",
+        ];
+    } else {
+        setMobileScannerConfiguration($conn, $url, $name, $id);
+        $_SESSION["toast"] = [
+            "message" =>
+                "Mobile scanner IP address saved. Enter it in Maruhat Attendance.",
+            "type" => "success",
+        ];
+    }
+} elseif ($action === "mobile_scanner_identity") {
+    $name = trim((string) ($_POST["mobile_scanner_name"] ?? ""));
+    $id = trim((string) ($_POST["mobile_scanner_id"] ?? ""));
+    $configuration = mobileScannerConfiguration($conn);
+    if (
+        $name === "" ||
+        $id === "" ||
+        mb_strlen($name) > 80 ||
+        mb_strlen($id) > 60
+    ) {
+        $_SESSION["toast"] = [
+            "message" => "Enter a scanner name and scanner ID.",
+            "type" => "error",
+        ];
+    } else {
+        setMobileScannerConfiguration(
+            $conn,
+            $configuration["server_url"],
+            $name,
+            $id,
+        );
+        $_SESSION["toast"] = [
+            "message" => "Mobile scanner name and ID saved.",
+            "type" => "success",
+        ];
+    }
+} elseif ($action === "bulk_emergency_dismissal") {
+    $dismiss = $conn->prepare(
+        "UPDATE attendance SET TIME_OUT=NOW(), ATTENDANCE_REMARK='Emergency dismissal' WHERE DATE(TIME_IN)=CURDATE() AND TIME_OUT IS NULL AND IS_AUTO_ABSENT=0 AND COALESCE(ATTENDANCE_REMARK,'')<>'Absent'",
+    );
+    $dismiss->execute();
+    $count = $dismiss->affected_rows;
+    $_SESSION["toast"] = [
+        "message" =>
+            $count > 0
+                ? $count .
+                    " student" .
+                    ($count === 1 ? " was" : "s were") .
+                    " marked for emergency dismissal."
+                : "No checked-in students needed an emergency dismissal.",
+        "type" => $count > 0 ? "success" : "error",
+    ];
+} elseif ($action === "add_section") {
+    $section = trim($_POST["section"] ?? "");
+    $grade = (int) ($_POST["grade"] ?? 0);
+    $strand = trim($_POST["strand"] ?? "");
+    $senior = in_array($grade, [11, 12], true);
+    $validGrade = in_array($grade, [7, 8, 9, 10, 11, 12], true);
+    $validStrand = $senior
+        ? in_array($strand, studentStrandsForGrade($grade), true)
+        : $strand === "";
+    if ($section !== "" && $validGrade && $validStrand) {
+        $add = $conn->prepare(
+            "INSERT IGNORE INTO sections (SECTION,GRADE,STRAND) VALUES (?,?,?)",
+        );
+        $add->bind_param("sis", $section, $grade, $strand);
+        $add->execute();
+        $_SESSION["toast"] = [
+            "message" => "Section added successfully.",
+            "type" => "success",
+        ];
+    } else {
+        $_SESSION["toast"] = [
+            "message" => "Choose a valid grade and, for senior high, a strand.",
+            "type" => "error",
+        ];
+    }
+} elseif ($action === "rename_section") {
+    $old = trim($_POST["old_section"] ?? "");
+    $new = trim($_POST["section"] ?? "");
+    if ($old !== "" && $new !== "") {
+        $up = $conn->prepare("UPDATE students SET SECTION=? WHERE SECTION=?");
+        $up->bind_param("ss", $new, $old);
+        $up->execute();
+        $up = $conn->prepare("UPDATE teachers SET SECTION=? WHERE SECTION=?");
+        $up->bind_param("ss", $new, $old);
+        $up->execute();
+        $up = $conn->prepare(
+            "UPDATE teacher_assignments SET SECTION=? WHERE SECTION=?",
+        );
+        $up->bind_param("ss", $new, $old);
+        $up->execute();
+        $up = $conn->prepare("UPDATE sections SET SECTION=? WHERE SECTION=?");
+        $up->bind_param("ss", $new, $old);
+        $up->execute();
+        $_SESSION["toast"] = [
+            "message" => "Section updated successfully.",
+            "type" => "success",
+        ];
+    }
+} elseif ($action === "delete_section") {
+    $section = trim($_POST["delete_target"] ?? ($_POST["section"] ?? ""));
+    $check = $conn->prepare(
+        "SELECT (SELECT COUNT(*) FROM students WHERE SECTION=?) + (SELECT COUNT(*) FROM teachers WHERE SECTION=?) + (SELECT COUNT(*) FROM teacher_assignments WHERE SECTION=?) count",
+    );
+    $check->bind_param("sss", $section, $section, $section);
+    $check->execute();
+    if (($check->get_result()->fetch_assoc()["count"] ?? 1) == 0) {
+        $base = $conn->prepare(
+            "SELECT BASE_SECTION FROM sections WHERE SECTION=?",
+        );
+        $base->bind_param("s", $section);
+        $base->execute();
+        $row = $base->get_result()->fetch_assoc();
+        if (($row["BASE_SECTION"] ?? "") !== "") {
+            $del = $conn->prepare(
+                "UPDATE sections SET IS_ACTIVE=0 WHERE SECTION=?",
+            );
+        } else {
+            $del = $conn->prepare("DELETE FROM sections WHERE SECTION=?");
+        }
+        $del->bind_param("s", $section);
+        $del->execute();
+        $_SESSION["toast"] = [
+            "message" => "Section removed successfully.",
+            "type" => "success",
+        ];
+    } else {
+        $_SESSION["toast"] = [
+            "message" =>
+                "Move linked students and teachers before removing this section.",
+            "type" => "error",
+        ];
+    }
+}
+header("Location: settings.php");
+exit();

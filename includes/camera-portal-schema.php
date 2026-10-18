@@ -1,10 +1,4 @@
 <?php
 
-function ensureCameraPortalSchema(mysqli $conn): void {
-    $conn->query("CREATE TABLE IF NOT EXISTS camera_portal_accounts (
-        ID TINYINT UNSIGNED NOT NULL PRIMARY KEY,
-        USERNAME VARCHAR(80) NOT NULL UNIQUE,
-        PASSWORD_HASH VARCHAR(255) NOT NULL,
-        UPDATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-}
+// Camera-portal accounts were retired in favor of authorized mobile scanners.
+// This legacy include intentionally creates no database tables.

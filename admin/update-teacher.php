@@ -1,5 +1,84 @@
 <?php
-require 'page-guard.php';require '../config/db_conn.php';require '../includes/teacher-profile-schema.php';require '../includes/teacher-assignment-schema.php';require '../includes/student-placement-options.php';require '../includes/section-catalog-schema.php';ensureTeacherProfileColumns($conn);ensureSectionCatalogColumns($conn);seedDefaultTeacherSections($conn);ensureTeacherAssignmentSchema($conn);
-$id=(int)($_POST['id']??0);$passwordOnly=($_POST['password_only']??'')==='1';$current=$_POST['current_password']??'';$pass=$_POST['teacher_pass']??'';$confirm=$_POST['teacher_confirm']??'';$find=$conn->prepare('SELECT TEACHER_PASS FROM teachers WHERE TEACHER_ID=?');$find->bind_param('i',$id);$find->execute();$existing=$find->get_result()->fetch_assoc();if(!$existing)exit('Teacher not found.');
-if($passwordOnly){$adminUser=$_SESSION['admin-user']??'';$admin=$conn->prepare('SELECT ADMIN_PASS FROM admins WHERE ADMIN_USER=? LIMIT 1');$admin->bind_param('s',$adminUser);$admin->execute();$account=$admin->get_result()->fetch_assoc();if(!$account||!password_verify($current,$account['ADMIN_PASS'])||strlen($pass)<8||$pass!==$confirm)exit('Administrator password is incorrect or the new passwords do not match.');$hash=password_hash($pass,PASSWORD_DEFAULT);$stmt=$conn->prepare('UPDATE teachers SET TEACHER_PASS=? WHERE TEACHER_ID=?');$stmt->bind_param('si',$hash,$id);$stmt->execute();$_SESSION['toast']=['message'=>'Teacher password updated successfully.','type'=>'success'];header('Location: edit-teacher.php?id='.$id);exit;}
-$firstName=trim($_POST['first_name']??'');$lastName=trim($_POST['last_name']??'');$name=trim($firstName.' '.$lastName);$assignments=postedTeacherAssignments($conn);if($firstName===''||$lastName===''||!$assignments)exit('Provide a name and at least one valid grade and section assignment.');$primary=$assignments[0];$stmt=$conn->prepare('UPDATE teachers SET TEACHER_NAME=?,FIRST_NAME=?,LAST_NAME=?,GRADE=?,STRAND=?,SECTION=?,SUBJECT=? WHERE TEACHER_ID=?');$stmt->bind_param('sssisssi',$name,$firstName,$lastName,$primary['grade'],$primary['strand'],$primary['section'],$primary['subject'],$id);$stmt->execute();replaceTeacherAssignments($conn,$id,$assignments);$_SESSION['toast']=['message'=>'Teacher profile updated successfully.','type'=>'success'];header('Location: edit-teacher.php?id='.$id);exit;
+require "page-guard.php";
+require "../config/db_conn.php";
+require "../includes/teacher-profile-schema.php";
+require "../includes/teacher-assignment-schema.php";
+require "../includes/student-placement-options.php";
+require "../includes/section-catalog-schema.php";
+ensureTeacherProfileColumns($conn);
+ensureSectionCatalogColumns($conn);
+seedDefaultTeacherSections($conn);
+ensureTeacherAssignmentSchema($conn);
+$id = (int) ($_POST["id"] ?? 0);
+$passwordOnly = ($_POST["password_only"] ?? "") === "1";
+$current = $_POST["current_password"] ?? "";
+$pass = $_POST["teacher_pass"] ?? "";
+$confirm = $_POST["teacher_confirm"] ?? "";
+$find = $conn->prepare("SELECT TEACHER_PASS FROM teachers WHERE TEACHER_ID=?");
+$find->bind_param("i", $id);
+$find->execute();
+$existing = $find->get_result()->fetch_assoc();
+if (!$existing) {
+    exit("Teacher not found.");
+}
+if ($passwordOnly) {
+    $adminUser = $_SESSION["admin-user"] ?? "";
+    $admin = $conn->prepare(
+        "SELECT ADMIN_PASS FROM admins WHERE ADMIN_USER=? LIMIT 1",
+    );
+    $admin->bind_param("s", $adminUser);
+    $admin->execute();
+    $account = $admin->get_result()->fetch_assoc();
+    if (
+        !$account ||
+        !password_verify($current, $account["ADMIN_PASS"]) ||
+        strlen($pass) < 8 ||
+        $pass !== $confirm
+    ) {
+        exit(
+            "Administrator password is incorrect or the new passwords do not match."
+        );
+    }
+    $hash = password_hash($pass, PASSWORD_DEFAULT);
+    $stmt = $conn->prepare(
+        "UPDATE teachers SET TEACHER_PASS=? WHERE TEACHER_ID=?",
+    );
+    $stmt->bind_param("si", $hash, $id);
+    $stmt->execute();
+    $_SESSION["toast"] = [
+        "message" => "Teacher password updated successfully.",
+        "type" => "success",
+    ];
+    header("Location: teacher-list.php");
+    exit();
+}
+$firstName = trim($_POST["first_name"] ?? "");
+$lastName = trim($_POST["last_name"] ?? "");
+$name = trim($firstName . " " . $lastName);
+$assignments = postedTeacherAssignments($conn);
+if ($firstName === "" || $lastName === "" || !$assignments) {
+    exit("Provide a name and at least one valid grade and section assignment.");
+}
+$primary = $assignments[0];
+$stmt = $conn->prepare(
+    "UPDATE teachers SET TEACHER_NAME=?,FIRST_NAME=?,LAST_NAME=?,GRADE=?,STRAND=?,SECTION=?,SUBJECT=? WHERE TEACHER_ID=?",
+);
+$stmt->bind_param(
+    "sssisssi",
+    $name,
+    $firstName,
+    $lastName,
+    $primary["grade"],
+    $primary["strand"],
+    $primary["section"],
+    $primary["subject"],
+    $id,
+);
+$stmt->execute();
+replaceTeacherAssignments($conn, $id, $assignments);
+$_SESSION["toast"] = [
+    "message" => "Teacher profile updated successfully.",
+    "type" => "success",
+];
+header("Location: teacher-list.php");
+exit();

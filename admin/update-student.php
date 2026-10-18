@@ -30,7 +30,7 @@ if(!$id || $student_id==='' || $first_name==='' || $last_name==='' || !isValidSt
     exit;
 }
 
-// 🛡️ GUARD: Duplicate Student ID check
+// 🛡️ GUARD: Duplicate LRN check
 $check_sql = "SELECT ID FROM students WHERE STUDENT_ID = ? AND ID != ?";
 $check_stmt = $conn->prepare($check_sql);
 $check_stmt->bind_param("si", $student_id, $id);
@@ -38,7 +38,7 @@ $check_stmt->execute();
 
 if($check_stmt->get_result()->num_rows > 0) {
     // If ID is taken, send back to edit page with error toast
-    $_SESSION["toast"] = ["message" => "Error: Student ID $student_id is already taken!", "type" => "error"];
+    $_SESSION["toast"] = ["message" => "Error: LRN $student_id is already registered!", "type" => "error"];
     header("Location: edit-student.php?id=$id");
     exit; 
 }

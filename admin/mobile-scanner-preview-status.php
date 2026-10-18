@@ -1,0 +1,4 @@
+<?php
+http_response_code(410);
+header('Content-Type: application/json');
+echo json_encode(['live' => false, 'message' => 'Mobile live preview has been retired.']);

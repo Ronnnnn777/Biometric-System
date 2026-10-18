@@ -10,11 +10,27 @@ if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
     header('Location: home.php');exit;
 }
 
-$id=(int)($_POST['attendance_id'] ?? 0);$remark=trim((string)($_POST['attendance_remark'] ?? ''));$note=trim((string)($_POST['attendance_note'] ?? ''));$teacherId=(int)($_SESSION['teacher-id'] ?? 0);
+$id=(int)($_POST['attendance_id'] ?? 0);$studentId=trim((string)($_POST['student_id'] ?? ''));$attendanceDate=trim((string)($_POST['attendance_date'] ?? ''));$remark=trim((string)($_POST['attendance_remark'] ?? ''));$note=trim((string)($_POST['attendance_note'] ?? ''));$teacherId=(int)($_SESSION['teacher-id'] ?? 0);
 if ($remark !== '' && !in_array($remark, attendanceRemarkOptions(), true)) {
     $_SESSION['toast'] = ['message' => 'Choose a valid attendance status.', 'type' => 'error'];
 } elseif (mb_strlen($note) > 255) {
     $_SESSION['toast'] = ['message' => 'Keep the attendance reason to 255 characters or fewer.', 'type' => 'error'];
+} elseif ($id < 1) {
+    if ($studentId === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $attendanceDate) || $remark !== 'Excused absence') {
+        $_SESSION['toast'] = ['message' => 'Choose Excused absence to record an unscanned student.', 'type' => 'error'];
+    } else {
+        $student=$conn->prepare("SELECT s.STUDENT_ID,s.STUDENT_NAME FROM students s WHERE TRIM(s.STUDENT_ID)=TRIM(?) AND COALESCE(s.ENROLLMENT_STATUS,'Enrolled')='Enrolled' AND EXISTS (SELECT 1 FROM teacher_assignments ta WHERE ta.TEACHER_ID=? AND ta.GRADE=s.GRADE AND (ta.SUBJECT<>'' OR ta.SECTION=s.SECTION)) LIMIT 1");
+        $student->bind_param('si',$studentId,$teacherId);$student->execute();$studentRow=$student->get_result()->fetch_assoc();
+        $existing=$conn->prepare('SELECT ID FROM attendance WHERE TRIM(STUDENT_ID)=TRIM(?) AND DATE(TIME_IN)=? LIMIT 1');
+        $existing->bind_param('ss',$studentId,$attendanceDate);$existing->execute();
+        if(!$studentRow || $existing->get_result()->fetch_assoc()) {
+            $_SESSION['toast'] = ['message' => 'Attendance was already recorded or the student is unavailable.', 'type' => 'error'];
+        } else {
+            $insert=$conn->prepare("INSERT INTO attendance (STUDENT_ID,STUDENT_NAME,TIME_IN,ATTENDANCE_REMARK,ATTENDANCE_NOTE,IS_AUTO_ABSENT) VALUES (?,?,CONCAT(?,' 00:00:00'),?,?,0)");
+            $insert->bind_param('sssss',$studentRow['STUDENT_ID'],$studentRow['STUDENT_NAME'],$attendanceDate,$remark,$note);$insert->execute();
+            $_SESSION['toast'] = ['message' => $insert->affected_rows ? 'Excused absence recorded.' : 'Could not save the attendance record.', 'type' => $insert->affected_rows ? 'success' : 'error'];
+        }
+    }
 } else {
     $allowed=$conn->prepare("SELECT a.ID FROM attendance a INNER JOIN students s ON TRIM(s.STUDENT_ID)=TRIM(a.STUDENT_ID) INNER JOIN teacher_assignments ta ON ta.TEACHER_ID=? AND ta.GRADE=s.GRADE AND (ta.SUBJECT<>'' OR ta.SECTION=s.SECTION) WHERE a.ID=? LIMIT 1");
     $allowed->bind_param('ii',$teacherId,$id);$allowed->execute();

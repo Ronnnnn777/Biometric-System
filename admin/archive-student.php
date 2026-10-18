@@ -19,7 +19,7 @@ if ($id < 1) {
 
 // Keep the profile, photo, and all attendance records. Archived students are
 // excluded from all scanning endpoints because only Enrolled students can scan.
-$archive = $conn->prepare("UPDATE students SET ENROLLMENT_STATUS='Archived' WHERE ID=?");
+$archive = $conn->prepare("UPDATE students SET ENROLLMENT_STATUS='Archived', ARCHIVE_REASON='Manual archive', ARCHIVED_AT=NOW() WHERE ID=?");
 $archive->bind_param('i', $id);
 $archive->execute();
 

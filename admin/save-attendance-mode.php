@@ -11,7 +11,16 @@ if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
     exit;
 }
 
-$halfDay = isset($_POST['half_day_enabled']);
+$requestedMode = $_POST['attendance_mode'] ?? '';
+$halfDay = in_array($requestedMode, ['half', 'whole'], true)
+    ? $requestedMode === 'half'
+    : isset($_POST['half_day_enabled']);
 setWholeDayAttendance($conn, !$halfDay);
-echo json_encode(['saved' => true, 'half_day' => $halfDay]);
+$wholeDay = attendanceUsesWholeDay($conn);
+if ($wholeDay === $halfDay) {
+    http_response_code(500);
+    echo json_encode(['saved' => false, 'message' => 'Attendance mode could not be saved.']);
+    exit;
+}
+echo json_encode(['saved' => true, 'half_day' => !$wholeDay, 'whole_day' => $wholeDay]);
 ?>

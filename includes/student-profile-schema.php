@@ -15,6 +15,8 @@ function ensureStudentProfileColumns(mysqli $conn): void
     if (!isset($columns['STRAND'])) $conn->query("ALTER TABLE students ADD COLUMN STRAND VARCHAR(20) NOT NULL DEFAULT '' AFTER AGE");
     if (!isset($columns['ADDRESS'])) $conn->query("ALTER TABLE students ADD COLUMN ADDRESS VARCHAR(255) NOT NULL DEFAULT '' AFTER STRAND");
     if (!isset($columns['ENROLLMENT_STATUS'])) $conn->query("ALTER TABLE students ADD COLUMN ENROLLMENT_STATUS VARCHAR(20) NOT NULL DEFAULT 'Enrolled' AFTER SECTION");
+    if (!isset($columns['ARCHIVE_REASON'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVE_REASON VARCHAR(40) NOT NULL DEFAULT '' AFTER ENROLLMENT_STATUS");
+    if (!isset($columns['ARCHIVED_AT'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVED_AT DATETIME NULL AFTER ARCHIVE_REASON");
 
     $students = $conn->query("SELECT ID, STUDENT_NAME FROM students WHERE FIRST_NAME='' OR LAST_NAME=''");
     $update = $conn->prepare('UPDATE students SET FIRST_NAME=?, LAST_NAME=? WHERE ID=?');

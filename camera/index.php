@@ -1,12 +1,6 @@
 <?php
-session_start();
-
-if (empty($_SESSION['is-authenticated']) || ($_SESSION['user-role'] ?? '') !== 'camera') {
-    header('Location: ../', true, 302);
-    exit;
-}
-
-header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+http_response_code(410);
+exit;
 ?>
 <!doctype html>
 <html lang="en">

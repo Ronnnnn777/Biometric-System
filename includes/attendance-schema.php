@@ -10,8 +10,9 @@ function ensureAttendanceTimeOutColumn(mysqli $conn): void
     if(!isset($columns['ATTENDANCE_REMARK']))$conn->query("ALTER TABLE attendance ADD COLUMN ATTENDANCE_REMARK VARCHAR(40) NULL DEFAULT NULL AFTER TIME_OUT");
     if(!isset($columns['ATTENDANCE_NOTE']))$conn->query("ALTER TABLE attendance ADD COLUMN ATTENDANCE_NOTE VARCHAR(255) NULL DEFAULT NULL AFTER ATTENDANCE_REMARK");
     if(!isset($columns['IS_AUTO_ABSENT']))$conn->query("ALTER TABLE attendance ADD COLUMN IS_AUTO_ABSENT TINYINT(1) NOT NULL DEFAULT 0 AFTER ATTENDANCE_NOTE");
-    $conn->query("CREATE TABLE IF NOT EXISTS attendance_absence_settings (ID TINYINT UNSIGNED NOT NULL PRIMARY KEY, ENABLED_FROM DATE NOT NULL)");
-    $conn->query("INSERT IGNORE INTO attendance_absence_settings (ID, ENABLED_FROM) VALUES (1, CURDATE())");
+    // Automatic absences were retired in favor of teacher-confirmed records.
+    // Remove only the old system-generated rows; teacher-marked absences use 0.
+    $conn->query('DELETE FROM attendance WHERE IS_AUTO_ABSENT=1');
     $conn->query("CREATE TABLE IF NOT EXISTS attendance_day_settings (ID TINYINT UNSIGNED NOT NULL PRIMARY KEY, WHOLE_DAY_ENABLED TINYINT(1) NOT NULL DEFAULT 0, UPDATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
     $conn->query("INSERT IGNORE INTO attendance_day_settings (ID, WHOLE_DAY_ENABLED) VALUES (1, 0)");
 }
@@ -32,24 +33,6 @@ function setWholeDayAttendance(mysqli $conn, bool $enabled): void
     $update=$conn->prepare('INSERT INTO attendance_day_settings (ID, WHOLE_DAY_ENABLED) VALUES (1, ?) ON DUPLICATE KEY UPDATE WHOLE_DAY_ENABLED=VALUES(WHOLE_DAY_ENABLED)');
     $update->bind_param('i',$value);
     $update->execute();
-}
-
-/** Adds a single Absent record for enrolled students who had no time-in on a completed weekday. */
-function syncAutomaticAbsences(mysqli $conn): void
-{
-    ensureAttendanceTimeOutColumn($conn);
-    $settings=$conn->query('SELECT ENABLED_FROM FROM attendance_absence_settings WHERE ID=1 LIMIT 1')->fetch_assoc();
-    $start=isset($settings['ENABLED_FROM'])?new DateTimeImmutable($settings['ENABLED_FROM']):new DateTimeImmutable('today');
-    $now=new DateTimeImmutable('now');
-    $end=$now->format('H:i:s') >= ATTENDANCE_ABSENCE_FINALIZE_AT ? $now->setTime(0,0) : new DateTimeImmutable('yesterday');
-    if($start>$end)return;
-    // If a historical time-in is later added, remove only the automatic absence.
-    $conn->query("DELETE absent FROM attendance absent INNER JOIN attendance present ON TRIM(present.STUDENT_ID)=TRIM(absent.STUDENT_ID) AND DATE(present.TIME_IN)=DATE(absent.TIME_IN) AND present.IS_AUTO_ABSENT=0 WHERE absent.IS_AUTO_ABSENT=1");
-    $insert=$conn->prepare("INSERT INTO attendance (STUDENT_ID, STUDENT_NAME, TIME_IN, ATTENDANCE_REMARK, ATTENDANCE_NOTE, IS_AUTO_ABSENT) SELECT s.STUDENT_ID, s.STUDENT_NAME, CONCAT(?, ' 00:00:00'), 'Absent', 'Automatically marked absent: no time in recorded.', 1 FROM students s WHERE s.ENROLLMENT_STATUS='Enrolled' AND NOT EXISTS (SELECT 1 FROM attendance a WHERE TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN)=?)");
-    for($day=$start;$day<=$end;$day=$day->modify('+1 day')){
-        if((int)$day->format('N')>5)continue;
-        $date=$day->format('Y-m-d');$insert->bind_param('ss',$date,$date);$insert->execute();
-    }
 }
 
 const ATTENDANCE_LATE_FROM = '07:21:00';
@@ -127,7 +110,7 @@ function attendanceIsLate(string $timeIn): bool
 
 function attendanceRemarkOptions(): array
 {
-    return ['Excused late', 'Early dismissal'];
+    return ['Excused late', 'Excused absence', 'Early dismissal', 'Emergency dismissal'];
 }
 
 function attendanceIsAbsent(?string $remark): bool
@@ -135,9 +118,15 @@ function attendanceIsAbsent(?string $remark): bool
     return $remark === 'Absent';
 }
 
+/** Legacy profile views that do not request the remark still recognize a teacher-created absence. */
+function attendanceHasManualAbsentTimestamp(string $timeIn, ?string $timeOut = null): bool
+{
+    return $timeOut === null && str_ends_with($timeIn, '00:00:00');
+}
+
 function attendanceStatusLabel(string $timeIn, ?string $timeOut = null, ?string $remark = null, ?string $lunchOut = null, ?string $afternoonTimeIn = null): string
 {
-    if (attendanceIsAbsent($remark)) return 'Absent';
+    if (attendanceIsAbsent($remark) || ($remark === null && attendanceHasManualAbsentTimestamp($timeIn, $timeOut))) return 'Absent';
     if (in_array($remark, attendanceRemarkOptions(), true)) return $remark;
     $late = attendanceIsLate($timeIn);
     if (!empty($lunchOut) && empty($afternoonTimeIn)) return $late ? 'Late - Lunch out' : 'Lunch out';
@@ -148,9 +137,10 @@ function attendanceStatusLabel(string $timeIn, ?string $timeOut = null, ?string 
 
 function attendanceStatusClass(string $timeIn, ?string $timeOut = null, ?string $remark = null, ?string $lunchOut = null, ?string $afternoonTimeIn = null): string
 {
-    if (attendanceIsAbsent($remark)) return 'bg-rose-50 text-rose-700';
-    if ($remark === 'Excused late') return 'bg-violet-50 text-violet-700';
+    if (attendanceIsAbsent($remark) || ($remark === null && attendanceHasManualAbsentTimestamp($timeIn, $timeOut))) return 'bg-rose-50 text-rose-700';
+    if ($remark === 'Excused late' || $remark === 'Excused absence') return 'bg-violet-50 text-violet-700';
     if ($remark === 'Early dismissal') return 'bg-sky-50 text-sky-700';
+    if ($remark === 'Emergency dismissal') return 'bg-rose-50 text-rose-700';
     if (!empty($lunchOut) && empty($afternoonTimeIn)) return 'bg-blue-50 text-blue-700';
     if (attendanceIsLate($timeIn)) return 'bg-rose-50 text-rose-700';
     return empty($timeOut) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700';

@@ -1,4 +1,3 @@
 <?php
-require '../common/logout.php';
-
-?>
+header('Location: ../', true, 302);
+exit;

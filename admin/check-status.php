@@ -5,7 +5,7 @@ $studentId = trim($_GET['student_id'] ?? '');
 
 if ($studentId === '') {
     http_response_code(400);
-    echo "Student ID is required.";
+    echo "LRN is required.";
     exit;
 }
 

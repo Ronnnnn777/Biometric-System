@@ -11,9 +11,7 @@ if (preg_match('#/admin/login\.php$#i', $requestedPath)) {
 
 if (!empty($_SESSION['is-authenticated'])) {
     $role = $_SESSION['user-role'] ?? '';
-    $destination = $role === 'teacher'
-        ? '/teacher/home.php'
-        : ($role === 'camera' ? '/camera/index.php' : '/admin/home.php');
+    $destination = $role === 'teacher' ? '/teacher/students.php' : '/admin/home.php';
     header('Location: ' . $appBase . $destination);
     exit;
 }

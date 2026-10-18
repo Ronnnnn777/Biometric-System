@@ -44,7 +44,7 @@ if (count($allRows) < 2) importRedirect(['error' => 'The file needs a header row
 $headers = array_shift($allRows);
 $headerMap = studentImportHeaderMap($headers);
 if (!isset($headerMap['student_id'], $headerMap['grade'], $headerMap['age'], $headerMap['address'], $headerMap['section']) || (!isset($headerMap['student_name']) && (!isset($headerMap['first_name']) || !isset($headerMap['last_name'])))) {
-    importRedirect(['error' => 'Required columns: Student ID, First Name, Last Name, Grade, Age, Strand, Address, Section. You may use Student Name instead of first and last name.']);
+    importRedirect(['error' => 'Required columns: LRN, First Name, Last Name, Grade, Age, Strand, Address, Section. You may use Student Name instead of first and last name.']);
 }
 if (count($allRows) > 1000) importRedirect(['error' => 'Import up to 1,000 student rows at a time.']);
 
@@ -85,7 +85,7 @@ try {
 
         if ($studentId === '' && $firstName === '' && $lastName === '' && $grade === 0 && $age === 0 && $address === '' && $section === '') continue;
         if ($studentId === '' || $firstName === '' || $lastName === '' || !isValidStudentAge($age) || $address === '' || !isValidStudentPlacement($grade, $strand, $section) || !isValidStudentEnrollmentStatus($enrollmentStatus)) {
-            $skipped[] = "Row {$rowNumber}: missing or invalid Student ID, name, age, address, grade, strand, section, or status.";
+            $skipped[] = "Row {$rowNumber}: missing or invalid LRN, name, age, address, grade, strand, section, or status.";
             continue;
         }
         if (strlen($studentId) > 80 || strlen($firstName) > 80 || strlen($lastName) > 80 || strlen($strand) > 20 || strlen($address) > 255 || strlen($section) > 80 || strlen($enrollmentStatus) > 20) {
@@ -93,7 +93,7 @@ try {
             continue;
         }
         if (isset($seen[$studentId])) {
-            $skipped[] = "Row {$rowNumber}: Student ID {$studentId} is duplicated in this file.";
+            $skipped[] = "Row {$rowNumber}: LRN {$studentId} is duplicated in this file.";
             continue;
         }
         $seen[$studentId] = true;
@@ -106,7 +106,7 @@ try {
                 $updated += $refreshExistingName->affected_rows;
                 continue;
             }
-            $skipped[] = "Row {$rowNumber}: Student ID {$studentId} is already registered.";
+            $skipped[] = "Row {$rowNumber}: LRN {$studentId} is already registered.";
             continue;
         }
 

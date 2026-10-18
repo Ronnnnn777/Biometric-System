@@ -2,20 +2,22 @@
 require 'page-guard.php';
 require '../config/db_conn.php';
 require '../includes/attendance-schema.php';
+require '../includes/mobile-scanner-settings.php';
 require 'components.php';
 
 ensureAttendanceTimeOutColumn($conn);
-syncAutomaticAbsences($conn);
+$authorizedMobileScanners = authorizedMobileScanners($conn);
+$activeAuthorizedMobileScanners = array_values(array_filter($authorizedMobileScanners, fn($scanner) => (int) ($scanner['IS_ENABLED'] ?? 1) === 1));
 
 $today = date('Y-m-d');
 $totalStudents = (int) ($conn->query('SELECT COUNT(*) AS total FROM students')->fetch_assoc()['total'] ?? 0);
 
-$timeInStatement = $conn->prepare('SELECT COUNT(DISTINCT STUDENT_ID) AS total FROM attendance WHERE DATE(TIME_IN)=?');
+$timeInStatement = $conn->prepare("SELECT COUNT(DISTINCT STUDENT_ID) AS total FROM attendance WHERE DATE(TIME_IN)=? AND COALESCE(ATTENDANCE_REMARK,'')<>'Absent'");
 $timeInStatement->bind_param('s', $today);
 $timeInStatement->execute();
 $todayCount = (int) ($timeInStatement->get_result()->fetch_assoc()['total'] ?? 0);
 
-$timeOutStatement = $conn->prepare('SELECT COUNT(DISTINCT STUDENT_ID) AS total FROM attendance WHERE DATE(TIME_IN)=? AND TIME_OUT IS NOT NULL');
+$timeOutStatement = $conn->prepare("SELECT COUNT(DISTINCT STUDENT_ID) AS total FROM attendance WHERE DATE(TIME_IN)=? AND TIME_OUT IS NOT NULL AND COALESCE(ATTENDANCE_REMARK,'')<>'Absent'");
 $timeOutStatement->bind_param('s', $today);
 $timeOutStatement->execute();
 $timeOutCount = (int) ($timeOutStatement->get_result()->fetch_assoc()['total'] ?? 0);
@@ -51,35 +53,217 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
     </article>
 </section>
 
-<section class="mt-7 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-            <h2 class="text-xl font-black text-slate-900">Today's attendance statistics</h2>
-            <p class="mt-1 text-sm text-slate-500">A quick summary for <?= htmlspecialchars(date('F j, Y')) ?>.</p>
-        </div>
-        <a href="attendance-log.php" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">View attendance logs</a>
-    </div>
-
-    <div class="mt-6 grid gap-5 md:grid-cols-3">
-        <article class="rounded-xl border border-blue-100 bg-blue-50 p-5">
-            <p class="text-sm font-bold text-blue-700">Attendance rate</p>
-            <p class="mt-2 text-3xl font-black text-blue-950"><?= $attendanceRate ?>%</p>
-            <p class="mt-2 text-sm text-blue-800"><?= $todayCount ?> of <?= $totalStudents ?> students checked in</p>
-        </article>
-        <article class="rounded-xl border border-amber-100 bg-amber-50 p-5">
-            <p class="text-sm font-bold text-amber-700">Still checked in</p>
-            <p class="mt-2 text-3xl font-black text-amber-950"><?= $stillCheckedIn ?></p>
-            <p class="mt-2 text-sm text-amber-800">Time in recorded, no time out yet</p>
-        </article>
-        <article class="rounded-xl border border-emerald-100 bg-emerald-50 p-5">
-            <p class="text-sm font-bold text-emerald-700">Attendance completed</p>
-            <p class="mt-2 text-3xl font-black text-emerald-950"><?= $completionRate ?>%</p>
-            <p class="mt-2 text-sm text-emerald-800"><?= $timeOutCount ?> checked out after time in</p>
-        </article>
-    </div>
-</section>
+<section id="mobile-scanner-card" class="mt-7 rounded-2xl bg-white p-6 shadow-sm ring-2 ring-[#102e5e] sm:p-8"></section>
 
 <script>
+    const authorizedPhoneScanners = <?= json_encode(array_map(fn($scanner) => ['name' => $scanner['SCANNER_NAME'], 'id' => $scanner['SCANNER_ID'], 'enabled' => (int) ($scanner['IS_ENABLED'] ?? 1) === 1], $authorizedMobileScanners), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    const dashboardCsrfToken = <?= json_encode($_SESSION['csrf_token']) ?>;
+    const renderedActiveScannerCount = authorizedPhoneScanners.filter(scanner => scanner.enabled).length;
+    const mobileScannerCard = document.getElementById('mobile-scanner-card');
+    if (mobileScannerCard) {
+        mobileScannerCard.innerHTML = `
+            <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <p class="text-xs font-black uppercase tracking-widest text-[#1f4f91]">Mobile scanners</p>
+                    <h2 class="mt-2 text-2xl font-black text-slate-900">Registered scanner phones</h2>
+                    <p id="mobile-scanner-copy" class="mt-2 max-w-xl text-sm leading-6 text-slate-500">A phone appears here automatically the first time it connects to MNHS Attendance.</p>
+                </div>
+                <div class="flex items-center gap-3 rounded-2xl bg-blue-50 px-5 py-4 ring-1 ring-blue-100">
+                    <div class="grid h-12 w-12 place-items-center rounded-xl bg-emerald-100 text-2xl text-emerald-700">&#128241;</div>
+                    <p id="mobile-scanner-status" class="whitespace-nowrap text-base font-black text-emerald-700"><?= count($activeAuthorizedMobileScanners) === 1 ? '1 active scanner' : count($activeAuthorizedMobileScanners) . ' active scanners' ?></p>
+                </div>
+            </div><div id="authorized-phone-list" class="mt-6 grid gap-3 md:grid-cols-2"></div><div id="authorized-phone-pagination" class="mt-5 flex items-center justify-center gap-3"></div>`;
+        const phoneList = document.getElementById('authorized-phone-list');
+        const phonePagination = document.getElementById('authorized-phone-pagination');
+        if (phoneList) {
+            const scannersPerPage = 4;
+            let scannerPage = 1;
+            const renderAuthorizedPhones = () => {
+                phoneList.replaceChildren();
+                phonePagination?.replaceChildren();
+                if (!authorizedPhoneScanners.length) {
+                    phoneList.textContent = 'No authorized phones added yet.';
+                    return;
+                }
+
+                const totalPages = Math.ceil(authorizedPhoneScanners.length / scannersPerPage);
+                scannerPage = Math.min(Math.max(scannerPage, 1), totalPages);
+                const start = (scannerPage - 1) * scannersPerPage;
+                authorizedPhoneScanners.slice(start, start + scannersPerPage).forEach(scanner => {
+                const phone = document.createElement('div');
+                phone.className = 'flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4';
+
+                const details = document.createElement('div');
+                details.className = 'flex min-w-0 items-center gap-3';
+                const phoneIcon = document.createElement('div');
+                phoneIcon.className = 'grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-100 text-lg text-blue-700';
+                phoneIcon.setAttribute('aria-hidden', 'true');
+                phoneIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5"><rect x="6" y="2.5" width="12" height="19" rx="2"></rect><path d="M10 18.5h4"></path></svg>';
+                const copy = document.createElement('div');
+                copy.className = 'min-w-0';
+                const name = document.createElement('p');
+                name.className = 'font-black text-slate-900';
+                name.textContent = scanner.name;
+                const id = document.createElement('p');
+                id.className = 'mt-1 text-xs font-bold text-slate-500';
+                id.textContent = scanner.id;
+                copy.append(name, id);
+                details.append(phoneIcon, copy);
+
+                const controls = document.createElement('div');
+                controls.className = 'flex items-center gap-3';
+                const status = document.createElement('span');
+                status.className = scanner.enabled
+                    ? 'rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700'
+                    : 'rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-600';
+                status.textContent = scanner.enabled ? 'Active' : 'Disabled';
+                controls.appendChild(status);
+
+                const form = document.createElement('form');
+                form.method = 'post';
+                form.action = scanner.enabled ? 'disable-mobile-scanner.php' : 'activate-mobile-scanner.php';
+                if (scanner.enabled) {
+                    form.dataset.confirmDisable = 'true';
+                    form.dataset.scannerName = scanner.name;
+                }
+                const token = document.createElement('input');
+                token.type = 'hidden';
+                token.name = 'csrf_token';
+                token.value = dashboardCsrfToken;
+                const scannerId = document.createElement('input');
+                scannerId.type = 'hidden';
+                scannerId.name = 'scanner_id';
+                scannerId.value = scanner.id;
+                const button = document.createElement('button');
+                button.type = 'submit';
+                button.className = scanner.enabled
+                    ? 'font-bold text-rose-600 transition hover:text-rose-700'
+                    : 'font-bold text-emerald-700 transition hover:text-emerald-800';
+                button.textContent = scanner.enabled ? 'Disable' : 'Activate';
+                form.append(token, scannerId, button);
+                controls.appendChild(form);
+
+                const removeForm = document.createElement('form');
+                removeForm.method = 'post';
+                removeForm.action = 'remove-mobile-scanner.php';
+                const removeToken = document.createElement('input');
+                removeToken.type = 'hidden';
+                removeToken.name = 'csrf_token';
+                removeToken.value = dashboardCsrfToken;
+                const removeScannerId = document.createElement('input');
+                removeScannerId.type = 'hidden';
+                removeScannerId.name = 'scanner_id';
+                removeScannerId.value = scanner.id;
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.className = 'font-bold text-slate-600 transition hover:text-rose-700';
+                removeButton.textContent = 'Remove';
+                removeButton.addEventListener('click', () => {
+                    pendingScannerRemoveForm = removeForm;
+                    document.getElementById('remove-scanner-name').textContent = scanner.name || 'This mobile scanner';
+                    scannerRemoveModal.classList.replace('hidden', 'flex');
+                });
+                removeForm.append(removeToken, removeScannerId, removeButton);
+                controls.appendChild(removeForm);
+
+                phone.append(details, controls);
+                phoneList.appendChild(phone);
+                });
+
+                if (totalPages > 1 && phonePagination) {
+                    const previous = document.createElement('button');
+                    previous.type = 'button';
+                    previous.className = 'rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40';
+                    previous.textContent = 'Previous';
+                    previous.disabled = scannerPage === 1;
+                    previous.addEventListener('click', () => { scannerPage--; renderAuthorizedPhones(); });
+
+                    const page = document.createElement('p');
+                    page.className = 'text-sm font-bold text-slate-600';
+                    page.textContent = `Page ${scannerPage} of ${totalPages}`;
+
+                    const next = document.createElement('button');
+                    next.type = 'button';
+                    next.className = 'rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40';
+                    next.textContent = 'Next';
+                    next.disabled = scannerPage === totalPages;
+                    next.addEventListener('click', () => { scannerPage++; renderAuthorizedPhones(); });
+                    phonePagination.append(previous, page, next);
+                }
+            };
+            renderAuthorizedPhones();
+        }
+    }
+
+    const scannerDisableModal = document.createElement('div');
+    scannerDisableModal.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5';
+    scannerDisableModal.innerHTML = `
+        <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="disable-scanner-title">
+            <h2 id="disable-scanner-title" class="text-xl font-black text-slate-900">Disable mobile scanner?</h2>
+            <p class="mt-2 text-sm leading-6 text-slate-600">This phone will no longer be able to sign in or record attendance until you activate it again.</p>
+            <p id="disable-scanner-name" class="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-800"></p>
+            <div class="mt-6 flex gap-3">
+                <button id="cancel-scanner-disable" type="button" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
+                <button id="confirm-scanner-disable" type="button" class="flex-1 rounded-xl bg-rose-600 px-4 py-3 font-bold text-white hover:bg-rose-700">Disable scanner</button>
+            </div>
+        </div>`;
+    document.body.appendChild(scannerDisableModal);
+
+    let pendingScannerDisableForm = null;
+    const closeScannerDisableModal = () => {
+        pendingScannerDisableForm = null;
+        scannerDisableModal.classList.replace('flex', 'hidden');
+    };
+    document.addEventListener('submit', event => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || form.dataset.confirmDisable !== 'true') return;
+        event.preventDefault();
+        pendingScannerDisableForm = form;
+        document.getElementById('disable-scanner-name').textContent = form.dataset.scannerName || 'This mobile scanner';
+        scannerDisableModal.classList.replace('hidden', 'flex');
+    });
+    document.getElementById('cancel-scanner-disable').addEventListener('click', closeScannerDisableModal);
+    document.getElementById('confirm-scanner-disable').addEventListener('click', () => {
+        if (!pendingScannerDisableForm) return;
+        const form = pendingScannerDisableForm;
+        closeScannerDisableModal();
+        form.dataset.confirmDisable = 'confirmed';
+        form.submit();
+    });
+    scannerDisableModal.addEventListener('click', event => {
+        if (event.target === scannerDisableModal) closeScannerDisableModal();
+    });
+
+    const scannerRemoveModal = document.createElement('div');
+    scannerRemoveModal.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5';
+    scannerRemoveModal.innerHTML = `
+        <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="remove-scanner-title">
+            <h2 id="remove-scanner-title" class="text-xl font-black text-slate-900">Remove mobile scanner?</h2>
+            <p class="mt-2 text-sm leading-6 text-slate-600">This removes the phone from the Dashboard and blocks it from registering again.</p>
+            <p id="remove-scanner-name" class="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-800"></p>
+            <div class="mt-6 flex gap-3">
+                <button id="cancel-scanner-remove" type="button" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
+                <button id="confirm-scanner-remove" type="button" class="flex-1 rounded-xl bg-rose-600 px-4 py-3 font-bold text-white hover:bg-rose-700">Remove scanner</button>
+            </div>
+        </div>`;
+    document.body.appendChild(scannerRemoveModal);
+
+    let pendingScannerRemoveForm = null;
+    const closeScannerRemoveModal = () => {
+        pendingScannerRemoveForm = null;
+        scannerRemoveModal.classList.replace('flex', 'hidden');
+    };
+    document.getElementById('cancel-scanner-remove').addEventListener('click', closeScannerRemoveModal);
+    document.getElementById('confirm-scanner-remove').addEventListener('click', () => {
+        if (!pendingScannerRemoveForm) return;
+        const form = pendingScannerRemoveForm;
+        closeScannerRemoveModal();
+        form.submit();
+    });
+    scannerRemoveModal.addEventListener('click', event => {
+        if (event.target === scannerRemoveModal) closeScannerRemoveModal();
+    });
+
     function refreshDashboardStatistics() {
         fetch('get-stats.php', { cache: 'no-store' })
             .then(response => response.json())
@@ -87,10 +271,15 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
                 document.getElementById('stat-total').textContent = data.totalStudents;
                 document.getElementById('stat-today').textContent = data.attendanceToday;
                 document.getElementById('stat-time-out').textContent = data.timeOutToday;
+                const activePhones = Number(data.authorizedMobileScanners || 0);
+                const activePhoneStatus = document.getElementById('mobile-scanner-status');
+                if (activePhoneStatus) activePhoneStatus.textContent = activePhones === 1 ? '1 active scanner' : activePhones + ' active scanners';
+                if (activePhones !== renderedActiveScannerCount) window.location.reload();
             })
             .catch(() => {});
     }
 
     setInterval(refreshDashboardStatistics, 5000);
+
 </script>
 <?php adminFoot(); ?>

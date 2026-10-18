@@ -1,0 +1,2 @@
+<resources xmlns:tools="http://schemas.android.com/tools"><style name="Theme.MaruhatScanner" parent="Theme.AppCompat.Light.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:colorAccent">@color/maruhat_blue</item><item name="android:navigationBarColor">@color/maruhat_deep</item><item name="android:statusBarColor">@color/maruhat_deep</item><item name="android:windowLightStatusBar">false</item></style></resources>
+

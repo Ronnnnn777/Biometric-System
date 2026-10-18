@@ -8,5 +8,4 @@ require __DIR__ . '/../config/db_conn.php';
 require __DIR__ . '/../includes/attendance-schema.php';
 
 ensureAttendanceTimeOutColumn($conn);
-syncAutomaticAbsences($conn);
-echo 'Automatic absence check completed at ' . date('Y-m-d H:i:s') . PHP_EOL;
+echo 'Automatic absence marking is disabled. Teachers mark absences manually.' . PHP_EOL;
