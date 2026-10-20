@@ -114,13 +114,13 @@ adminSidebar(
     });
 </script>
 <script>
-    const placementOptions = < ? = json_encode(
+    const placementOptions = <?= json_encode(
             $placement,
-        ) ? > ,
-        subjectOptions = < ? = json_encode(
+        ) ?>,
+        subjectOptions = <?= json_encode(
             teacherSubjects(),
-        ) ? > ,
-        savedAssignments = < ? = json_encode(
+        ) ?>,
+        savedAssignments = <?= json_encode(
             array_map(
                 fn($a) => [
                     "grade" => (int) $a["GRADE"],
@@ -130,7 +130,7 @@ adminSidebar(
                 ],
                 $assignments,
             ),
-        ) ? > ,
+        ) ?>,
         assignmentList = document.getElementById('assignment-list');
 
     function setOptions(select, placeholder, items, value = '') {

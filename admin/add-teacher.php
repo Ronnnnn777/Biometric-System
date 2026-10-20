@@ -62,12 +62,12 @@ adminSidebar(
     </form>
 </section>
 <script>
-    const placementOptions = < ? = json_encode(
+    const placementOptions = <?= json_encode(
             $placement,
-        ) ? > ,
-        subjectOptions = < ? = json_encode(
+        ) ?>,
+        subjectOptions = <?= json_encode(
             teacherSubjects(),
-        ) ? > ,
+        ) ?>,
         assignmentList = document.getElementById('assignment-list');
 
     function setOptions(select, placeholder, items, value = '') {

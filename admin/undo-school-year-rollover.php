@@ -31,13 +31,16 @@ $currentSchoolYear = (string) ($setting['ACTIVE_SCHOOL_YEAR'] ?? '');
 if (!preg_match('/^(\d{4})-(\d{4})$/', $currentSchoolYear, $years)) {
     undoRolloverRedirect('The active school year is invalid.');
 }
-$previousSchoolYear = ((int) $years[1] - 1) . '-' . ((int) $years[2] - 1);
+$targetSchoolYear = trim((string) ($_POST['target_school_year'] ?? ''));
+if (!preg_match('/^(\d{4})-(\d{4})$/', $targetSchoolYear) || $targetSchoolYear >= $currentSchoolYear) {
+    undoRolloverRedirect('Choose a valid past school year to restore.');
+}
 $count = $conn->prepare('SELECT COUNT(*) total FROM student_school_history WHERE SCHOOL_YEAR=?');
-$count->bind_param('s', $previousSchoolYear);
+$count->bind_param('s', $targetSchoolYear);
 $count->execute();
 $studentCount = (int) ($count->get_result()->fetch_assoc()['total'] ?? 0);
 if ($studentCount === 0) {
-    undoRolloverRedirect('No saved student snapshot is available for ' . $previousSchoolYear . '.');
+    undoRolloverRedirect('No saved student snapshot is available for ' . $targetSchoolYear . '.');
 }
 
 try {
@@ -45,16 +48,16 @@ try {
     $restore = $conn->prepare(
         "UPDATE students s INNER JOIN student_school_history h ON TRIM(h.STUDENT_ID)=TRIM(s.STUDENT_ID) SET s.GRADE=h.GRADE,s.STRAND=h.STRAND,s.SECTION=h.SECTION,s.ENROLLMENT_STATUS=h.ENROLLMENT_STATUS,s.ARCHIVE_REASON=CASE WHEN h.ENROLLMENT_STATUS='Enrolled' THEN '' ELSE s.ARCHIVE_REASON END,s.ARCHIVED_AT=CASE WHEN h.ENROLLMENT_STATUS='Enrolled' THEN NULL ELSE s.ARCHIVED_AT END WHERE h.SCHOOL_YEAR=?",
     );
-    $restore->bind_param('s', $previousSchoolYear);
+    $restore->bind_param('s', $targetSchoolYear);
     $restore->execute();
     $restored = $restore->affected_rows;
 
     $updateYear = $conn->prepare('UPDATE school_year_settings SET ACTIVE_SCHOOL_YEAR=? WHERE ID=1');
-    $updateYear->bind_param('s', $previousSchoolYear);
+    $updateYear->bind_param('s', $targetSchoolYear);
     $updateYear->execute();
     $conn->commit();
     undoRolloverRedirect(
-        'Rollover undone. ' . $restored . ' student record' . ($restored === 1 ? ' was' : 's were') . ' restored and the active school year is now ' . $previousSchoolYear . '.',
+        'Rollover undone. ' . $restored . ' student record' . ($restored === 1 ? ' was' : 's were') . ' restored and the active school year is now ' . $targetSchoolYear . '.',
         'success',
     );
 } catch (Throwable $error) {

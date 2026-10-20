@@ -22,16 +22,13 @@ $mapRows=$conn->query('SELECT * FROM school_year_rollover_maps');
 while($mapRows&&$row=$mapRows->fetch_assoc()) $maps[$row['FROM_GRADE'].'|'.$row['FROM_STRAND'].'|'.$row['FROM_SECTION']]=$row;
 $setting=$conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc();
 $activeSchoolYear=(string)($setting['ACTIVE_SCHOOL_YEAR']??'');
-$previousSchoolYear='';
-$undoStudentCount=0;
-if(preg_match('/^(\d{4})-(\d{4})$/',$activeSchoolYear,$years)){
-    $previousSchoolYear=((int)$years[1]-1).'-'.((int)$years[2]-1);
-    $undoCount=$conn->prepare('SELECT COUNT(*) total FROM student_school_history WHERE SCHOOL_YEAR=?');
-    $undoCount->bind_param('s',$previousSchoolYear);
-    $undoCount->execute();
-    $undoStudentCount=(int)($undoCount->get_result()->fetch_assoc()['total']??0);
-}
-$canUndo=$previousSchoolYear!==''&&$undoStudentCount>0;
+$pastRolloverYears=[];
+$pastYears=$conn->prepare('SELECT SCHOOL_YEAR,COUNT(*) STUDENT_COUNT FROM student_school_history WHERE SCHOOL_YEAR < ? GROUP BY SCHOOL_YEAR ORDER BY SCHOOL_YEAR DESC');
+$pastYears->bind_param('s',$activeSchoolYear);
+$pastYears->execute();
+$pastYearRows=$pastYears->get_result();
+while($pastYearRows&&$pastYear=$pastYearRows->fetch_assoc()) $pastRolloverYears[]=$pastYear;
+$canUndo=!empty($pastRolloverYears);
 adminHead('School year rollover');
 adminSidebar('rollover','End-of-school-year rollover','Use this only after the school year ends to promote students and archive graduating Grade 12 students.');
 ?>
@@ -93,7 +90,7 @@ adminSidebar('rollover','End-of-school-year rollover','Use this only after the s
         </div>
         <div class="mt-6 flex flex-wrap justify-end gap-3">
             <button id="open-undo-rollover" type="button" <?= $canUndo?'':'disabled' ?>
-                class="rounded-xl border px-5 py-3 font-bold disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400" style="border-color:#f59e0b;background:#fffbeb;color:#92400e">Undo rollover<?= $canUndo?' to '.htmlspecialchars($previousSchoolYear):'' ?></button>
+                class="rounded-xl border px-5 py-3 font-bold disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400" style="border-color:#f59e0b;background:#fffbeb;color:#92400e">Undo rollover</button>
             <button id="open-rollover-confirmation" type="button"
                 class="rounded-xl bg-rose-600 px-5 py-3 font-bold text-white hover:bg-rose-700">Confirm rollover</button>
         </div>
@@ -112,12 +109,14 @@ adminSidebar('rollover','End-of-school-year rollover','Use this only after the s
 <form id="undo-rollover-form" action="undo-school-year-rollover.php" method="post">
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
     <input id="undo-rollover-password" type="hidden" name="current_password">
+    <input id="undo-rollover-year" type="hidden" name="target_school_year">
 </form>
 <div id="undo-rollover-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5" role="dialog" aria-modal="true" aria-labelledby="undo-rollover-title">
     <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
         <h3 id="undo-rollover-title" class="text-xl font-black text-slate-900">Undo school-year rollover?</h3>
-        <p class="mt-2 text-sm leading-6 text-slate-600">This restores <?= (int)$undoStudentCount ?> student record<?= $undoStudentCount===1?'':'s' ?> to their saved <?= htmlspecialchars($previousSchoolYear?:'previous') ?> grade, section, and enrollment status. The active school year will return to <?= htmlspecialchars($previousSchoolYear?:'the previous school year') ?>.</p>
-        <p class="mt-3 text-sm font-bold text-amber-800">Use this only to correct the most recent rollover.</p>
+        <p class="mt-2 text-sm leading-6 text-slate-600">Choose a saved school year to restore its student grades, sections, and enrollment statuses. The active school year will return to the selected year.</p>
+        <label class="mt-5 block text-sm font-bold text-slate-800">Restore to school year<select id="undo-rollover-year-select" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" required><?php foreach($pastRolloverYears as $pastYear): ?><option value="<?= htmlspecialchars($pastYear['SCHOOL_YEAR']) ?>" data-students="<?= (int)$pastYear['STUDENT_COUNT'] ?>"><?= htmlspecialchars($pastYear['SCHOOL_YEAR']) ?> (<?= (int)$pastYear['STUDENT_COUNT'] ?> students)</option><?php endforeach; ?></select></label>
+        <p id="undo-rollover-summary" class="mt-3 text-sm font-bold text-amber-800"></p>
         <label class="mt-5 block text-sm font-bold text-slate-800">Administrator password<input id="undo-rollover-password-input" type="password" autocomplete="current-password" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" required></label>
         <p id="undo-rollover-error" class="mt-3 hidden text-sm font-bold text-rose-600"></p>
         <div class="mt-6 flex gap-3"><button id="cancel-undo-rollover" type="button" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700 hover:bg-slate-50">Cancel</button><button id="submit-undo-rollover" type="button" class="flex-1 rounded-xl px-4 py-3 font-bold shadow-sm" style="display:inline-flex;align-items:center;justify-content:center;background:#b45309;color:#fff">Undo rollover</button></div>
@@ -141,15 +140,21 @@ adminSidebar('rollover','End-of-school-year rollover','Use this only after the s
 </script>
 <script>
     (() => {
-        const form = document.getElementById('undo-rollover-form'), open = document.getElementById('open-undo-rollover'), modal = document.getElementById('undo-rollover-modal'), cancel = document.getElementById('cancel-undo-rollover'), submit = document.getElementById('submit-undo-rollover'), password = document.getElementById('undo-rollover-password-input'), error = document.getElementById('undo-rollover-error');
+        const form = document.getElementById('undo-rollover-form'), open = document.getElementById('open-undo-rollover'), modal = document.getElementById('undo-rollover-modal'), cancel = document.getElementById('cancel-undo-rollover'), submit = document.getElementById('submit-undo-rollover'), password = document.getElementById('undo-rollover-password-input'), year = document.getElementById('undo-rollover-year-select'), targetYear = document.getElementById('undo-rollover-year'), summary = document.getElementById('undo-rollover-summary'), error = document.getElementById('undo-rollover-error');
         if (!form || !open || open.disabled || !modal || !cancel || !submit) return;
         const close = () => { modal.classList.replace('flex', 'hidden'); error.classList.add('hidden'); };
-        open.addEventListener('click', () => { password.value = ''; modal.classList.replace('hidden', 'flex'); password.focus(); });
+        const updateSummary = () => {
+            const option = year.options[year.selectedIndex];
+            summary.textContent = `This will restore ${option.dataset.students} student records and make ${option.value} the active school year.`;
+        };
+        year.addEventListener('change', updateSummary);
+        open.addEventListener('click', () => { password.value = ''; updateSummary(); modal.classList.replace('hidden', 'flex'); password.focus(); });
         cancel.addEventListener('click', close);
         modal.addEventListener('click', event => { if (event.target === modal) close(); });
         submit.addEventListener('click', () => {
             if (!password.value) { error.textContent = 'Enter the administrator password.'; error.classList.remove('hidden'); return; }
             document.getElementById('undo-rollover-password').value = password.value;
+            targetYear.value = year.value;
             form.submit();
         });
     })();
