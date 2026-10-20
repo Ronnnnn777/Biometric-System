@@ -92,7 +92,7 @@ adminSidebar(
     }
 </style>
 <div class="mb-6 flex flex-wrap items-center justify-between gap-4"><a href="archived-teachers.php"
-        class="text-sm font-bold text-blue-600 hover:text-blue-800">&larr; Back to archived teachers</a><span
+        class="inline-flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-800"><?= icon('arrow-left') ?>Back to archived teachers</a><span
         class="rounded-full bg-amber-50 px-3 py-1 text-sm font-bold text-amber-700">Archived record</span></div>
 <div class="archived-teacher-record-layout grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
     <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">

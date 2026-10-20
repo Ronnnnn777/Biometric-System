@@ -83,14 +83,11 @@ adminHead("Attendance scanner");
     <div id="scanner-controls" class="absolute inset-x-0 bottom-5 z-10 flex justify-center px-5">
         <div class="flex items-center gap-3 rounded-2xl bg-black/55 p-3 shadow-2xl backdrop-blur"><button
                 id="scan-toggle"
-                class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700"><span
-                    aria-hidden="true">▶</span> Start scanner</button><button id="manual-attendance"
-                class="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-3 font-bold text-white hover:bg-white/25"><span
-                    aria-hidden="true">✎</span> Manual attendance</button></div>
+                class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700"><?= icon('play') ?> Start scanner</button><button id="manual-attendance"
+                class="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-3 font-bold text-white hover:bg-white/25"><?= icon('pencil') ?> Manual attendance</button></div>
     </div>
     <button id="back-button"
-        class="absolute left-5 top-5 z-20 rounded-xl border border-white/30 bg-black/30 px-4 py-3 font-bold text-white backdrop-blur hover:bg-black/55"><span
-            aria-hidden="true">←</span> Back</button>
+        class="absolute left-5 top-5 z-20 rounded-xl border border-white/30 bg-black/30 px-4 py-3 font-bold text-white backdrop-blur hover:bg-black/55"><?= icon('arrow-left') ?> Back</button>
 
     <div id="scan-type-modal" class="absolute inset-0 z-30 hidden items-center justify-center bg-black/70 p-5">
         <div class="w-full max-w-md rounded-2xl bg-white p-6 text-slate-800 shadow-2xl">
@@ -114,8 +111,8 @@ adminHead("Attendance scanner");
                 <div>
                     <h1 class="text-xl font-black">Manual attendance</h1>
                     <p class="mt-1 text-sm text-slate-500">Search for a student by name or LRN.</p>
-                </div><button id="close-manual" class="rounded-lg px-2 text-2xl text-slate-400 hover:text-slate-700"
-                    aria-label="Close">&times;</button>
+                </div><button id="close-manual" class="rounded-lg p-2 text-slate-400 hover:text-slate-700"
+                    aria-label="Close"><?= icon('x') ?></button>
             </div>
             <div class="relative mt-5"><input id="manual-student-name"
                     class="w-full rounded-xl border border-slate-300 px-4 py-3" placeholder="Student name or ID"
@@ -156,6 +153,8 @@ adminHead("Attendance scanner");
     </div>
 </main>
 <script>
+    const playIcon = <?= json_encode(icon('play')) ?>;
+    const stopIcon = <?= json_encode(icon('square')) ?>;
     const video = document.getElementById('scanner-video'),
         idleBrand = document.getElementById('scanner-idle-brand'),
         canvas = document.getElementById('scanner-canvas'),
@@ -164,10 +163,10 @@ adminHead("Attendance scanner");
         controls = document.getElementById('scanner-controls'),
         actionLabel = document.getElementById('scanner-action-label'),
         status = document.getElementById('scanner-status'),
-        requestedCamera = < ? = json_encode(
+        requestedCamera = <?= json_encode(
             $requestedCamera,
-        ) ? > ,
-        csrfToken = < ? = json_encode($_SESSION["csrf_token"]) ? > ;
+        ) ?> ,
+        csrfToken = <?= json_encode($_SESSION["csrf_token"]) ?> ;
     let stream = null,
         timer = null,
         running = false,
@@ -218,8 +217,7 @@ adminHead("Attendance scanner");
     function renderToggle() {
         toggle.className = 'inline-flex items-center gap-2 rounded-xl px-4 py-3 font-bold text-white ' + (running ?
             'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700');
-        toggle.innerHTML = running ? '<span aria-hidden="true">■</span> Stop scanner' :
-            '<span aria-hidden="true">▶</span> Start scanner'
+        toggle.innerHTML = running ? stopIcon + ' Stop scanner' : playIcon + ' Start scanner';
     }
 
     function setActionLabel(type) {
@@ -793,9 +791,9 @@ adminHead("Attendance scanner");
             'Could not record attendance.'
     }
     toggle.onclick = () => running ? stop() : start('auto');
-    if ( < ? = json_encode(
+    if ( <?= json_encode(
             $openManual,
-        ) ? > ) {
+        ) ?> ) {
         document.getElementById('manual-modal').classList.replace('hidden', 'flex');
         setTimeout(() => document.getElementById('manual-student-name').focus(), 0);
     }

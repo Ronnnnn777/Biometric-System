@@ -39,7 +39,7 @@ adminSidebar(
 ?>
 <div class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
     <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
-        <a href="student-list.php" class="text-sm font-bold text-blue-600 hover:text-blue-700">&larr; Back to
+        <a href="student-list.php" class="inline-flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-700"><?= icon('arrow-left') ?>Back to
             students</a>
         <h2 class="mt-5 text-2xl font-black text-slate-900">Student details</h2>
         <form action="update-student.php" method="post" enctype="multipart/form-data" class="mt-7 space-y-5">

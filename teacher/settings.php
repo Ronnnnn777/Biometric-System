@@ -55,6 +55,8 @@ teacherShell("Settings");
     }
 
     .teacher-settings-chevron {
+        display: inline-flex;
+        align-items: center;
         font-size: 1.25rem;
         transition: transform .2s ease
     }
@@ -64,10 +66,24 @@ teacherShell("Settings");
         color: #2563eb
     }
 </style>
+<details class="teacher-settings-group" open>
+    <summary><span><span class="block text-base font-black text-slate-900">Appearance</span><span
+                class="mt-1 block text-sm font-medium text-slate-500">Choose a light or dark dashboard, or follow this
+                device.</span></span><span class="teacher-settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
+    <section class="border-t border-slate-100 p-5 sm:p-6">
+        <p class="text-sm text-slate-500">Your choice is saved in this browser and applies to the admin and teacher
+            portals on this device.</p>
+        <div class="theme-options" role="group" aria-label="Colour theme">
+            <button type="button" class="theme-option" data-theme-option="light" aria-pressed="false"><?= icon('sun') ?><span>Light</span></button>
+            <button type="button" class="theme-option" data-theme-option="dark" aria-pressed="false"><?= icon('moon') ?><span>Dark</span></button>
+            <button type="button" class="theme-option" data-theme-option="system" aria-pressed="true"><?= icon('monitor') ?><span>System</span></button>
+        </div>
+    </section>
+</details>
 <details class="teacher-settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Biometric sign-in</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Enroll the face used with your password for
-                biometric sign-in.</span></span><span class="teacher-settings-chevron text-slate-500">⌄</span></summary>
+                biometric sign-in.</span></span><span class="teacher-settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
     <section class="border-t border-slate-100 p-5 sm:p-6">
         <p class="text-sm text-slate-500">Enroll a clear face from this device. Your password and face verification will
             both be required when using biometric sign-in.</p>
@@ -83,7 +99,7 @@ teacherShell("Settings");
 <details class="teacher-settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Change password</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Update your own teacher account
-                password.</span></span><span class="teacher-settings-chevron text-slate-500">⌄</span></summary>
+                password.</span></span><span class="teacher-settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
     <section class="border-t border-slate-100 p-5 sm:p-6">
         <form action="settings-save.php" method="post" class="space-y-4"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars(
     $_SESSION["csrf_token"],
@@ -107,8 +123,8 @@ teacherShell("Settings");
     <form id="teacher-biometric-form" action="settings-save.php" method="post"
         class="relative w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl sm:p-6">
         <button id="teacher-biometric-camera-close" type="button"
-            class="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full text-2xl leading-none text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-            aria-label="Close camera">&times;</button>
+            class="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            aria-label="Close camera"><?= icon('x') ?></button>
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(
         $_SESSION["csrf_token"],
     ) ?>">

@@ -112,7 +112,7 @@ teacherShell("Student profile");
 </script>
 <a href="students.php?grade=<?= $grade ?>&section=<?= urlencode(
     $section,
-) ?>" class="text-sm font-bold text-blue-600">&larr; Back to students</a>
+) ?>" class="inline-flex items-center gap-1 text-sm font-bold text-blue-600"><?= icon('arrow-left') ?>Back to students</a>
 <section class="mt-5 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div><h2 class="text-xl font-black text-slate-900">Academic results</h2><p class="mt-1 text-sm text-slate-500">School year <?= htmlspecialchars($schoolYear) ?>. Record this student's result for your subject.</p></div>

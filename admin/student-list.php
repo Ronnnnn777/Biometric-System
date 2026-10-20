@@ -33,7 +33,7 @@ adminSidebar('students', 'Students', 'Search profiles and filter by grade or sec
         <div class="flex flex-col gap-3 sm:flex-row">
             <a href="import-students.php"
                 class="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-center text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-200"
-                aria-label="Import students from a CSV or Excel spreadsheet"><span aria-hidden="true">⇧</span> Import
+                aria-label="Import students from a CSV or Excel spreadsheet"><?= icon('upload') ?> Import
                 CSV / Excel</a>
             <a href="add-student.php"
                 class="shrink-0 rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white hover:bg-blue-700">Add

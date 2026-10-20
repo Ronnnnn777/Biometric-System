@@ -276,8 +276,8 @@ teacherShell("Attendance records");
                 <h2 id="attendance-remark-title" class="text-xl font-black text-slate-900">Attendance reason</h2>
                 <p class="mt-1 text-sm text-slate-500">Use this for approved exceptions, including an excuse letter.</p>
             </div><button id="close-attendance-remark" type="button"
-                class="rounded-lg px-2 text-2xl leading-none text-slate-400 hover:text-slate-800"
-                aria-label="Close">&times;</button>
+                class="rounded-lg p-2 text-slate-400 hover:text-slate-800"
+                aria-label="Close"><?= icon('x') ?></button>
         </div><input type="hidden" name="csrf_token" value="<?= htmlspecialchars(
     $_SESSION["csrf_token"],
 ) ?>"><input id="attendance-remark-id" type="hidden" name="attendance_id"><input id="attendance-remark-student"
@@ -317,9 +317,9 @@ teacherShell("Attendance records");
                 date = document.getElementById('date-filter');
             section.value = '';
             student.value = '';
-            date.value = < ? = json_encode(
+            date.value = <?= json_encode(
                 date("Y-m-d"),
-            ) ? > ;
+            ) ?> ;
             [section, student, date].forEach(control => control.dispatchEvent(new Event('change')));
         };
     });

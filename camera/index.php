@@ -8,7 +8,7 @@ exit;
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Camera Portal | Biometric</title>
-    <link rel="stylesheet" href="../css/tailwind.css">
+    <link rel="stylesheet" href="../css/tailwind.css?v=<?= (int) @filemtime(__DIR__ . '/../css/tailwind.css') ?>">
     <style>
         body { background: radial-gradient(circle at center, #1e3a5f 0%, #0f172a 48%, #020617 100%); }
         #camera-portal-card { background: radial-gradient(circle at center, #1e3a5f 0%, #0f172a 48%, #020617 100%); }

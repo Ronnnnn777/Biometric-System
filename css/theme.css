@@ -1,0 +1,408 @@
+/* ==========================================================================
+   Colour themes
+   Light is the default. Dark is applied by js/theme.js through
+   <html data-theme="dark"> and is remembered per browser.
+   ========================================================================== */
+
+:root {
+    color-scheme: light;
+}
+
+html[data-theme="dark"] {
+    color-scheme: dark;
+}
+
+/* Theme picker on the settings pages -------------------------------------- */
+.theme-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .75rem;
+    margin-top: 1rem;
+}
+
+.theme-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .55rem;
+    border: 1px solid #cbd5e1;
+    border-radius: .85rem;
+    padding: .8rem .9rem;
+    background: #fff;
+    color: #475569;
+    font-size: .9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s;
+}
+
+.theme-option:hover {
+    border-color: #94a3b8;
+    background: #f8fafc;
+}
+
+.theme-option[aria-pressed="true"] {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #1d4ed8;
+    box-shadow: 0 0 0 3px rgb(37 99 235 / .12);
+}
+
+.theme-option svg {
+    width: 18px;
+    height: 18px;
+}
+
+@media (max-width: 639px) {
+    .theme-options {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Page canvas -------------------------------------------------------------- */
+html[data-theme="dark"] body.bg-slate-50 {
+    background:
+        radial-gradient(circle at 92% -8%, rgb(216 165 45 / .07), transparent 28rem),
+        radial-gradient(circle at 42% 0%, rgb(37 99 235 / .12), transparent 36rem),
+        #070d17 !important;
+    color: #dbe5f3 !important;
+}
+
+html[data-theme="dark"] main.min-w-0 {
+    background:
+        radial-gradient(circle at 100% 14%, rgb(216 165 45 / .07), transparent 22rem),
+        radial-gradient(circle at 8% 88%, rgb(39 121 74 / .09), transparent 28rem),
+        #070d17 !important;
+}
+
+html[data-theme="dark"] main > header {
+    border-bottom-color: #22334d !important;
+    box-shadow: 0 3px 14px rgb(0 0 0 / .32) !important;
+}
+
+/* Surfaces ---------------------------------------------------------------- */
+html[data-theme="dark"] .bg-white:not(img) {
+    background-color: #0f172a !important;
+}
+
+html[data-theme="dark"] .bg-slate-50 {
+    background-color: #0a1322 !important;
+}
+
+html[data-theme="dark"] .bg-slate-100 {
+    background-color: #152136 !important;
+}
+
+html[data-theme="dark"] .bg-slate-200 {
+    background-color: #1e2e48 !important;
+}
+
+html[data-theme="dark"] .bg-slate-300 {
+    background-color: #2a3c58 !important;
+}
+
+html[data-theme="dark"] .bg-blue-50 {
+    background-color: rgb(37 99 235 / .14) !important;
+}
+
+html[data-theme="dark"] .bg-blue-100 {
+    background-color: rgb(37 99 235 / .22) !important;
+}
+
+html[data-theme="dark"] .bg-emerald-50 {
+    background-color: rgb(16 185 129 / .12) !important;
+}
+
+html[data-theme="dark"] .bg-emerald-100 {
+    background-color: rgb(16 185 129 / .2) !important;
+}
+
+html[data-theme="dark"] .bg-amber-50 {
+    background-color: rgb(245 158 11 / .12) !important;
+}
+
+html[data-theme="dark"] .bg-amber-100 {
+    background-color: rgb(245 158 11 / .2) !important;
+}
+
+html[data-theme="dark"] .bg-rose-50 {
+    background-color: rgb(244 63 94 / .12) !important;
+}
+
+html[data-theme="dark"] .bg-rose-100 {
+    background-color: rgb(244 63 94 / .2) !important;
+}
+
+html[data-theme="dark"] .bg-violet-50 {
+    background-color: rgb(139 92 246 / .14) !important;
+}
+
+html[data-theme="dark"] .bg-sky-50 {
+    background-color: rgb(14 165 233 / .12) !important;
+}
+
+/* Text -------------------------------------------------------------------- */
+html[data-theme="dark"] :is(.text-slate-950, .text-slate-900) {
+    color: #f8fafc !important;
+}
+
+html[data-theme="dark"] .text-slate-800 {
+    color: #e7eef9 !important;
+}
+
+html[data-theme="dark"] .text-slate-700 {
+    color: #d1dceb !important;
+}
+
+html[data-theme="dark"] .text-slate-600 {
+    color: #b7c5d8 !important;
+}
+
+html[data-theme="dark"] .text-slate-500 {
+    color: #9aabc2 !important;
+}
+
+html[data-theme="dark"] :is(.text-blue-600, .text-blue-700, .text-blue-800, .text-blue-900) {
+    color: #93c5fd !important;
+}
+
+html[data-theme="dark"] :is(.text-emerald-600, .text-emerald-700, .text-emerald-800, .text-emerald-900, .text-green-700) {
+    color: #6ee7b7 !important;
+}
+
+html[data-theme="dark"] :is(.text-rose-600, .text-rose-700, .text-rose-800, .text-rose-900, .text-rose-950) {
+    color: #fda4af !important;
+}
+
+html[data-theme="dark"] :is(.text-amber-700, .text-amber-800, .text-amber-900) {
+    color: #fcd34d !important;
+}
+
+html[data-theme="dark"] .text-violet-700 {
+    color: #c4b5fd !important;
+}
+
+/* Borders, dividers and rings --------------------------------------------- */
+html[data-theme="dark"] .border-slate-100 {
+    border-color: #1a2940 !important;
+}
+
+html[data-theme="dark"] .border-slate-200 {
+    border-color: #24344d !important;
+}
+
+html[data-theme="dark"] .border-slate-300 {
+    border-color: #334a67 !important;
+}
+
+html[data-theme="dark"] .border-slate-400 {
+    border-color: #4a6285 !important;
+}
+
+html[data-theme="dark"] :is(.border-blue-100, .border-blue-200) {
+    border-color: rgb(59 130 246 / .32) !important;
+}
+
+html[data-theme="dark"] .border-blue-300 {
+    border-color: rgb(96 165 250 / .45) !important;
+}
+
+html[data-theme="dark"] :is(.border-emerald-200, .border-emerald-300) {
+    border-color: rgb(16 185 129 / .35) !important;
+}
+
+html[data-theme="dark"] :is(.border-rose-200, .border-rose-300) {
+    border-color: rgb(244 63 94 / .35) !important;
+}
+
+html[data-theme="dark"] .border-rose-400 {
+    border-color: rgb(251 113 133 / .5) !important;
+}
+
+html[data-theme="dark"] :is(.border-amber-200, .border-amber-300) {
+    border-color: rgb(245 158 11 / .35) !important;
+}
+
+html[data-theme="dark"] .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+    border-color: #1a2940 !important;
+}
+
+html[data-theme="dark"] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+    border-color: #24344d !important;
+}
+
+html[data-theme="dark"] .ring-slate-200 {
+    --tw-ring-color: #24344d !important;
+}
+
+html[data-theme="dark"] .ring-blue-100 {
+    --tw-ring-color: rgb(59 130 246 / .3) !important;
+}
+
+html[data-theme="dark"] .ring-emerald-200 {
+    --tw-ring-color: rgb(16 185 129 / .3) !important;
+}
+
+/* Forms ------------------------------------------------------------------- */
+html[data-theme="dark"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="range"]):not([type="file"]), select, textarea) {
+    background-color: #0a1322 !important;
+    border-color: #334a67 !important;
+    color: #e7eef9 !important;
+}
+
+html[data-theme="dark"] :is(input, textarea)::placeholder {
+    color: #6f819a !important;
+}
+
+html[data-theme="dark"] :is(input, select, textarea):disabled {
+    color: #7f8fa6 !important;
+    opacity: 1;
+}
+
+html[data-theme="dark"] .disabled\:bg-slate-100:disabled {
+    background-color: #152136 !important;
+}
+
+html[data-theme="dark"] .disabled\:border-slate-200:disabled {
+    border-color: #24344d !important;
+}
+
+html[data-theme="dark"] .disabled\:text-slate-400:disabled {
+    color: #7f8fa6 !important;
+}
+
+html[data-theme="dark"] option {
+    background-color: #0a1322;
+    color: #e7eef9;
+}
+
+html[data-theme="dark"] :is(input[type="checkbox"], input[type="radio"], input[type="range"]) {
+    accent-color: #3b82f6;
+}
+
+/* Tables and lists -------------------------------------------------------- */
+html[data-theme="dark"] table {
+    color: #d1dceb;
+}
+
+html[data-theme="dark"] thead {
+    color: #9aabc2;
+}
+
+html[data-theme="dark"] .hover\:bg-slate-50:hover,
+html[data-theme="dark"] .hover\:bg-slate-100:hover,
+html[data-theme="dark"] .hover\:bg-white:hover {
+    background-color: #152136 !important;
+}
+
+html[data-theme="dark"] .hover\:bg-blue-50:hover,
+html[data-theme="dark"] .hover\:bg-blue-100:hover {
+    background-color: rgb(37 99 235 / .2) !important;
+}
+
+html[data-theme="dark"] .hover\:bg-amber-50:hover {
+    background-color: rgb(245 158 11 / .18) !important;
+}
+
+html[data-theme="dark"] .hover\:bg-rose-50:hover {
+    background-color: rgb(244 63 94 / .18) !important;
+}
+
+html[data-theme="dark"] :is(.hover\:text-slate-900:hover, .hover\:text-slate-800:hover) {
+    color: #f8fafc !important;
+}
+
+html[data-theme="dark"] .hover\:text-slate-700:hover {
+    color: #d1dceb !important;
+}
+
+html[data-theme="dark"] :is(.hover\:text-blue-600:hover, .hover\:text-blue-700:hover, .hover\:text-blue-800:hover) {
+    color: #93c5fd !important;
+}
+
+html[data-theme="dark"] :is(.hover\:text-emerald-700:hover, .hover\:text-emerald-800:hover) {
+    color: #6ee7b7 !important;
+}
+
+html[data-theme="dark"] :is(.hover\:text-rose-700:hover, .hover\:text-rose-800:hover) {
+    color: #fda4af !important;
+}
+
+/* Shared portal components ------------------------------------------------ */
+html[data-theme="dark"] .table-filter-bar {
+    border-color: #24344d !important;
+    background: linear-gradient(135deg, #0d1728, #0a1322) !important;
+}
+
+html[data-theme="dark"] .table-filter-reset {
+    border-color: #2f6b4b !important;
+    background: #0d2018 !important;
+    color: #86efac !important;
+    box-shadow: none !important;
+}
+
+html[data-theme="dark"] .table-filter-reset:hover {
+    background: #123023 !important;
+    box-shadow: none !important;
+}
+
+html[data-theme="dark"] .portal-menu-button:hover {
+    border-color: #3a5a7f !important;
+    background: #152136 !important;
+    color: #bfdbfe !important;
+}
+
+html[data-theme="dark"] .maruhat-dashboard-hero {
+    border-color: #28466b;
+    box-shadow: 0 18px 34px rgb(0 0 0 / .45);
+}
+
+html[data-theme="dark"] .maruhat-stat {
+    box-shadow: 0 10px 22px rgb(0 0 0 / .35);
+}
+
+/* Settings accordions ----------------------------------------------------- */
+html[data-theme="dark"] :is(.settings-group, .teacher-settings-group) {
+    background: #0f172a !important;
+    border-color: #24344d !important;
+    box-shadow: 0 1px 2px rgb(0 0 0 / .35) !important;
+}
+
+html[data-theme="dark"] :is(.settings-group, .teacher-settings-group) > summary:hover {
+    background: #152136 !important;
+}
+
+html[data-theme="dark"] :is(.settings-group, .teacher-settings-group)[open] {
+    border-color: #3b82f6 !important;
+}
+
+html[data-theme="dark"] :is(.settings-group, .teacher-settings-group)[open] > summary {
+    background: #12223d !important;
+}
+
+html[data-theme="dark"] :is(.settings-group, .teacher-settings-group)[open] > summary :is(.text-slate-900, .text-slate-500) {
+    color: #93c5fd !important;
+}
+
+html[data-theme="dark"] :is(.settings-group, .teacher-settings-group)[open] :is(.settings-chevron, .teacher-settings-chevron) {
+    color: #93c5fd !important;
+}
+
+/* Dark theme picker ------------------------------------------------------- */
+html[data-theme="dark"] .theme-option {
+    border-color: #334a67;
+    background: #0a1322;
+    color: #cbd5e1;
+}
+
+html[data-theme="dark"] .theme-option:hover {
+    border-color: #4a6285;
+    background: #152136;
+}
+
+html[data-theme="dark"] .theme-option[aria-pressed="true"] {
+    border-color: #3b82f6;
+    background: rgb(37 99 235 / .18);
+    color: #bfdbfe;
+    box-shadow: 0 0 0 3px rgb(37 99 235 / .16);
+}

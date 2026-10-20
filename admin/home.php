@@ -60,6 +60,7 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
     const dashboardCsrfToken = <?= json_encode($_SESSION['csrf_token']) ?>;
     const renderedActiveScannerCount = authorizedPhoneScanners.filter(scanner => scanner.enabled).length;
     const mobileScannerCard = document.getElementById('mobile-scanner-card');
+    const smartphoneIcon = <?= json_encode(icon('smartphone')) ?>;
     if (mobileScannerCard) {
         mobileScannerCard.innerHTML = `
             <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
@@ -69,7 +70,7 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
                     <p id="mobile-scanner-copy" class="mt-2 max-w-xl text-sm leading-6 text-slate-500">A phone appears here automatically the first time it connects to MNHS Attendance.</p>
                 </div>
                 <div class="flex items-center gap-3 rounded-2xl bg-blue-50 px-5 py-4 ring-1 ring-blue-100">
-                    <div class="grid h-12 w-12 place-items-center rounded-xl bg-emerald-100 text-2xl text-emerald-700">&#128241;</div>
+                    <div class="grid h-12 w-12 place-items-center rounded-xl bg-emerald-100 text-emerald-700">${smartphoneIcon}</div>
                     <p id="mobile-scanner-status" class="whitespace-nowrap text-base font-black text-emerald-700"><?= count($activeAuthorizedMobileScanners) === 1 ? '1 active scanner' : count($activeAuthorizedMobileScanners) . ' active scanners' ?></p>
                 </div>
             </div><div id="authorized-phone-list" class="mt-6 grid gap-3 md:grid-cols-2"></div><div id="authorized-phone-pagination" class="mt-5 flex items-center justify-center gap-3"></div>`;
@@ -96,9 +97,9 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
                 const details = document.createElement('div');
                 details.className = 'flex min-w-0 items-center gap-3';
                 const phoneIcon = document.createElement('div');
-                phoneIcon.className = 'grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-100 text-lg text-blue-700';
+                phoneIcon.className = 'grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-100 text-blue-700';
                 phoneIcon.setAttribute('aria-hidden', 'true');
-                phoneIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5"><rect x="6" y="2.5" width="12" height="19" rx="2"></rect><path d="M10 18.5h4"></path></svg>';
+                phoneIcon.innerHTML = smartphoneIcon;
                 const copy = document.createElement('div');
                 copy.className = 'min-w-0';
                 const name = document.createElement('p');

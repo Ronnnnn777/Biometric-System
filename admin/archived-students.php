@@ -132,9 +132,9 @@ endwhile; ?></tbody>
     </div>
 </div>
 <script>
-    window.studentSectionMap = < ? = json_encode(
+    window.studentSectionMap = <?= json_encode(
         $sectionMap,
-    ) ? > ;
+    ) ?> ;
 </script>
 <script src="../js/student-pagination.js?v=8"></script>
 <script>

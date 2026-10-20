@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../includes/icons.php';
+
 function teacherHead(string $title): void { ?>
 <!doctype html>
 <html lang="en">
@@ -6,7 +8,9 @@ function teacherHead(string $title): void { ?>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= htmlspecialchars($title) ?> | Teacher portal</title>
-    <link rel="stylesheet" href="../css/tailwind.css">
+    <script src="../js/theme.js?v=<?= (int) @filemtime(__DIR__ . '/../js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="../css/tailwind.css?v=<?= (int) @filemtime(__DIR__ . '/../css/tailwind.css') ?>">
+    <link rel="stylesheet" href="../css/theme.css?v=<?= (int) @filemtime(__DIR__ . '/../css/theme.css') ?>">
     <style>
         :root { --maruhat-blue: #1f4f91; --maruhat-blue-deep: #102e5e; --maruhat-green: #27794a; --maruhat-gold: #d8a52d; }
         body { background: radial-gradient(circle at 92% -8%, rgb(216 165 45 / .14), transparent 28rem), radial-gradient(circle at 42% 0%, rgb(31 79 145 / .09), transparent 36rem), #f5f8f5 !important; }
@@ -84,13 +88,13 @@ function teacherShell(string $title): void {
 
         <nav class="space-y-1" aria-label="Teacher navigation">
             <a href="students.php" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold <?= in_array($page, ['students.php', 'student-profile.php'], true) ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-                <span aria-hidden="true">&#9783;</span>Students
+                <?= icon('users') ?>Students
             </a>
             <a href="home.php" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold <?= $page === 'home.php' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-                <span aria-hidden="true">&#9673;</span>Attendance logs
+                <?= icon('clipboard-list') ?>Attendance logs
             </a>
             <a href="settings.php" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold <?= $page === 'settings.php' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-                <span aria-hidden="true">&#9881;</span>Settings
+                <?= icon('settings') ?>Settings
             </a>
         </nav>
 
@@ -100,8 +104,8 @@ function teacherShell(string $title): void {
             <div class="mt-2 space-y-1">
                 <?php foreach ($assignmentLabels as $assignmentLabel): ?><p class="text-xs text-slate-300"><?= htmlspecialchars($assignmentLabel) ?></p><?php endforeach; ?>
             </div>
-            <a href="../common/logout.php" class="mt-4 flex items-center gap-2 rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm font-bold text-rose-200 hover:bg-rose-500 hover:text-white">
-                <span aria-hidden="true">&#8618;</span>Sign out
+            <a href="../common/logout.php" class="mt-4 flex items-center gap-2 rounded-lg border border-rose-400/60 bg-rose-600/80 px-3 py-2 text-sm font-bold text-white shadow-sm shadow-rose-950/30 hover:border-rose-300 hover:bg-rose-500">
+                <?= icon('log-out') ?>Sign out
             </a>
         </div>
     </aside>
@@ -111,7 +115,7 @@ function teacherShell(string $title): void {
     <main class="min-w-0 flex-1">
         <header class="border-b border-slate-200 bg-white px-5 py-4 lg:px-8">
             <div class="flex items-start gap-3">
-                <button data-teacher-menu type="button" class="portal-menu-button mt-1 rounded-lg border border-slate-200 p-2 font-bold" aria-label="Toggle navigation" aria-expanded="true" title="Hide navigation">&#9776;</button>
+                <button data-teacher-menu type="button" class="portal-menu-button mt-1 rounded-lg border border-slate-200 p-2 font-bold" aria-label="Toggle navigation" aria-expanded="true" title="Hide navigation"><?= icon('menu') ?></button>
                 <div class="min-w-0 flex-1">
                     <p class="text-xs font-bold uppercase tracking-widest text-blue-600">Teacher portal</p>
                     <h1 class="mt-1 truncate text-2xl font-black leading-tight text-slate-900"><?= htmlspecialchars($title) ?></h1>

@@ -7,21 +7,11 @@ Options -Indexes
     RewriteRule ^(?:config|database|includes|storage|tools|tmp|output|\.git)(?:/|$) - [F,L,NC]
     # Preserve bearer credentials for the native scanner API under Apache/FastCGI.
     RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-    # Keep the public entry point extensionless.  Redirect only browser
-    # requests for the physical PHP file, then internally serve /index.
-    RewriteCond %{THE_REQUEST} \s/+biometric/index\.php(?:[\s?]|$) [NC]
-    RewriteRule ^index\.php$ /biometric/index [R=301,L,NE]
+    # Serve extensionless page URLs (/admin/home) from their PHP files.
+    # Physical .php URLs keep working too; no folder name is hardcoded, so the
+    # rules behave the same under /biometric, /biometric-system, or web root.
     RewriteRule ^index$ index.php [END]
 
-    # Human-facing pages use clean URLs. Only redirect GET/HEAD requests so
-    # existing form posts and camera-frame uploads continue to reach their PHP
-    # handlers without a redirect changing the request body or method.
-    RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$ [NC]
-    RewriteCond %{THE_REQUEST} \s/+biometric/(.+?)\.php(?:[\s?]|$) [NC]
-    RewriteRule ^(.+)\.php$ /biometric/$1 [R=301,L,NE]
-
-    # Map /admin/home and /teacher/attendance-log back to their PHP files.
-    # Static files and real directories continue to be served normally.
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME}.php -f

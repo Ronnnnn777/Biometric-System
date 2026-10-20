@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../includes/icons.php';
+
 function adminHead(string $title): void { ?>
 <!doctype html>
 <html lang="en">
@@ -7,7 +9,9 @@ function adminHead(string $title): void { ?>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= htmlspecialchars($title) ?> | Biometric</title>
-    <link rel="stylesheet" href="../css/tailwind.css">
+    <script src="../js/theme.js?v=<?= (int) @filemtime(__DIR__ . '/../js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="../css/tailwind.css?v=<?= (int) @filemtime(__DIR__ . '/../css/tailwind.css') ?>">
+    <link rel="stylesheet" href="../css/theme.css?v=<?= (int) @filemtime(__DIR__ . '/../css/theme.css') ?>">
     <style>
         :root {
             --maruhat-blue: #1f4f91;
@@ -258,14 +262,14 @@ function adminHead(string $title): void { ?>
 
 function adminSidebar(string $active, string $title, string $subtitle = ''): void {
     $items = [
-        ['home.php', 'Dashboard', 'dashboard', '&#8962;'],
-        ['student-list.php', 'Students', 'students', '&#9817;'],
-        ['teacher-list.php', 'Teachers', 'teachers', '&#9831;'],
-        ['attendance-log.php', 'Attendance logs', 'attendance', '&#9719;'],
-        ['school-year-rollover.php', 'School year', 'rollover', 'SY'],
-        ['archived-students.php', 'Archived students', 'archived_students', '&#128451;'],
-        ['archived-teachers.php', 'Archived teachers', 'archived_teachers', '&#128451;'],
-        ['settings.php', 'Settings', 'settings', '&#9881;'],
+        ['home.php', 'Dashboard', 'dashboard', 'home'],
+        ['student-list.php', 'Students', 'students', 'users'],
+        ['teacher-list.php', 'Teachers', 'teachers', 'briefcase'],
+        ['attendance-log.php', 'Attendance logs', 'attendance', 'clipboard-list'],
+        ['school-year-rollover.php', 'School year', 'rollover', 'calendar'],
+        ['archived-students.php', 'Archived students', 'archived_students', 'archive'],
+        ['archived-teachers.php', 'Archived teachers', 'archived_teachers', 'archive'],
+        ['settings.php', 'Settings', 'settings', 'settings'],
     ];
     $section = in_array($active, ['teachers', 'archived_teachers'], true) ? 'Teachers' : (in_array($active, ['students', 'archived_students'], true) ? 'Students' : ($active === 'attendance' ? 'Attendance' : ($active === 'rollover' ? 'School year' : ($active === 'settings' ? 'Settings' : 'Dashboard'))));
     $toast = $_SESSION['toast']['message'] ?? null;
@@ -286,14 +290,14 @@ function adminSidebar(string $active, string $title, string $subtitle = ''): voi
                 <?php foreach ($items as [$url, $label, $key, $icon]): ?>
                 <a href="<?= $url ?>"
                     class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition <?= $active === $key ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-                    <span class="grid h-6 w-6 place-items-center text-lg" aria-hidden="true"><?= $icon ?></span>
+                    <span class="grid h-6 w-6 place-items-center"><?= icon($icon) ?></span>
                     <?= $label ?>
                 </a>
                 <?php endforeach; ?>
             </nav>
             <a href="../common/logout.php"
-                class="mt-auto flex items-center gap-3 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm font-bold text-rose-200 transition hover:bg-rose-500 hover:text-white">
-                <span aria-hidden="true">&#8618;</span>Sign out
+                class="mt-auto flex items-center gap-3 rounded-xl border border-rose-400/60 bg-rose-600/80 px-4 py-3 text-sm font-bold text-white shadow-sm shadow-rose-950/30 transition hover:border-rose-300 hover:bg-rose-500">
+                <span aria-hidden="true"><?= icon('log-out') ?></span>Sign out
             </a>
         </aside>
 
@@ -304,7 +308,7 @@ function adminSidebar(string $active, string $title, string $subtitle = ''): voi
                 <div class="flex items-center gap-4">
                     <button data-admin-menu type="button"
                         class="portal-menu-button rounded-lg border border-slate-200 p-2 font-bold"
-                        aria-label="Toggle navigation" aria-expanded="true" title="Hide navigation">&#9776;</button>
+                        aria-label="Toggle navigation" aria-expanded="true" title="Hide navigation"><?= icon('menu') ?></button>
                     <div class="min-w-0 flex-1">
                         <?php if ($active !== 'dashboard'): ?>
                         <div class="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400">
@@ -324,7 +328,7 @@ function adminSidebar(string $active, string $title, string $subtitle = ''): voi
                     <div class="hidden text-right text-sm text-slate-500 sm:block"><span id="clock"></span></div>
                 </div>
                 <?php if ($active !== 'dashboard'): ?><a href="javascript:history.back()"
-                    class="mt-3 inline-flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-700">&larr;
+                    class="mt-3 inline-flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-700"><?= icon('arrow-left') ?>
                     Back</a><?php endif; ?>
             </header>
 
@@ -469,7 +473,7 @@ function adminFoot(): void { ?>
         if (teacherArchiveButton) teacherArchiveButton.className = archiveActionClass;
 
         document.querySelectorAll('a[href="archived-students.php"], a[href="archived-teachers.php"]').forEach(link => {
-            if (link.textContent.trim().startsWith('← Back to archived')) link.remove();
+            if (link.textContent.trim().startsWith('Back to archived')) link.remove();
         });
     </script>
 </body>

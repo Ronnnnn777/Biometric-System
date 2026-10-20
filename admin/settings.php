@@ -33,6 +33,9 @@ if ($row = $security->get_result()->fetch_assoc()) {
 $wholeDayAttendance = attendanceUsesWholeDay($conn);
 $mobileScannerConfiguration = mobileScannerConfiguration($conn);
 $mobileScannerServerUrl = $mobileScannerConfiguration["server_url"];
+// Public URL of this installation (for example "/biometric-system/"), used in
+// the scanner instructions so they match the real folder on this computer.
+$appBasePath = rtrim(str_replace("\\", "/", dirname(dirname($_SERVER["SCRIPT_NAME"] ?? "/admin/settings.php"))), "/") . "/";
 $mobileScannerName = $mobileScannerConfiguration["scanner_name"];
 $mobileScannerId = $mobileScannerConfiguration["scanner_id"];
 $authorizedMobileScanners = authorizedMobileScanners($conn);
@@ -111,6 +114,8 @@ adminSidebar(
     }
 
     .settings-group .settings-chevron {
+        display: inline-flex;
+        align-items: center;
         font-size: 1.25rem;
         transition: transform .2s ease
     }
@@ -181,16 +186,30 @@ adminSidebar(
         if (summary) summary.textContent = 'Set the IP address used by the attendance scanner phones.';
         const helper = form?.querySelector('p');
         if (helper) helper.innerHTML =
-            'Use this computer\'s LAN IP and include the <span class="font-semibold">/biometric/</span> folder. Scanner phones register automatically and appear on the Dashboard.';
+            'Use this computer\'s LAN IP and include the <span class="font-semibold"><?= htmlspecialchars($appBasePath) ?></span> folder. Scanner phones register automatically and appear on the Dashboard.';
         form?.querySelector('#save-mobile-scanner-configuration') && (form.querySelector(
             '#save-mobile-scanner-configuration').textContent = 'Save mobile scanner configuration');
         }, 0);
     });
 </script>
+<details class="settings-group" open>
+    <summary><span><span class="block text-base font-black text-slate-900">Appearance</span><span
+                class="mt-1 block text-sm font-medium text-slate-500">Choose a light or dark dashboard, or follow this
+                device.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
+    <div class="border-t border-slate-100 p-5 sm:p-6">
+        <p class="text-sm text-slate-500">Your choice is saved in this browser and applies to the admin and teacher
+            portals on this device.</p>
+        <div class="theme-options" role="group" aria-label="Colour theme">
+            <button type="button" class="theme-option" data-theme-option="light" aria-pressed="false"><?= icon('sun') ?><span>Light</span></button>
+            <button type="button" class="theme-option" data-theme-option="dark" aria-pressed="false"><?= icon('moon') ?><span>Dark</span></button>
+            <button type="button" class="theme-option" data-theme-option="system" aria-pressed="true"><?= icon('monitor') ?><span>System</span></button>
+        </div>
+    </div>
+</details>
 <details class="settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Authorized mobile scanners</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Add each phone that is allowed to connect to MNHS
-                Attendance.</span></span><span class="settings-chevron text-slate-500">⌄</span></summary>
+                Attendance.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
     <div class="border-t border-slate-100 p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -293,7 +312,7 @@ endif; ?></tbody>
             'Set the scanner name, scanner ID, and IP address used by Maruhat Attendance.';
         const helper = configurationForm.querySelector('p');
         if (helper) helper.innerHTML =
-            'Use this computer\'s LAN IP and include the <span class="font-semibold">/biometric/</span> folder. Enter the same IP address in the mobile app; the phone and computer must use the same Wi-Fi network.';
+            'Use this computer\'s LAN IP and include the <span class="font-semibold"><?= htmlspecialchars($appBasePath) ?></span> folder. Enter the same IP address in the mobile app; the phone and computer must use the same Wi-Fi network.';
         configurationForm.querySelector('#save-mobile-scanner-configuration').textContent =
             'Save mobile scanner configuration';
         identity.remove()
@@ -302,7 +321,7 @@ endif; ?></tbody>
 <details class="settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Mobile scanner identity</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Register the name and ID shown by the Maruhat
-                Attendance mobile scanner.</span></span><span class="settings-chevron text-slate-500">⌄</span></summary>
+                Attendance mobile scanner.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
     <div class="border-t border-slate-100 p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -340,7 +359,7 @@ $mobileScannerId !== ""
 <details class="settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Mobile scanner configuration</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Set the server address the Maruhat Attendance
-                mobile app uses.</span></span><span class="settings-chevron text-slate-500">⌄</span></summary>
+                mobile app uses.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
     <div class="border-t border-slate-100 p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -363,13 +382,13 @@ $mobileScannerId !== ""
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 font-medium text-slate-900"
                     name="mobile_scanner_server_url" value="<?= htmlspecialchars(
     $mobileScannerServerUrl,
-) ?>" placeholder="http://192.168.1.10/biometric/" inputmode="url" required></label>
+) ?>" placeholder="http://192.168.1.10<?= htmlspecialchars($appBasePath) ?>" inputmode="url" required></label>
             <div class="mt-3 flex flex-wrap items-center gap-3"><button id="detect-mobile-scanner-ip" type="button"
                     class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-100">Detect
                     IP Address</button><span id="mobile-scanner-ip-status" class="text-sm font-medium text-slate-500"
                     aria-live="polite"></span></div>
             <p class="mt-3 text-sm text-slate-500">Detection fills the current LAN address only. Review it, then save.
-                Include the <span class="font-semibold">/biometric/</span> folder. The phone and this computer must use
+                Include the <span class="font-semibold"><?= htmlspecialchars($appBasePath) ?></span> folder. The phone and this computer must use
                 the same Wi-Fi network.</p><button
                 id="save-mobile-scanner-configuration"
                 class="mt-5 rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Save mobile scanner
@@ -422,7 +441,7 @@ $mobileScannerId !== ""
                 body = document.createElement('div');
             details.className = 'settings-group';
             summary.innerHTML =
-                `<span><span class="block text-base font-black text-slate-900">${title}</span><span class="mt-1 block text-sm font-medium text-slate-500">${description}</span></span><span class="settings-chevron text-slate-500">⌄</span>`;
+                `<span><span class="block text-base font-black text-slate-900">${title}</span><span class="mt-1 block text-sm font-medium text-slate-500">${description}</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span>`;
             body.className = 'border-t border-slate-100 p-5 sm:p-6';
             anchor.before(details);
             details.append(summary, body);
@@ -558,7 +577,7 @@ $mobileScannerId !== ""
 <details class="settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Attendance day mode</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Choose between whole-day and half-day
-                attendance.</span></span><span class="settings-chevron text-slate-500">⌄</span></summary>
+                attendance.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
     <div class="border-t border-slate-100 p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -657,7 +676,7 @@ $mobileScannerId !== ""
 <details class="settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Emergency dismissal</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">End attendance for all students already checked in
-                today without scanning again.</span></span><span class="settings-chevron text-slate-500">⌄</span>
+                today without scanning again.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span>
     </summary>
     <div class="border-t border-slate-100 p-5 sm:p-6">
         <div class="rounded-xl border border-rose-200 bg-rose-50 p-4">
