@@ -10,11 +10,38 @@ function ensureAttendanceTimeOutColumn(mysqli $conn): void
     if(!isset($columns['ATTENDANCE_REMARK']))$conn->query("ALTER TABLE attendance ADD COLUMN ATTENDANCE_REMARK VARCHAR(40) NULL DEFAULT NULL AFTER TIME_OUT");
     if(!isset($columns['ATTENDANCE_NOTE']))$conn->query("ALTER TABLE attendance ADD COLUMN ATTENDANCE_NOTE VARCHAR(255) NULL DEFAULT NULL AFTER ATTENDANCE_REMARK");
     if(!isset($columns['IS_AUTO_ABSENT']))$conn->query("ALTER TABLE attendance ADD COLUMN IS_AUTO_ABSENT TINYINT(1) NOT NULL DEFAULT 0 AFTER ATTENDANCE_NOTE");
+    if(!isset($columns['GRADE_SNAPSHOT']))$conn->query('ALTER TABLE attendance ADD COLUMN GRADE_SNAPSHOT TINYINT UNSIGNED NULL AFTER STUDENT_NAME');
+    if(!isset($columns['STRAND_SNAPSHOT']))$conn->query("ALTER TABLE attendance ADD COLUMN STRAND_SNAPSHOT VARCHAR(20) NOT NULL DEFAULT '' AFTER GRADE_SNAPSHOT");
+    if(!isset($columns['SECTION_SNAPSHOT']))$conn->query("ALTER TABLE attendance ADD COLUMN SECTION_SNAPSHOT VARCHAR(80) NOT NULL DEFAULT '' AFTER STRAND_SNAPSHOT");
     // Automatic absences were retired in favor of teacher-confirmed records.
     // Remove only the old system-generated rows; teacher-marked absences use 0.
     $conn->query('DELETE FROM attendance WHERE IS_AUTO_ABSENT=1');
     $conn->query("CREATE TABLE IF NOT EXISTS attendance_day_settings (ID TINYINT UNSIGNED NOT NULL PRIMARY KEY, WHOLE_DAY_ENABLED TINYINT(1) NOT NULL DEFAULT 0, UPDATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
     $conn->query("INSERT IGNORE INTO attendance_day_settings (ID, WHOLE_DAY_ENABLED) VALUES (1, 0)");
+}
+
+/** Adds the section snapshot columns written when attendance is recorded. */
+function ensureAttendanceSnapshotColumns(mysqli $conn): void
+{
+    $columns=[];$result=$conn->query('SHOW COLUMNS FROM attendance');
+    while($result&&($column=$result->fetch_assoc()))$columns[strtoupper($column['Field'])]=true;
+    if(!isset($columns['GRADE_SNAPSHOT']))$conn->query('ALTER TABLE attendance ADD COLUMN GRADE_SNAPSHOT TINYINT UNSIGNED NULL AFTER STUDENT_NAME');
+    if(!isset($columns['STRAND_SNAPSHOT']))$conn->query("ALTER TABLE attendance ADD COLUMN STRAND_SNAPSHOT VARCHAR(20) NOT NULL DEFAULT '' AFTER GRADE_SNAPSHOT");
+    if(!isset($columns['SECTION_SNAPSHOT']))$conn->query("ALTER TABLE attendance ADD COLUMN SECTION_SNAPSHOT VARCHAR(80) NOT NULL DEFAULT '' AFTER STRAND_SNAPSHOT");
+}
+
+/** Current grade/strand/section for a student, frozen onto their attendance record. */
+function attendanceSnapshotForStudent(mysqli $conn, string $studentId): array
+{
+    $stmt=$conn->prepare('SELECT GRADE,STRAND,SECTION FROM students WHERE TRIM(STUDENT_ID)=TRIM(?) LIMIT 1');
+    $stmt->bind_param('s',$studentId);
+    $stmt->execute();
+    $row=$stmt->get_result()->fetch_assoc();
+    return [
+        'GRADE'=>$row?(int)$row['GRADE']:null,
+        'STRAND'=>$row?(string)$row['STRAND']:'',
+        'SECTION'=>$row?(string)$row['SECTION']:'',
+    ];
 }
 
 /** Whole-day mode records the lunch departure and afternoon return. Off means half-day attendance. */

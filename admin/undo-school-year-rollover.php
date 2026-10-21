@@ -32,6 +32,10 @@ if (!preg_match('/^(\d{4})-(\d{4})$/', $currentSchoolYear, $years)) {
     undoRolloverRedirect('The active school year is invalid.');
 }
 $targetSchoolYear = trim((string) ($_POST['target_school_year'] ?? ''));
+if ($targetSchoolYear === '' && preg_match('/^(\d{4})-(\d{4})$/', $currentSchoolYear, $currentParts)) {
+    // The undo form only carries a password; derive the immediately previous year.
+    $targetSchoolYear = ((int) $currentParts[1] - 1) . '-' . ((int) $currentParts[2] - 1);
+}
 if (!preg_match('/^(\d{4})-(\d{4})$/', $targetSchoolYear) || $targetSchoolYear >= $currentSchoolYear) {
     undoRolloverRedirect('Choose a valid past school year to restore.');
 }
@@ -51,6 +55,34 @@ try {
     $restore->bind_param('s', $targetSchoolYear);
     $restore->execute();
     $restored = $restore->affected_rows;
+
+    // Remove overflow sections that this rollover created, once they are empty again.
+    $tracked = $conn->prepare('SELECT SECTION FROM school_year_rollover_sections WHERE SCHOOL_YEAR=?');
+    $tracked->bind_param('s', $targetSchoolYear);
+    $tracked->execute();
+    $trackedRows = $tracked->get_result();
+    $usage = $conn->prepare(
+        'SELECT (SELECT COUNT(*) FROM students WHERE SECTION=?) + (SELECT COUNT(*) FROM teachers WHERE SECTION=?) + (SELECT COUNT(*) FROM teacher_assignments WHERE SECTION=?) count',
+    );
+    $deleteGenerated = $conn->prepare("DELETE FROM sections WHERE SECTION=? AND BASE_SECTION=''");
+    $deactivateSection = $conn->prepare('UPDATE sections SET IS_ACTIVE=0 WHERE SECTION=?');
+    while ($trackedRows && ($trackedRow = $trackedRows->fetch_assoc())) {
+        $trackedSection = (string) $trackedRow['SECTION'];
+        $usage->bind_param('sss', $trackedSection, $trackedSection, $trackedSection);
+        $usage->execute();
+        if ((int) ($usage->get_result()->fetch_assoc()['count'] ?? 1) !== 0) {
+            continue;
+        }
+        $deleteGenerated->bind_param('s', $trackedSection);
+        $deleteGenerated->execute();
+        if ($deleteGenerated->affected_rows === 0) {
+            $deactivateSection->bind_param('s', $trackedSection);
+            $deactivateSection->execute();
+        }
+    }
+    $clearTracked = $conn->prepare('DELETE FROM school_year_rollover_sections WHERE SCHOOL_YEAR=?');
+    $clearTracked->bind_param('s', $targetSchoolYear);
+    $clearTracked->execute();
 
     $updateYear = $conn->prepare('UPDATE school_year_settings SET ACTIVE_SCHOOL_YEAR=? WHERE ID=1');
     $updateYear->bind_param('s', $targetSchoolYear);

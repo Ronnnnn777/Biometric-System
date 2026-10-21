@@ -33,31 +33,27 @@ adminSidebar(
 <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
         <p class="text-sm font-black uppercase tracking-widest text-amber-700">Records archive</p>
-        <h2 class="mt-1 text-2xl font-black text-slate-900">Archived students</h2>
         <p class="mt-1 text-slate-500"><?= $result->num_rows ?> archived student<?= $result->num_rows ===
  1
      ? ""
      : "s" ?>. These profiles are retained and cannot record new attendance.</p>
     </div><a href="student-list.php"
-        class="rounded-xl border border-slate-300 bg-white px-4 py-3 text-center text-sm font-bold text-slate-700 hover:bg-slate-50">View
+        class="btn btn-secondary text-center">View
         active students</a>
 </div>
 <div class="table-filter-bar mb-6">
-    <div class="mb-3 flex items-center justify-between gap-3">
-        <p class="text-sm font-black text-slate-800">Filters</p><button id="clear-student-filters" type="button"
-            class="table-filter-reset">Clear filters</button>
-    </div>
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><label
-            class="table-filter-control text-sm font-bold text-slate-700">Search<input id="student-search"
-                class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
-                placeholder="Name or LRN"></label><label
-            class="table-filter-control text-sm font-bold text-slate-700">Grade<select id="grade-filter"
-                class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
+    <div class="flex flex-wrap items-end gap-3">
+        <label class="table-filter-control min-w-[12rem] flex-1 text-sm font-bold text-slate-700">Search<input
+                id="student-search" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
+                placeholder="Name or LRN"></label>
+        <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Grade<select
+                id="grade-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
                 <option value="">All grades</option><?php foreach (
     [7, 8, 9, 10, 11, 12]
     as $grade
 ): ?><option value="<?= $grade ?>">Grade <?= $grade ?></option><?php endforeach; ?>
-            </select></label><label class="table-filter-control text-sm font-bold text-slate-700">Section<select
+            </select></label>
+        <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Section<select
                 id="section-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
                 <option value="">All sections</option><?php foreach (
     $sections
@@ -65,9 +61,11 @@ adminSidebar(
 ): ?><option><?= htmlspecialchars(
     $section,
 ) ?></option><?php endforeach; ?>
-            </select></label></div>
+            </select></label>
+        <button id="clear-student-filters" type="button" class="table-filter-reset shrink-0">Clear filters</button>
+    </div>
 </div>
-<div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+<div class="card overflow-hidden">
     <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
@@ -123,9 +121,9 @@ adminSidebar(
 ] ?></td>
                     <td class="px-5 py-4"><span
                             class="rounded-full bg-amber-50 px-3 py-1 font-bold text-amber-700"><?= htmlspecialchars($row["ARCHIVE_REASON"] ?: "Archived") ?></span></td>
-                    <td class="px-5 py-4 text-right"><div class="flex justify-end gap-3"><a class="font-bold text-blue-600 hover:text-blue-700" href="archived-student-record.php?id=<?= (int) $row[
+                    <td class="px-5 py-4 text-right"><div class="flex justify-end gap-2"><a class="btn btn-secondary btn-sm" href="archived-student-record.php?id=<?= (int) $row[
     "ID"
-] ?>">Open record</a><form action="restore-archived-student.php" method="post"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION["csrf_token"]) ?>"><input type="hidden" name="id" value="<?= (int) $row["ID"] ?>"><button class="font-bold text-emerald-600 hover:text-emerald-700">Restore</button></form></div></td>
+] ?>">Open record</a><form action="restore-archived-student.php" method="post"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION["csrf_token"]) ?>"><input type="hidden" name="id" value="<?= (int) $row["ID"] ?>"><button class="btn btn-secondary btn-sm">Restore</button></form></div></td>
                 </tr><?php
 endwhile; ?></tbody>
         </table>
@@ -136,7 +134,7 @@ endwhile; ?></tbody>
         $sectionMap,
     ) ?> ;
 </script>
-<script src="../js/student-pagination.js?v=8"></script>
+<script src="../js/student-pagination.js?v=9"></script>
 <script>
     document.getElementById('clear-student-filters').onclick = () => {
         const search = document.getElementById('student-search'),

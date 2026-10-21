@@ -83,14 +83,14 @@ adminHead("Attendance scanner");
     <div id="scanner-controls" class="absolute inset-x-0 bottom-5 z-10 flex justify-center px-5">
         <div class="flex items-center gap-3 rounded-2xl bg-black/55 p-3 shadow-2xl backdrop-blur"><button
                 id="scan-toggle"
-                class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700"><?= icon('play') ?> Start scanner</button><button id="manual-attendance"
+                class="btn btn-primary"><?= icon('play') ?> Start scanner</button><button id="manual-attendance"
                 class="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-3 font-bold text-white hover:bg-white/25"><?= icon('pencil') ?> Manual attendance</button></div>
     </div>
     <button id="back-button"
         class="absolute left-5 top-5 z-20 rounded-xl border border-white/30 bg-black/30 px-4 py-3 font-bold text-white backdrop-blur hover:bg-black/55"><?= icon('arrow-left') ?> Back</button>
 
     <div id="scan-type-modal" class="absolute inset-0 z-30 hidden items-center justify-center bg-black/70 p-5">
-        <div class="w-full max-w-md rounded-2xl bg-white p-6 text-slate-800 shadow-2xl">
+        <div class="card w-full max-w-md p-6 text-slate-800 shadow-2xl">
             <h1 class="text-xl font-black">Choose attendance action</h1>
             <p class="mt-2 text-sm text-slate-500">Select what the live camera should record.</p>
             <div class="mt-6 grid gap-3 sm:grid-cols-2"><button type="button" data-scan-type="time_in"
@@ -98,15 +98,15 @@ adminHead("Attendance scanner");
                         class="block text-lg">Time in</span><span
                         class="mt-1 block text-xs font-medium text-emerald-100">Record each student's
                         arrival</span></button><button type="button" data-scan-type="time_out"
-                    class="rounded-xl bg-amber-500 px-4 py-4 text-left font-bold text-white hover:bg-amber-600"><span
+                    class="btn btn-warning text-left"><span
                         class="block text-lg">Time out</span><span
                         class="mt-1 block text-xs font-medium text-amber-50">Record each student's
                         departure</span></button></div><button id="cancel-scan-type" type="button"
-                class="mt-4 w-full rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
+                class="btn btn-secondary mt-4 w-full">Cancel</button>
         </div>
     </div>
     <div id="manual-modal" class="absolute inset-0 z-30 hidden items-center justify-center bg-black/70 p-5">
-        <div class="w-full max-w-sm rounded-2xl bg-white p-6 text-slate-800 shadow-2xl">
+        <div class="card w-full max-w-sm p-6 text-slate-800 shadow-2xl">
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <h1 class="text-xl font-black">Manual attendance</h1>
@@ -127,16 +127,16 @@ adminHead("Attendance scanner");
                 <p id="manual-name" class="mt-3 text-lg font-black"></p>
                 <p id="manual-id-label" class="text-sm text-slate-500"></p>
                 <div class="mt-5 grid gap-3 sm:grid-cols-2"><button id="mark-present"
-                        class="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white hover:bg-emerald-700">Record
+                        class="btn btn-success">Record
                         time in</button><button id="mark-time-out"
-                        class="rounded-xl bg-amber-500 px-4 py-3 font-bold text-white hover:bg-amber-600">Record time
+                        class="btn btn-warning">Record time
                         out</button></div>
             </div>
         </div>
     </div>
     <div id="exit-modal" class="absolute inset-0 z-40 hidden items-center justify-center bg-black/70 p-5">
         <form action="scanner-exit.php" method="post"
-            class="w-full max-w-sm rounded-2xl bg-white p-6 text-slate-800 shadow-2xl"><input type="hidden"
+            class="card w-full max-w-sm p-6 text-slate-800 shadow-2xl"><input type="hidden"
                 name="csrf_token" value="<?= htmlspecialchars(
       $_SESSION["csrf_token"],
   ) ?>">
@@ -146,9 +146,9 @@ adminHead("Attendance scanner");
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password" name="password"
                     required></label>
             <div class="mt-5 flex gap-3"><button
-                    class="flex-1 rounded-xl bg-blue-600 px-4 py-3 font-bold text-white">Confirm exit</button><button
+                    class="btn btn-primary flex-1">Confirm exit</button><button
                     id="cancel-exit" type="button"
-                    class="rounded-xl border border-slate-300 px-4 py-3 font-bold">Cancel</button></div>
+                    class="btn btn-secondary">Cancel</button></div>
         </form>
     </div>
 </main>

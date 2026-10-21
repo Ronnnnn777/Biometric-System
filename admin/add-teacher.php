@@ -22,7 +22,7 @@ adminSidebar(
     "Create a teacher account. Grade and section access can be added later or assigned from a School Form import.",
 );
 ?>
-<section class="mx-auto max-w-3xl rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+<section class="card card-body mx-auto max-w-3xl">
     <p class="text-sm font-bold uppercase tracking-widest text-blue-600">People & permissions</p>
     <h2 class="mt-2 text-2xl font-black text-slate-900">Create teacher account</h2>
     <p class="mt-2 text-slate-500">Create the account first. Grade and section access is optional and can be added later
@@ -57,7 +57,7 @@ adminSidebar(
                     Add assignment</button>
             </div>
             <div id="assignment-list" class="mt-4 space-y-4"></div>
-        </div><button class="w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Create
+        </div><button class="btn btn-primary w-full">Create
             teacher account</button>
     </form>
 </section>

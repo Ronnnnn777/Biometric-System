@@ -1,5 +1,6 @@
 window.createTablePagination = ({ rows, pager, label = 'records', perPage = 15 }) => {
-  const pagers = (Array.isArray(pager) ? pager : [pager]).filter(Boolean);
+  // Render the bottom pager only; earlier entries are kept for backwards compatibility.
+  const pagers = (Array.isArray(pager) ? pager : [pager]).filter(Boolean).slice(-1);
   if (!rows || !pagers.length) return { refresh() {} };
   let currentPage = 1;
 
@@ -57,7 +58,7 @@ window.createTablePagination = ({ rows, pager, label = 'records', perPage = 15 }
       container.replaceChildren();
       container.className = 'my-5 flex justify-center';
       container.hidden = !records.length;
-      if (records.length) container.append(controls(totalPages, index > 0));
+      if (records.length) container.append(controls(totalPages, true));
     });
   }
 

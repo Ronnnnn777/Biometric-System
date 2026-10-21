@@ -25,7 +25,7 @@ if ($student !== "") {
 }
 $safeDate = mysqli_real_escape_string($conn, $filterDate);
 $query =
-    "SELECT a.ID ATTENDANCE_ID,s.STUDENT_ID,s.STUDENT_NAME,s.LAST_NAME,s.FIRST_NAME,s.MIDDLE_NAME,s.GRADE,s.SECTION,a.TIME_IN,a.LUNCH_OUT,a.AFTERNOON_TIME_IN,a.TIME_OUT,a.ATTENDANCE_REMARK,a.ATTENDANCE_NOTE FROM students s LEFT JOIN attendance a ON TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN)='$safeDate' WHERE " .
+    "SELECT a.ID ATTENDANCE_ID,s.STUDENT_ID,s.STUDENT_NAME,s.LAST_NAME,s.FIRST_NAME,s.MIDDLE_NAME,s.GRADE,s.SECTION,COALESCE(a.GRADE_SNAPSHOT,s.GRADE) DISPLAY_GRADE,COALESCE(NULLIF(a.SECTION_SNAPSHOT,''),s.SECTION) DISPLAY_SECTION,a.TIME_IN,a.LUNCH_OUT,a.AFTERNOON_TIME_IN,a.TIME_OUT,a.ATTENDANCE_REMARK,a.ATTENDANCE_NOTE FROM students s LEFT JOIN attendance a ON TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN)='$safeDate' WHERE " .
     implode(" AND ", $where) .
     " ORDER BY s.GRADE,s.SECTION,s.LAST_NAME,s.FIRST_NAME,s.STUDENT_NAME";
 $result = $conn->query($query);
@@ -89,10 +89,10 @@ if ($result && $result->num_rows):
       $name,
   ) ?></td>
   <td class="px-4 py-4"><span class="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700" style="white-space: nowrap">Grade <?= htmlspecialchars(
-      $row["GRADE"] ?? "N/A",
+      $row["DISPLAY_GRADE"] ?? $row["GRADE"] ?? "N/A",
   ) ?></span></td>
   <td class="px-4 py-4"><span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700"><?= htmlspecialchars(
-      $row["SECTION"] ?? "N/A",
+      $row["DISPLAY_SECTION"] ?? $row["SECTION"] ?? "N/A",
   ) ?></span></td>
   <td class="px-4 py-4 text-slate-600"><?= $hasRecord
       ? $timeIn->format("M j, Y")
@@ -126,7 +126,7 @@ if ($result && $result->num_rows):
 ) ?>" data-date="<?= htmlspecialchars(
     $filterDate,
     ENT_QUOTES,
-) ?>" data-remark="Excused absence" data-note="" class="text-xs font-bold text-blue-600 hover:text-blue-800">Update</button></div><?php elseif (
+) ?>" data-remark="Excused absence" data-note="" class="btn btn-secondary btn-sm">Update</button></div><?php elseif (
       $isAbsent
   ): ?><div class="flex items-center gap-3"><span class="inline-block text-center text-xs font-bold leading-tight text-rose-600"><span class="block">Marked</span>absent</span><a class="inline-block text-center text-xs font-bold leading-tight text-emerald-600" href="export-attendance.php?date=<?= urlencode(
     $filterDate,
@@ -149,7 +149,7 @@ if ($result && $result->num_rows):
 ) ?>" data-note="<?= htmlspecialchars(
     $note,
     ENT_QUOTES,
-) ?>" class="text-xs font-bold text-blue-600 hover:text-blue-800">Update</button><a class="inline-block text-center text-xs font-bold leading-tight text-emerald-600" href="export-attendance.php?date=<?= urlencode(
+) ?>" class="btn btn-secondary btn-sm">Update</button><a class="inline-block text-center text-xs font-bold leading-tight text-emerald-600" href="export-attendance.php?date=<?= urlencode(
     $filterDate,
 ) ?>&section=<?= urlencode($section) ?>&student_id=<?= urlencode(
     $row["STUDENT_ID"],

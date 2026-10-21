@@ -4,10 +4,13 @@ require 'page-guard.php';
 require '../config/db_conn.php';
 require '../includes/student-profile-schema.php';
 require '../includes/student-placement-options.php';
+require '../includes/section-catalog-schema.php';
 require '../includes/teacher-assignment-schema.php';
 require '../includes/adviser-assignment-schema.php';
 require '../includes/student-import.php';
 ensureStudentProfileColumns($conn);
+ensureSectionCatalogColumns($conn);
+seedDefaultTeacherSections($conn);
 ensureTeacherAssignmentSchema($conn);
 ensureAdviserAssignmentSchema($conn);
 
@@ -84,7 +87,8 @@ try {
         $studentName = trim($firstName . ' ' . $middleName . ' ' . $lastName);
 
         if ($studentId === '' && $firstName === '' && $lastName === '' && $grade === 0 && $age === 0 && $address === '' && $section === '') continue;
-        if ($studentId === '' || $firstName === '' || $lastName === '' || !isValidStudentAge($age) || $address === '' || !isValidStudentPlacement($grade, $strand, $section) || !isValidStudentEnrollmentStatus($enrollmentStatus)) {
+        $validPlacement = isValidStudentPlacement($grade, $strand, $section) || isApprovedStudentSection($conn, $grade, $strand, $section);
+        if ($studentId === '' || $firstName === '' || $lastName === '' || !isValidStudentAge($age) || $address === '' || !$validPlacement || !isValidStudentEnrollmentStatus($enrollmentStatus)) {
             $skipped[] = "Row {$rowNumber}: missing or invalid LRN, name, age, address, grade, strand, section, or status.";
             continue;
         }

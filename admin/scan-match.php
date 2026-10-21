@@ -7,6 +7,7 @@ require_once __DIR__ . "/../includes/student-profile-schema.php";
 require_once __DIR__ . "/../includes/attendance-schema.php";
 ensureStudentProfileColumns($conn);
 ensureAttendanceTimeOutColumn($conn);
+ensureAttendanceSnapshotColumns($conn);
 header("Content-Type: application/json");
 $imagePath = "";
 $removeImage = false;
@@ -196,13 +197,13 @@ if (!in_array($scanType, ["auto", "time_in", "time_out"], true)) {
     $scanType = "auto";
 }
 $studentQuery = $conn->prepare(
-    "SELECT STUDENT_ID, STUDENT_NAME, IMAGE_PATH, ENROLLMENT_STATUS FROM students WHERE STUDENT_ID = ? LIMIT 1",
+    "SELECT STUDENT_ID, STUDENT_NAME, IMAGE_PATH, ENROLLMENT_STATUS, GRADE, STRAND, SECTION FROM students WHERE STUDENT_ID = ? LIMIT 1",
 );
 $check = $conn->prepare(
     "SELECT ID, TIME_IN, LUNCH_OUT, AFTERNOON_TIME_IN, TIME_OUT, ATTENDANCE_REMARK FROM attendance WHERE STUDENT_ID = ? AND DATE(TIME_IN) = ? ORDER BY TIME_IN DESC LIMIT 1",
 );
 $log = $conn->prepare(
-    "INSERT INTO attendance (STUDENT_ID, STUDENT_NAME, TIME_IN) VALUES (?, ?, NOW())",
+    "INSERT INTO attendance (STUDENT_ID, STUDENT_NAME, TIME_IN, GRADE_SNAPSHOT, STRAND_SNAPSHOT, SECTION_SNAPSHOT) VALUES (?, ?, NOW(), ?, ?, ?)",
 );
 $lunchOut = $conn->prepare(
     "UPDATE attendance SET LUNCH_OUT=NOW() WHERE ID=? AND LUNCH_OUT IS NULL",
@@ -300,9 +301,12 @@ foreach ($recognized as $recognizedFace) {
             $message = $next["message"];
             if ($action === "time_in") {
                 $log->bind_param(
-                    "ss",
+                    "ssiss",
                     $student["STUDENT_ID"],
                     $student["STUDENT_NAME"],
+                    $student["GRADE"],
+                    $student["STRAND"],
+                    $student["SECTION"],
                 );
                 $log->execute();
                 $logged = true;
@@ -331,9 +335,12 @@ foreach ($recognized as $recognizedFace) {
         } elseif ($scanType === "time_in") {
             if (!$record) {
                 $log->bind_param(
-                    "ss",
+                    "ssiss",
                     $student["STUDENT_ID"],
                     $student["STUDENT_NAME"],
+                    $student["GRADE"],
+                    $student["STRAND"],
+                    $student["SECTION"],
                 );
                 $log->execute();
                 $logged = true;

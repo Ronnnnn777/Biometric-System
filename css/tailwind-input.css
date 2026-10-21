@@ -1,3 +1,103 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    :root {
+        --ui-surface: #ffffff;
+        --ui-border: #e2e8f0;
+        --ui-text: #0f172a;
+        --ui-muted: #64748b;
+        --ui-field: #ffffff;
+        --ui-hover: #f8fafc;
+    }
+}
+
+@layer components {
+    /* Buttons ------------------------------------------------------------- */
+    .btn {
+        @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60;
+    }
+
+    .btn-primary {
+        @apply bg-brand-600 text-white shadow-sm hover:bg-brand-700 focus-visible:ring-brand-600;
+    }
+
+    .btn-secondary {
+        @apply border shadow-sm focus-visible:ring-slate-400;
+        background-color: var(--ui-surface);
+        border-color: var(--ui-border);
+        color: var(--ui-text);
+    }
+
+    .btn-danger {
+        @apply bg-rose-600 text-white shadow-sm hover:bg-rose-700 focus-visible:ring-rose-500;
+    }
+
+    .btn-warning {
+        @apply bg-amber-500 text-white shadow-sm hover:bg-amber-600 focus-visible:ring-amber-500;
+    }
+
+    .btn-success {
+        @apply bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 focus-visible:ring-emerald-500;
+    }
+
+    .btn-info {
+        @apply bg-violet-700 text-white shadow-sm hover:bg-violet-800 focus-visible:ring-violet-500;
+    }
+
+    .btn-ghost {
+        @apply text-slate-600 focus-visible:ring-slate-300;
+    }
+
+    .btn-sm {
+        @apply px-3 py-1.5 text-xs;
+    }
+
+    .btn-lg {
+        @apply px-5 py-3 text-base;
+    }
+
+    .btn-icon {
+        @apply p-2;
+    }
+
+    /* Cards --------------------------------------------------------------- */
+    .card {
+        @apply rounded-lg border shadow-sm;
+        background-color: var(--ui-surface);
+        border-color: var(--ui-border);
+    }
+
+    .card-header {
+        @apply flex items-center justify-between gap-4 border-b px-5 py-4;
+        border-color: var(--ui-border);
+    }
+
+    .card-body {
+        @apply p-5 sm:p-6;
+    }
+
+    .card-title {
+        @apply text-base font-semibold;
+        color: var(--ui-text);
+    }
+
+    .card-muted {
+        @apply text-sm;
+        color: var(--ui-muted);
+    }
+
+    /* Forms --------------------------------------------------------------- */
+    .field {
+        @apply w-full rounded-lg border px-4 py-2.5 text-sm shadow-sm focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20;
+        background-color: var(--ui-field);
+        border-color: var(--ui-border);
+        color: var(--ui-text);
+    }
+
+    .field-label {
+        @apply mb-1.5 block text-sm font-semibold;
+        color: var(--ui-text);
+    }
+}

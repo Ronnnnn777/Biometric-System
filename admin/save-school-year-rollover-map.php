@@ -2,49 +2,59 @@
 require 'page-guard.php';
 require '../config/db_conn.php';
 require '../includes/school-year-schema.php';
+require '../includes/student-placement-options.php';
+require '../includes/section-catalog-schema.php';
+require '../includes/sectioning.php';
+
 ensureSchoolYearRolloverSchema($conn);
+ensureSectionCatalogColumns($conn);
+seedDefaultTeacherSections($conn);
 
-if(!hash_equals($_SESSION['csrf_token']??'',$_POST['csrf_token']??'')){
-    $_SESSION['toast']=['message'=>'The rollover request expired. Please try again.','type'=>'error'];
-    header('Location: school-year-rollover.php');exit;
+function saveRolloverPlanFail(string $message): void
+{
+    $_SESSION['toast'] = ['message' => $message, 'type' => 'error'];
+    header('Location: school-year-rollover.php');
+    exit;
 }
 
-$mappings=$_POST['mappings']??[];
-if(!is_array($mappings)||!$mappings){
-    $_SESSION['toast']=['message'=>'Add at least one valid class mapping.','type'=>'error'];
-    header('Location: school-year-rollover.php');exit;
+if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+    saveRolloverPlanFail('The rollover request expired. Please try again.');
 }
 
-$validated=[];
-foreach($mappings as $mapping){
-    $fromGrade=(int)($mapping['from_grade']??0);
-    $fromStrand=trim((string)($mapping['from_strand']??''));
-    $fromSection=trim((string)($mapping['from_section']??''));
-    $target=explode('|',(string)($mapping['target']??''),3);
-    $toGrade=(int)($target[0]??0);
-    $toStrand=trim((string)($target[1]??''));
-    $toSection=trim((string)($target[2]??''));
-    if($fromGrade<7||$fromGrade>11||$fromSection===''||$toGrade!==$fromGrade+1||$toSection===''){
-        $_SESSION['toast']=['message'=>'Choose a valid next-grade section for every class before saving.','type'=>'error'];
-        header('Location: school-year-rollover.php');exit;
-    }
-    $validated[]=[[$fromGrade,$fromStrand,$fromSection],[$toGrade,$toStrand,$toSection]];
+$postedPlans = $_POST['plans'] ?? [];
+if (!is_array($postedPlans) || !$postedPlans) {
+    saveRolloverPlanFail('Add at least one valid promotion plan.');
 }
+
+$validated = normalisePromotionPlans($postedPlans, 'saveRolloverPlanFail');
 
 $conn->begin_transaction();
-try{
-    $stmt=$conn->prepare('INSERT INTO school_year_rollover_maps (FROM_GRADE,FROM_STRAND,FROM_SECTION,TO_GRADE,TO_STRAND,TO_SECTION) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE TO_GRADE=VALUES(TO_GRADE),TO_STRAND=VALUES(TO_STRAND),TO_SECTION=VALUES(TO_SECTION)');
-    foreach($validated as [$from,$to]){
-        [$fromGrade,$fromStrand,$fromSection]=$from;
-        [$toGrade,$toStrand,$toSection]=$to;
-        $stmt->bind_param('ississ',$fromGrade,$fromStrand,$fromSection,$toGrade,$toStrand,$toSection);
+try {
+    // Replace the whole plan so removed split targets do not linger.
+    $conn->query('DELETE FROM school_year_promotion_plan');
+    $stmt = $conn->prepare(
+        'INSERT INTO school_year_promotion_plan (FROM_GRADE,FROM_STRAND,TO_GRADE,TO_STRAND,SPLIT_PERCENT)
+         VALUES (?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE TO_GRADE=VALUES(TO_GRADE), SPLIT_PERCENT=VALUES(SPLIT_PERCENT)',
+    );
+    foreach ($validated as $row) {
+        $stmt->bind_param(
+            'isisi',
+            $row['FROM_GRADE'],
+            $row['FROM_STRAND'],
+            $row['TO_GRADE'],
+            $row['TO_STRAND'],
+            $row['SPLIT_PERCENT'],
+        );
         $stmt->execute();
     }
     $conn->commit();
-    $_SESSION['toast']=['message'=>count($validated).' class mappings saved successfully.','type'=>'success'];
-    header('Location: school-year-rollover.php?saved=1');exit;
-}catch(Throwable $error){
+    $_SESSION['toast'] = ['message' => count($validated) . ' promotion plan row' . (count($validated) === 1 ? '' : 's') . ' saved.', 'type' => 'success'];
+    header('Location: school-year-rollover-preview.php');
+    exit;
+} catch (Throwable $error) {
     $conn->rollback();
-    $_SESSION['toast']=['message'=>'Could not save the mappings. No changes were made.','type'=>'error'];
+    $_SESSION['toast'] = ['message' => 'Could not save the promotion plan. No changes were made.', 'type' => 'error'];
 }
-header('Location: school-year-rollover.php');exit;
+header('Location: school-year-rollover.php');
+exit;

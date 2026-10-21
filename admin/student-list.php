@@ -25,52 +25,47 @@ adminSidebar('students', 'Students', 'Search profiles and filter by grade or sec
 ?>
 <div class="mb-6 flex flex-col gap-4">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-            <h2 class="text-2xl font-black text-slate-900">Student directory</h2>
-            <p class="mt-1 text-slate-500"><?= $result->num_rows ?> registered
-                student<?= $result->num_rows === 1 ? '' : 's' ?></p>
-        </div>
+        <p class="text-sm font-semibold text-slate-500">
+            <?= $result->num_rows ?> registered student<?= $result->num_rows === 1 ? '' : 's' ?>
+        </p>
         <div class="flex flex-col gap-3 sm:flex-row">
             <a href="import-students.php"
-                class="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-center text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-200"
+                class="btn btn-success"
                 aria-label="Import students from a CSV or Excel spreadsheet"><?= icon('upload') ?> Import
                 CSV / Excel</a>
             <a href="add-student.php"
-                class="shrink-0 rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white hover:bg-blue-700">Add
+                class="btn btn-primary shrink-0">Add
                 student</a>
         </div>
     </div>
     <div class="table-filter-bar">
-        <div class="mb-3 flex items-center justify-between gap-3">
-            <p class="text-sm font-black text-slate-800">Filters</p><button id="clear-student-filters" type="button"
-                class="table-filter-reset">Clear filters</button>
-        </div>
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <label class="table-filter-control text-sm font-bold text-slate-700">Search<input id="student-search"
-                    class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
+        <div class="flex flex-wrap items-end gap-3">
+            <label class="table-filter-control min-w-[12rem] flex-1 text-sm font-bold text-slate-700">Search<input
+                    id="student-search" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
                     placeholder="Name or LRN"></label>
-            <label class="table-filter-control text-sm font-bold text-slate-700">Grade<select id="grade-filter"
-                    class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
+            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Grade<select
+                    id="grade-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
                     <option value="">All grades</option><?php foreach ([7, 8, 9, 10, 11, 12] as $grade): ?><option
                         value="<?= $grade ?>">Grade <?= $grade ?></option><?php endforeach; ?>
                 </select></label>
-            <label class="table-filter-control text-sm font-bold text-slate-700">Section<select id="section-filter"
-                    class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
+            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Section<select
+                    id="section-filter" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
                     <option value="">All sections</option><?php foreach ($sections as $section): ?><option>
                         <?= htmlspecialchars($section) ?></option><?php endforeach; ?>
                 </select></label>
-            <label class="table-filter-control text-sm font-bold text-slate-700">Enrollment status<select
-                    id="status-filter"
+            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Enrollment
+                status<select id="status-filter"
                     class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
                     <option value="">All statuses</option>
                     <?php foreach (studentEnrollmentStatuses() as $status): if($status==='Archived') continue; ?>
                     <option><?= htmlspecialchars($status) ?></option><?php endforeach; ?>
                 </select></label>
+            <button id="clear-student-filters" type="button" class="table-filter-reset shrink-0">Clear filters</button>
         </div>
     </div>
 </div>
 
-<div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+<div class="card overflow-hidden">
     <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
@@ -112,15 +107,15 @@ adminSidebar('students', 'Students', 'Search profiles and filter by grade or sec
                     <?php $todayLabel=($row['attendance_remark']??'')==='Absent'?'Absent':($row['attended_today']?'Present':'Not recorded');$todayClass=$todayLabel==='Absent'?'bg-rose-50 text-rose-700':($todayLabel==='Present'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'); ?>
                     <td class="px-5 py-4"><span
                             class="rounded-full px-3 py-1 font-bold <?= $todayClass ?>"><?= $todayLabel ?></span></td>
-                    <td class="px-5 py-4 text-right"><a class="font-bold text-blue-600"
-                            href="edit-student.php?id=<?= $row['ID'] ?>">Open profile</a></td>
+                    <td class="px-5 py-4 text-right"><a class="btn btn-secondary btn-sm"
+                            href="edit-student.php?id=<?= (int) $row['ID'] ?>">Open profile</a></td>
                 </tr>
                 <?php endwhile; ?>
             </tbody>
         </table>
     </div>
 </div>
-<script src="../js/student-pagination.js?v=8"></script>
+<script src="../js/student-pagination.js?v=9"></script>
 <script>
     document.getElementById('clear-student-filters').onclick = () => {
         const search = document.getElementById('student-search'),

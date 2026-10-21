@@ -55,8 +55,11 @@ adminSidebar(
         }
     }
 </style>
-<div class="mb-6 flex flex-wrap items-center justify-between gap-4"><a href="archived-students.php"
-        class="inline-flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-800"><?= icon('arrow-left') ?>Back to archived students</a><span
+<a href="archived-students.php"
+    class="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 transition hover:text-blue-700">
+    <?= icon('arrow-left', 'h-4 w-4') ?> Back to Archived Students
+</a>
+<div class="mb-6 flex flex-wrap items-center justify-end gap-4"><span
         class="rounded-full bg-amber-50 px-3 py-1 text-sm font-bold text-amber-700">Archived record</span></div>
 <div class="archived-record-layout grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
     <aside class="h-fit rounded-2xl bg-slate-900 p-6 text-white lg:order-2">
@@ -89,12 +92,11 @@ adminSidebar(
         </div>
         <p class="mt-6 text-sm leading-6 text-slate-300">Archived for reference. The student cannot scan attendance.</p>
     </aside>
-    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 lg:order-1">
+    <section class="card overflow-hidden lg:order-1">
         <div class="border-b border-slate-100 p-6">
             <h3 class="text-xl font-black text-slate-900">Attendance history</h3>
             <p class="mt-1 text-sm text-slate-500">All attendance records retained for this student.</p>
         </div>
-        <div id="archived-attendance-pagination-top"></div>
         <div class="overflow-x-auto">
             <table class="min-w-full text-left text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
@@ -184,15 +186,13 @@ adminSidebar(
         <div id="archived-attendance-pagination" class="px-6 pb-6"></div>
     </section>
 </div>
-<script src="../js/table-pagination.js?v=5"></script>
+<script src="../js/table-pagination.js?v=6"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const rows = document.getElementById('archived-attendance-rows');
         if (rows) createTablePagination({
             rows,
-            pager: [document.getElementById('archived-attendance-pagination-top'), document
-                .getElementById('archived-attendance-pagination')
-            ],
+            pager: document.getElementById('archived-attendance-pagination'),
             label: 'attendance records'
         });
     });

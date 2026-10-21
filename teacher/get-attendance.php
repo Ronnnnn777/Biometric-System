@@ -162,7 +162,7 @@ if ($result->num_rows):
     $date,
     ENT_QUOTES,
 ) ?>" data-remark="Excused absence" data-note=""
-            class="text-xs font-bold text-blue-600 hover:text-blue-800">Update</button><?php elseif (
+            class="btn btn-secondary btn-sm">Update</button><?php elseif (
       !$isAbsent
   ): ?><p class="max-w-xs text-xs text-slate-600"><?= $note !== ""
     ? htmlspecialchars($note)
@@ -180,7 +180,7 @@ if ($result->num_rows):
 ) ?>" data-note="<?= htmlspecialchars(
     $note,
     ENT_QUOTES,
-) ?>" class="mt-2 text-xs font-bold text-blue-600 hover:text-blue-800">Update</button><?php else: ?><span
+) ?>" class="mt-2 btn btn-secondary btn-sm">Update</button><?php else: ?><span
             class="inline-block text-center text-xs font-bold leading-tight text-rose-600"><span
                 class="block">Marked</span>absent</span><?php endif; ?></td>
 </tr>

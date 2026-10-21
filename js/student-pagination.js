@@ -15,13 +15,10 @@
   const perPage = Number(rowsContainer.dataset.pageSize) || 15;
   let currentPage = 1;
   const tableCard = rowsContainer.closest('.overflow-hidden');
-  const topPager = document.createElement('nav');
   const bottomPager = document.createElement('nav');
-  topPager.setAttribute('aria-label', 'Student list pagination');
   bottomPager.setAttribute('aria-label', 'Student list pagination');
-  tableCard?.insertAdjacentElement('beforebegin', topPager);
   tableCard?.insertAdjacentElement('afterend', bottomPager);
-  const pagers = [topPager, bottomPager];
+  const pagers = [bottomPager];
   const emptyState = document.createElement('tr');
   emptyState.hidden = true;
   emptyState.innerHTML = '<td colspan="99" class="px-5 py-14 text-center"><p class="text-base font-black text-slate-800"></p><p class="mt-1 text-sm text-slate-500"></p><button type="button" class="mt-4 rounded-xl bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100"></button></td>';
@@ -112,7 +109,7 @@
       pager.replaceChildren();
       pager.className = 'my-5 flex justify-center';
       pager.hidden = !matchingRows.length;
-      if (matchingRows.length) pager.append(controls(totalPages, index > 0));
+      if (matchingRows.length) pager.append(controls(totalPages, true));
     });
   }
 

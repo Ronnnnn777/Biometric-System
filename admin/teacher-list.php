@@ -16,35 +16,30 @@ adminSidebar(
     "Manage teacher access and grade-section assignments.",
 );
 ?>
-<script src="../js/table-pagination.js?v=5"></script>
+<script src="../js/table-pagination.js?v=6"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const rows = document.querySelector('table tbody');
         if (!rows) return;
         const card = rows.closest('.overflow-hidden'),
-            top = document.createElement('div'),
             bottom = document.createElement('div');
-        card?.insertAdjacentElement('beforebegin', top);
         card?.insertAdjacentElement('afterend', bottom);
         createTablePagination({
             rows,
-            pager: [top, bottom],
+            pager: bottom,
             label: 'teacher accounts'
         });
     });
 </script>
 <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-    <div>
-        <h2 class="text-2xl font-black text-slate-900">Teacher accounts</h2>
-        <p class="mt-1 text-slate-500"><?= $teachers->num_rows ?> account<?= $teachers->num_rows ===
+    <p class="text-sm font-semibold text-slate-500"><?= $teachers->num_rows ?> account<?= $teachers->num_rows ===
  1
      ? ""
-     : "s" ?> with system access</p>
-    </div><a href="add-teacher.php"
-        class="rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white hover:bg-blue-700">+ Add
+     : "s" ?> with system access</p><a href="add-teacher.php"
+        class="btn btn-primary">+ Add
         teacher</a>
 </div>
-<div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+<div class="card overflow-hidden">
     <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
@@ -93,7 +88,7 @@ if (
 ) ?></td>
                     <td class="px-5 py-4 text-right"><a href="edit-teacher.php?id=<?= $teacher[
     "TEACHER_ID"
-] ?>" class="font-bold text-blue-600 hover:text-blue-700">Open profile</a></td>
+] ?>" class="btn btn-secondary btn-sm">Open profile</a></td>
                 </tr><?php
      endwhile;
  else:

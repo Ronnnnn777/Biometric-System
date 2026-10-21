@@ -75,16 +75,13 @@ teacherHead("Students");
 teacherShell("Students");
 ?>
 <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-    <div>
-        <h2 class="text-2xl font-black text-slate-900">Students</h2>
-        <p class="mt-1 text-slate-500">Choose an assigned grade and section to view its student list.</p>
-    </div>
+    <p class="text-sm font-semibold text-slate-500">Choose an assigned grade and section to view its student list.</p>
     <a href="home.php"
-        class="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Attendance
+        class="btn btn-secondary">Attendance
         logs</a>
 </div>
 
-<section class="mb-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+<section class="card mb-6 p-5">
     <p class="text-xs font-bold uppercase tracking-widest text-slate-500">Current sections</p>
     <div class="mt-3 flex flex-wrap gap-2" aria-label="Assigned grades">
         <?php foreach ($grades as $assignedGrade):
@@ -130,13 +127,12 @@ teacherShell("Students");
 </section>
 
 <section class="table-filter-bar mb-6">
-    <div class="mb-3 flex items-center justify-between gap-3">
-        <p class="text-sm font-black text-slate-800">Filters</p><button id="clear-student-filters" type="button"
-            class="table-filter-reset">Clear filters</button>
+    <div class="flex flex-wrap items-end gap-3">
+        <label class="table-filter-control min-w-[12rem] flex-1 text-sm font-bold text-slate-700">Search students<input
+                id="student-search" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
+                placeholder="Name or LRN"></label>
+        <button id="clear-student-filters" type="button" class="table-filter-reset shrink-0">Clear filters</button>
     </div>
-    <label class="table-filter-control block max-w-md text-sm font-bold text-slate-700">Search students<input
-            id="student-search" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
-            placeholder="Name or LRN"></label>
 </section>
 
 <div class="mb-4">
@@ -148,7 +144,7 @@ teacherShell("Students");
      ? ""
      : "s" ?> in this section</p>
 </div>
-<div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+<div class="card overflow-hidden">
     <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
@@ -240,12 +236,12 @@ teacherShell("Students");
     : "Attendance" ?></span><?= $todayLabel === "Absent"
     ? "absent"
     : "recorded" ?></span><?php endif; ?><a
-                            class="ml-3 inline-block align-middle text-center text-xs font-bold leading-tight text-blue-600 hover:text-blue-800"
+                            class="btn btn-secondary btn-sm ml-3 align-middle"
                             href="student-profile.php?id=<?= $student[
     "ID"
 ] ?>&grade=<?= $grade ?>&section=<?= urlencode(
     $section,
-) ?>"><span class="block">Open</span>profile</a></td>
+) ?>">Open profile</a></td>
                 </tr>
                 <?php endwhile; ?>
             </tbody>
@@ -254,29 +250,29 @@ teacherShell("Students");
 </div>
 <div id="mark-absent-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
     role="dialog" aria-modal="true" aria-labelledby="mark-absent-title">
-    <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+    <div class="card w-full max-w-sm p-6 shadow-2xl">
         <h3 id="mark-absent-title" class="text-xl font-black text-slate-900">Mark student absent?</h3>
         <p id="mark-absent-message" class="mt-2 text-sm text-slate-600">This will create an absence record for today.
         </p>
         <div class="mt-6 flex gap-3"><button id="cancel-mark-absent" type="button"
-                class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700">Cancel</button><button
+                class="btn btn-secondary flex-1">Cancel</button><button
                 id="confirm-mark-absent" type="button"
-                class="flex-1 rounded-xl bg-rose-600 px-4 py-3 font-bold text-white hover:bg-rose-700">Mark
+                class="btn btn-danger flex-1">Mark
                 absent</button></div>
     </div>
 </div>
 <div id="mark-present-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
     role="dialog" aria-modal="true" aria-labelledby="mark-present-title">
-    <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+    <div class="card w-full max-w-sm p-6 shadow-2xl">
         <h3 id="mark-present-title" class="text-xl font-black text-slate-900">Mark student present?</h3>
         <p id="mark-present-message" class="mt-2 text-sm text-slate-600">This will create a present attendance record for today.</p>
         <div class="mt-6 flex gap-3">
-            <button id="cancel-mark-present" type="button" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700">Cancel</button>
-            <button id="confirm-mark-present" type="button" class="flex-1 rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white hover:bg-emerald-700">Mark present</button>
+            <button id="cancel-mark-present" type="button" class="btn btn-secondary flex-1">Cancel</button>
+            <button id="confirm-mark-present" type="button" class="btn btn-success flex-1">Mark present</button>
         </div>
     </div>
 </div>
-<script src="../js/student-pagination.js?v=7"></script>
+<script src="../js/student-pagination.js?v=9"></script>
 <script>
     document.getElementById('clear-student-filters').onclick = () => {
         const search = document.getElementById('student-search');

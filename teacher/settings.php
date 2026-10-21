@@ -18,7 +18,7 @@ teacherShell("Settings");
         max-width: 42rem;
         overflow: hidden;
         border: 1px solid #e2e8f0;
-        border-radius: 1rem;
+        border-radius: .5rem;
         background: #fff;
         box-shadow: 0 1px 2px rgb(15 23 42 / .05)
     }
@@ -92,7 +92,7 @@ teacherShell("Settings");
   ): ?><p class="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">Biometric sign-in is
             enrolled. You can save a new face anytime.</p><?php endif; ?>
         <button id="teacher-enable-camera" type="button"
-            class="mt-5 w-full rounded-xl bg-violet-700 px-4 py-3 font-bold text-white shadow-sm hover:bg-violet-800">Enable
+            class="btn btn-info mt-5 w-full">Enable
             camera</button>
     </section>
 </details>
@@ -112,7 +112,7 @@ teacherShell("Settings");
                 class="block text-sm font-bold text-slate-700">Confirm new password<input
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password"
                     name="confirm_password" minlength="8" autocomplete="new-password" required></label><button
-                class="w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700">Update
+                class="btn btn-primary w-full">Update
                 password</button></form>
     </section>
 </details>
@@ -121,7 +121,7 @@ teacherShell("Settings");
     class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5" role="dialog" aria-modal="true"
     aria-labelledby="teacher-biometric-camera-title">
     <form id="teacher-biometric-form" action="settings-save.php" method="post"
-        class="relative w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl sm:p-6">
+        class="card relative w-full max-w-2xl p-5 shadow-2xl sm:p-6">
         <button id="teacher-biometric-camera-close" type="button"
             class="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             aria-label="Close camera"><?= icon('x') ?></button>
@@ -139,7 +139,7 @@ teacherShell("Settings");
             autoplay muted playsinline></video>
         <p id="teacher-biometric-camera-status" class="mt-3 text-sm font-semibold text-slate-600">Opening camera&hellip;
         </p>
-        <button class="mt-5 w-full rounded-xl bg-violet-700 px-4 py-3 font-bold text-white hover:bg-violet-800">Save
+        <button class="btn btn-info mt-5 w-full">Save
             biometric sign-in</button>
     </form>
 </div>

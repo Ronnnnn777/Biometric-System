@@ -17,21 +17,20 @@ adminSidebar(
     "Retained teacher accounts and access assignments.",
 );
 ?>
-<script src="../js/table-pagination.js?v=5"></script>
+<script src="../js/table-pagination.js?v=6"></script>
 <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
         <p class="text-sm font-black uppercase tracking-widest text-amber-700">Records archive</p>
-        <h2 class="mt-1 text-2xl font-black text-slate-900">Archived teachers</h2>
         <p class="mt-1 text-slate-500"><?= $teachers->num_rows ?> archived teacher account<?= $teachers->num_rows ===
  1
      ? ""
      : "s" ?>. Their profiles and assignments are retained, but they cannot sign in.</p>
     </div>
     <a href="teacher-list.php"
-        class="rounded-xl border border-slate-300 bg-white px-4 py-3 text-center text-sm font-bold text-slate-700 hover:bg-slate-50">View
+        class="btn btn-secondary text-center">View
         active teachers</a>
 </div>
-<div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+<div class="card overflow-hidden">
     <div class="overflow-x-auto">
         <table class="min-w-full text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
@@ -103,18 +102,16 @@ endif; ?></tbody>
                 status = cells[4],
                 link = document.createElement('a');
             link.href = 'archived-teacher-record.php?teacher_user=' + encodeURIComponent(username);
-            link.className = 'ml-4 whitespace-nowrap font-bold text-blue-600 hover:text-blue-700';
+            link.className = 'btn btn-secondary btn-sm ml-2 align-middle whitespace-nowrap';
             link.textContent = 'Open record';
             status.appendChild(link);
         });
         const card = rows.closest('.overflow-hidden'),
-            top = document.createElement('div'),
             bottom = document.createElement('div');
-        card?.insertAdjacentElement('beforebegin', top);
         card?.insertAdjacentElement('afterend', bottom);
         createTablePagination({
             rows,
-            pager: [top, bottom],
+            pager: bottom,
             label: 'archived teachers'
         });
     });

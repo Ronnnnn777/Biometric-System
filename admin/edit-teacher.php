@@ -29,7 +29,7 @@ adminSidebar(
 );
 ?>
 <div class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
-    <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+    <section class="card card-body">
         <h2 class="text-2xl font-black text-slate-900"><?= htmlspecialchars(
     $teacher["TEACHER_NAME"],
 ) ?></h2>
@@ -57,13 +57,13 @@ adminSidebar(
                         Add assignment</button>
                 </div>
                 <div id="assignment-list" class="mt-4 space-y-4"></div>
-            </div><button class="w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Save
+            </div><button class="btn btn-primary w-full">Save
                 profile</button>
         </form>
     </section>
     <aside class="space-y-5">
         <form action="update-teacher.php" method="post"
-            class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200"><input type="hidden" name="id" value="<?= $teacher[
+            class="card card-body"><input type="hidden" name="id" value="<?= $teacher[
     "TEACHER_ID"
 ] ?>"><input type="hidden" name="password_only" value="1">
             <h3 class="text-lg font-black text-slate-900">Change password</h3>
@@ -76,7 +76,7 @@ adminSidebar(
                     class="block text-sm font-bold text-slate-700">Confirm new password<input
                         class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password"
                         name="teacher_confirm" minlength="8" required></label></div><button
-                class="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700">Update
+                class="btn btn-primary mt-5 w-full">Update
                 password</button>
         </form>
         <form action="delete-teacher.php" method="post" class="rounded-2xl bg-blue-950 p-6" id="delete-teacher-form">
@@ -92,13 +92,13 @@ adminSidebar(
     </aside>
 </div>
 <div id="delete-teacher-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5">
-    <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+    <div class="card w-full max-w-sm p-6 shadow-2xl">
         <h3 class="text-xl font-black text-slate-900">Delete teacher account?</h3>
         <p class="mt-2 text-sm text-slate-500">This permanently removes the teacher account and access.</p>
         <div class="mt-6 flex gap-3"><button type="button" id="cancel-delete-teacher"
-                class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold">Cancel</button><button
+                class="btn btn-secondary flex-1">Cancel</button><button
                 type="button" id="confirm-delete-teacher"
-                class="flex-1 rounded-xl bg-rose-600 px-4 py-3 font-bold text-white">Delete</button></div>
+                class="btn btn-danger flex-1">Delete</button></div>
     </div>
 </div>
 <script>
@@ -240,7 +240,7 @@ adminSidebar(
                 'This keeps the teacher profile and assignments, but prevents future sign-ins.';
             document.getElementById('confirm-delete-teacher').textContent = 'Archive';
             document.getElementById('confirm-delete-teacher').className =
-                'flex-1 rounded-xl bg-amber-500 px-4 py-3 font-bold text-white hover:bg-amber-600';
+                'flex-1 btn btn-warning';
         }
     });
 </script><?php adminFoot(); ?>

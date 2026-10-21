@@ -19,7 +19,7 @@ adminSidebar(
             <p class="mt-1 text-slate-500">Add many student profiles from one CSV or Excel spreadsheet.</p>
         </div>
         <a href="student-list.php"
-            class="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Back
+            class="btn btn-secondary">Back
             to students</a>
     </div>
 
@@ -59,7 +59,7 @@ adminSidebar(
     </div>
     <?php endif; ?>
 
-    <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+    <section class="card card-body">
         <p class="text-sm font-bold uppercase tracking-widest text-blue-600">Step 1</p>
         <h3 class="mt-2 text-xl font-black text-slate-900">Prepare the spreadsheet</h3>
         <p class="mt-2 text-slate-600">Use CSV or Excel <code class="rounded bg-slate-100 px-1.5 py-0.5">.xlsx</code>,
@@ -116,7 +116,7 @@ adminSidebar(
             CSV template</a>
     </section>
 
-    <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+    <section class="card card-body">
         <p class="text-sm font-bold uppercase tracking-widest text-blue-600">Step 2</p>
         <h3 class="mt-2 text-xl font-black text-slate-900">Upload and import</h3>
         <form action="import-students-save.php" method="post" enctype="multipart/form-data" class="mt-6 space-y-5">
@@ -144,7 +144,7 @@ adminSidebar(
                 <strong>Biometric photo required later:</strong> importing creates student profiles with a placeholder
                 image. Open each profile afterward to upload a unique, clear face photo before using the scanner.</div>
             <button
-                class="w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white shadow-sm hover:bg-blue-700">Import
+                class="btn btn-primary w-full">Import
                 students</button>
         </form>
     </section>

@@ -11,6 +11,7 @@ ensureStudentProfileColumns($conn);
 ensureTeacherProfileColumns($conn);
 ensureTeacherAssignmentSchema($conn);
 ensureAttendanceTimeOutColumn($conn);
+ensureAttendanceSnapshotColumns($conn);
 
 $grade = (int) ($_POST['grade'] ?? 0);
 $section = trim($_POST['section'] ?? '');
@@ -24,7 +25,7 @@ if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
 }
 
 $teacherId = (int) ($_SESSION['teacher-id'] ?? 0);
-$student = $conn->prepare("SELECT ID,STUDENT_ID,STUDENT_NAME FROM students WHERE ID=? AND GRADE=? AND SECTION=? AND ENROLLMENT_STATUS='Enrolled' LIMIT 1");
+$student = $conn->prepare("SELECT ID,STUDENT_ID,STUDENT_NAME,GRADE,STRAND,SECTION FROM students WHERE ID=? AND GRADE=? AND SECTION=? AND ENROLLMENT_STATUS='Enrolled' LIMIT 1");
 $student->bind_param('iis', $studentId, $grade, $section);
 $student->execute();
 $row = $student->get_result()->fetch_assoc();
@@ -54,8 +55,8 @@ if ($record) {
     exit;
 }
 
-$insert = $conn->prepare("INSERT INTO attendance (STUDENT_ID,STUDENT_NAME,TIME_IN,ATTENDANCE_REMARK,ATTENDANCE_NOTE,IS_AUTO_ABSENT) VALUES (?,?,NOW(),'Marked present','Marked present by teacher',0)");
-$insert->bind_param('ss', $row['STUDENT_ID'], $row['STUDENT_NAME']);
+$insert = $conn->prepare("INSERT INTO attendance (STUDENT_ID,STUDENT_NAME,TIME_IN,ATTENDANCE_REMARK,ATTENDANCE_NOTE,IS_AUTO_ABSENT,GRADE_SNAPSHOT,STRAND_SNAPSHOT,SECTION_SNAPSHOT) VALUES (?,?,NOW(),'Marked present','Marked present by teacher',0,?,?,?)");
+$insert->bind_param('ssiss', $row['STUDENT_ID'], $row['STUDENT_NAME'], $row['GRADE'], $row['STRAND'], $row['SECTION']);
 $insert->execute();
 
 $_SESSION['toast'] = [

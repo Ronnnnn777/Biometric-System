@@ -128,32 +128,27 @@ adminSidebar(
         }
     }
 </style>
-<div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+<div class="card p-5">
     <div class="flex flex-col justify-between gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-end">
-        <div>
-            <h2 class="text-2xl font-black text-slate-900">Attendance log</h2>
-            <p class="mt-1 text-slate-500">Records update quietly when attendance changes.</p>
-        </div>
+        <p class="text-slate-500">Records update quietly when attendance changes.</p>
         <a id="export-link" href="export-attendance.php?date=<?= htmlspecialchars(
         $defaultAttendanceDate,
     ) ?>&grade=all&section=all"
-            class="rounded-xl bg-emerald-600 px-4 py-3 text-center text-sm font-bold text-white shadow-sm hover:bg-emerald-700">Export
+            class="btn btn-success">Export
             spreadsheet</a>
     </div>
     <div class="table-filter-bar mt-5">
-        <div class="mb-3 flex items-center justify-between gap-3">
-            <p class="text-sm font-black text-slate-800">Filters</p><button id="clear-attendance-filters" type="button"
-                class="table-filter-reset">Clear filters</button>
-        </div>
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <label class="table-filter-control text-sm font-bold text-slate-700">Grade<select id="grade-filter"
+        <div class="flex flex-wrap items-end gap-3">
+            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Grade<select
+                    id="grade-filter"
                     class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3">
                     <option value="all">All grades</option><?php foreach (
           $grades
           as $grade
       ): ?><option value="<?= $grade ?>">Grade <?= $grade ?></option><?php endforeach; ?>
                 </select></label>
-            <label class="table-filter-control text-sm font-bold text-slate-700">Section<select id="section-filter"
+            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Section<select
+                    id="section-filter"
                     class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3">
                     <option value="all">All sections</option><?php foreach (
           $sections
@@ -164,16 +159,18 @@ adminSidebar(
     $section["section"],
 ) ?></option><?php endforeach; ?>
                 </select></label>
-            <label class="table-filter-control text-sm font-bold text-slate-700">Student search<input
-                    id="student-filter" type="search" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
+            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Student
+                search<input id="student-filter" type="search"
+                    class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
                     placeholder="Name or LRN"></label>
-            <label class="table-filter-control text-sm font-bold text-slate-700">Date<input id="date-filter" type="date"
-                    value="<?= htmlspecialchars(
+            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Date<input
+                    id="date-filter" type="date" value="<?= htmlspecialchars(
           $defaultAttendanceDate,
       ) ?>" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"></label>
+            <button id="clear-attendance-filters" type="button"
+                class="table-filter-reset shrink-0">Clear filters</button>
         </div>
     </div>
-    <div id="attendance-pagination-top"></div>
     <div class="attendance-log-scroll mt-6 overflow-x-auto">
         <table id="attendance-log-table" class="text-left">
             <thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
@@ -199,7 +196,7 @@ adminSidebar(
 <div id="attendance-remark-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
     role="dialog" aria-modal="true" aria-labelledby="attendance-remark-title">
     <form action="update-attendance-remark.php" method="post"
-        class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        class="card w-full max-w-md p-6 shadow-2xl">
         <div class="flex items-start justify-between gap-4">
             <div>
                 <h2 id="attendance-remark-title" class="text-xl font-black text-slate-900">Attendance reason</h2>
@@ -224,13 +221,13 @@ adminSidebar(
                 class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 font-normal"
                 placeholder="Example: Excuse letter for illness."></textarea></label>
         <div class="mt-6 flex gap-3"><button
-                class="flex-1 rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700">Save attendance
+                class="btn btn-primary flex-1">Save attendance
                 note</button><button id="cancel-attendance-remark" type="button"
-                class="rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700">Cancel</button></div>
+                class="btn btn-secondary">Cancel</button></div>
     </form>
 </div>
 <script src="../js/quiet-attendance-refresh.js"></script>
-<script src="../js/table-pagination.js?v=5"></script>
+<script src="../js/table-pagination.js?v=6"></script>
 <script>
     const gradeFilter = document.getElementById('grade-filter'),
         sectionFilter = document.getElementById('section-filter'),
@@ -251,8 +248,7 @@ adminSidebar(
     gradeFilter.addEventListener('change', updateAttendanceSections);
     const attendancePager = createTablePagination({
         rows,
-        pager: [document.getElementById('attendance-pagination-top'), document.getElementById(
-            'attendance-pagination')],
+        pager: document.getElementById('attendance-pagination'),
         label: 'attendance records',
         perPage: 10
     });

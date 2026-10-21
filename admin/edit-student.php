@@ -3,7 +3,10 @@ session_start();
 require "../config/db_conn.php";
 require "../includes/student-profile-schema.php";
 require "../includes/student-placement-options.php";
+require "../includes/section-catalog-schema.php";
 ensureStudentProfileColumns($conn);
+ensureSectionCatalogColumns($conn);
+seedDefaultTeacherSections($conn);
 require "page-guard.php";
 require "../includes/csrf-token.php";
 require "components.php";
@@ -16,20 +19,7 @@ if (!$row) {
     http_response_code(404);
     exit("Student not found.");
 }
-$placement = [
-    7 => studentSectionsForGrade(7),
-    8 => studentSectionsForGrade(8),
-    9 => studentSectionsForGrade(9),
-    10 => studentSectionsForGrade(10),
-    11 => [
-        "Academic" => studentSectionsForGrade(11, "Academic"),
-        "Techpro" => studentSectionsForGrade(11, "Techpro"),
-    ],
-    12 => [
-        "Academic" => studentSectionsForGrade(12, "Academic"),
-        "Techpro" => studentSectionsForGrade(12, "Techpro"),
-    ],
-];
+$placement = studentSectionPlacementOptions($conn);
 adminHead("Edit student");
 adminSidebar(
     "students",
@@ -37,11 +27,13 @@ adminSidebar(
     "Update the student profile or registered image",
 );
 ?>
+<a href="student-list.php"
+    class="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 transition hover:text-blue-700">
+    <?= icon('arrow-left', 'h-4 w-4') ?> Back to Students
+</a>
 <div class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
-    <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
-        <a href="student-list.php" class="inline-flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-700"><?= icon('arrow-left') ?>Back to
-            students</a>
-        <h2 class="mt-5 text-2xl font-black text-slate-900">Student details</h2>
+    <section class="card card-body">
+        <h2 class="text-2xl font-black text-slate-900">Student details</h2>
         <form action="update-student.php" method="post" enctype="multipart/form-data" class="mt-7 space-y-5">
             <input type="hidden" name="id" value="<?= $row[
           "ID"
@@ -120,7 +112,7 @@ $status
                         photo</label><span id="student-image-file-name"
                         class="min-w-0 max-w-full truncate text-sm text-slate-500">No file chosen</span></div>
             </div>
-            <button class="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Save
+            <button class="btn btn-primary">Save
                 changes</button>
         </form>
         <form id="archive-form" action="archive-student.php" method="post" class="hidden"><input name="id" value="<?= $row[
@@ -129,7 +121,7 @@ $status
     $_SESSION["csrf_token"],
 ) ?>"></form>
     </section>
-    <aside class="h-fit rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+    <aside class="card card-body h-fit">
         <p class="text-sm font-bold uppercase tracking-widest text-blue-600">Current image</p><img id="main-preview"
             src="../<?= htmlspecialchars(
       $row["IMAGE_PATH"],
