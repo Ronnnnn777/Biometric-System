@@ -300,7 +300,7 @@ teacherShell("Attendance records");
     </form>
 </div>
 <script src="../js/quiet-attendance-refresh.js"></script>
-<script src="../js/table-pagination.js?v=5"></script>
+<script src="../js/table-pagination.js?v=6"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const filterBar = document.getElementById('section-filter')?.parentElement?.parentElement;

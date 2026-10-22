@@ -51,13 +51,20 @@ window.createTablePagination = ({ rows, pager, label = 'records', perPage = 15 }
     const totalPages = Math.max(1, Math.ceil(records.length / perPage));
     currentPage = Math.min(currentPage, totalPages);
     const first = (currentPage - 1) * perPage;
+    const last = Math.min(first + perPage, records.length);
     const visible = new Set(records.slice(first, first + perPage));
     records.forEach(row => { row.hidden = !visible.has(row); });
     pagers.forEach((container, index) => {
       container.replaceChildren();
-      container.className = 'my-5 flex justify-center';
+      container.className = 'my-5 flex flex-wrap items-center justify-between gap-3';
       container.hidden = !records.length;
-      if (records.length) container.append(controls(totalPages, index > 0));
+      if (records.length) {
+        const count = document.createElement('p');
+        count.className = 'text-sm font-semibold text-slate-500';
+        count.setAttribute('aria-live', 'polite');
+        count.textContent = `Showing ${first + 1}–${last} of ${records.length} ${label}`;
+        container.append(count, controls(totalPages, index > 0));
+      }
     });
   }
 

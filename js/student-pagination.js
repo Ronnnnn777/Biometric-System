@@ -93,6 +93,7 @@
     const totalPages = Math.max(1, Math.ceil(matchingRows.length / perPage));
     currentPage = Math.min(currentPage, totalPages);
     const first = (currentPage - 1) * perPage;
+    const last = Math.min(first + perPage, matchingRows.length);
     const visibleRows = new Set(matchingRows.slice(first, first + perPage));
     rows.forEach(row => { row.hidden = !visibleRows.has(row); });
     const hasFilters = Boolean(search.value.trim() || grade?.value || section?.value || status?.value);
@@ -110,9 +111,17 @@
     }
     pagers.forEach((pager, index) => {
       pager.replaceChildren();
-      pager.className = 'my-5 flex justify-center';
+      pager.className = 'my-5 flex flex-wrap items-center justify-between gap-3';
       pager.hidden = !matchingRows.length;
-      if (matchingRows.length) pager.append(controls(totalPages, index > 0));
+      if (matchingRows.length) {
+        const count = document.createElement('p');
+        count.className = 'text-sm font-semibold text-slate-500';
+        count.setAttribute('aria-live', 'polite');
+        count.textContent = hasFilters
+          ? `Showing ${first + 1}–${last} of ${matchingRows.length} matching students (${rows.length} total)`
+          : `Showing ${first + 1}–${last} of ${rows.length} students`;
+        pager.append(count, controls(totalPages, index > 0));
+      }
     });
   }
 

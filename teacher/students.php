@@ -276,7 +276,7 @@ teacherShell("Students");
         </div>
     </div>
 </div>
-<script src="../js/student-pagination.js?v=7"></script>
+<script src="../js/student-pagination.js?v=9"></script>
 <script>
     document.getElementById('clear-student-filters').onclick = () => {
         const search = document.getElementById('student-search');

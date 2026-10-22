@@ -17,7 +17,7 @@ adminSidebar(
     "Retained teacher accounts and access assignments.",
 );
 ?>
-<script src="../js/table-pagination.js?v=5"></script>
+<script src="../js/table-pagination.js?v=6"></script>
 <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
         <p class="text-sm font-black uppercase tracking-widest text-amber-700">Records archive</p>

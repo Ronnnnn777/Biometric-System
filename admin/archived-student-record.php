@@ -184,7 +184,7 @@ adminSidebar(
         <div id="archived-attendance-pagination" class="px-6 pb-6"></div>
     </section>
 </div>
-<script src="../js/table-pagination.js?v=5"></script>
+<script src="../js/table-pagination.js?v=6"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const rows = document.getElementById('archived-attendance-rows');

@@ -16,7 +16,7 @@ adminSidebar(
     "Manage teacher access and grade-section assignments.",
 );
 ?>
-<script src="../js/table-pagination.js?v=5"></script>
+<script src="../js/table-pagination.js?v=6"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const rows = document.querySelector('table tbody');

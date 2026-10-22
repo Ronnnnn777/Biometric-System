@@ -84,7 +84,7 @@ $records = $log->get_result();
 teacherHead("Student profile");
 teacherShell("Student profile");
 ?>
-<script src="../js/table-pagination.js?v=5"></script>
+<script src="../js/table-pagination.js?v=6"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const rows = document.querySelector('table tbody');

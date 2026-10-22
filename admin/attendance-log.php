@@ -230,7 +230,7 @@ adminSidebar(
     </form>
 </div>
 <script src="../js/quiet-attendance-refresh.js"></script>
-<script src="../js/table-pagination.js?v=5"></script>
+<script src="../js/table-pagination.js?v=6"></script>
 <script>
     const gradeFilter = document.getElementById('grade-filter'),
         sectionFilter = document.getElementById('section-filter'),

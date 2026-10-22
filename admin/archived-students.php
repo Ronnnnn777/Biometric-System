@@ -136,7 +136,7 @@ endwhile; ?></tbody>
         $sectionMap,
     ) ? > ;
 </script>
-<script src="../js/student-pagination.js?v=8"></script>
+<script src="../js/student-pagination.js?v=9"></script>
 <script>
     document.getElementById('clear-student-filters').onclick = () => {
         const search = document.getElementById('student-search'),

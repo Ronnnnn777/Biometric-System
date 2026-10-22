@@ -224,7 +224,7 @@ if (
             change these records.</p>
     </aside>
 </div>
-<script src="../js/table-pagination.js?v=5"></script>
+<script src="../js/table-pagination.js?v=6"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const rows = document.getElementById('archived-teacher-attendance-rows');
