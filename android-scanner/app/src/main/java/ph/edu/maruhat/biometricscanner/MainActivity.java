@@ -114,11 +114,18 @@ public class MainActivity extends AppCompatActivity {
   private final OkHttpClient http = new OkHttpClient.Builder()
     .cookieJar(new JavaNetCookieJar(cookieManager))
     .build();
+  private final OkHttpClient scanHttp = new OkHttpClient.Builder()
+    .cookieJar(new JavaNetCookieJar(cookieManager))
+    .connectTimeout(8, TimeUnit.SECONDS)
+    .writeTimeout(20, TimeUnit.SECONDS)
+    .readTimeout(35, TimeUnit.SECONDS)
+    .callTimeout(40, TimeUnit.SECONDS)
+    .build();
   private final OkHttpClient discoveryHttp = new OkHttpClient.Builder()
-    .connectTimeout(650, TimeUnit.MILLISECONDS)
-    .readTimeout(650, TimeUnit.MILLISECONDS)
-    .writeTimeout(650, TimeUnit.MILLISECONDS)
-    .callTimeout(1100, TimeUnit.MILLISECONDS)
+    .connectTimeout(1500, TimeUnit.MILLISECONDS)
+    .readTimeout(1500, TimeUnit.MILLISECONDS)
+    .writeTimeout(1500, TimeUnit.MILLISECONDS)
+    .callTimeout(2200, TimeUnit.MILLISECONDS)
     .build();
   private SharedPreferences preferences;
   private EditText serverInput;
@@ -1125,7 +1132,7 @@ public class MainActivity extends AppCompatActivity {
       .url(baseUrl + "api/mobile-scan.php")
       .post(form)
       .build();
-    try (Response response = http.newCall(request).execute()) {
+    try (Response response = scanHttp.newCall(request).execute()) {
       String payload = response.body() == null ? "" : response.body().string();
       JSONObject json = new JSONObject(payload);
       if (response.code() == 401) {

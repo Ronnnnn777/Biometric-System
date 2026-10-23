@@ -80,7 +80,7 @@ function recognizeWithService(string $imagePath): ?array
             "method" => "POST",
             "header" => "Content-Type: application/json\r\n",
             "content" => $payload,
-            "timeout" => 3,
+            "timeout" => 8,
             "ignore_errors" => true,
         ],
     ]);
