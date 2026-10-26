@@ -157,6 +157,11 @@ public class MainActivity extends AppCompatActivity {
   private String guideStatusText = "";
   private int unrecognizedStreak = 0;
   private String lastRecognitionKey = "";
+  // The camera can send another frame immediately after recording a time in.
+  // Keep that automatic repeat from replacing the success card with the
+  // cooldown warning; a later deliberate scan still shows the protection.
+  private String recentlyLoggedStudentId = "";
+  private volatile long recentlyLoggedUntil = 0;
   private boolean returnToScannerHomeOnResume = false;
   private final Handler interfaceHandler = new Handler(Looper.getMainLooper());
   private ToneGenerator recognitionTone;
@@ -1256,16 +1261,25 @@ public class MainActivity extends AppCompatActivity {
   }
 
   private void showAttendanceResult(JSONObject match) {
+    JSONObject student = match.optJSONObject("student");
+    String studentId = student == null
+      ? ""
+      : student.optString("STUDENT_ID", "");
+    String action = match.optString("action", "");
+    long now = System.currentTimeMillis();
+    if (
+      "cooldown".equals(action) &&
+      studentId.equals(recentlyLoggedStudentId) &&
+      now < recentlyLoggedUntil
+    ) return;
     // A prior frame may have shown an error while this next frame was
     // still being recognized. A real match always wins visually.
     clearFaceToast();
     if (scanResultCard == null) return;
-    JSONObject student = match.optJSONObject("student");
     String name =
       student == null
         ? "Student"
         : student.optString("STUDENT_NAME", "Student");
-    String action = match.optString("action", "");
     boolean logged = match.optBoolean("logged", false);
     String message = match.optString("message", "Attendance recorded");
     String label;
@@ -1299,13 +1313,14 @@ public class MainActivity extends AppCompatActivity {
       (student == null ? name : student.optString("STUDENT_ID", name)) +
       "|" +
       action;
-    long now = System.currentTimeMillis();
     boolean completed = "complete".equals(action);
     if (logged) {
       // A saved attendance step happens only once, so it should always
       // provide immediate audible confirmation.
       lastRecognitionKey = recognitionKey;
       matchMessageUntil = now + 4000;
+      recentlyLoggedStudentId = studentId;
+      recentlyLoggedUntil = now + 8000;
       playRecognitionSound();
     } else if (
       completed &&

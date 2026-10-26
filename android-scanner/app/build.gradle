@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 
 android { namespace 'ph.edu.maruhat.biometricscanner'; compileSdk 35
     buildFeatures { buildConfig true }
-    defaultConfig { applicationId 'ph.edu.maruhat.biometricscanner'; minSdk 26; targetSdk 35; versionCode 35; versionName '1.6.9' }
+    defaultConfig { applicationId 'ph.edu.maruhat.biometricscanner'; minSdk 26; targetSdk 35; versionCode 36; versionName '1.6.10' }
 }
 
 dependencies {

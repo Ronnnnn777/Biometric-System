@@ -110,8 +110,12 @@ if($filename) {
 
         if($insert->execute()){
             refreshStudentRecognitionService();
-            $_SESSION["toast"] = ["message" => "Success: Student registered!", "type" => "success"];
-            header("Location: add-student.php");
+            $_SESSION["toast"] = [
+                "message" => "Registered successfully",
+                "type" => "success",
+                "position" => "top-center",
+            ];
+            header("Location: student-list.php");
             exit;
         } else {
             die("Database error: " . $insert->error);
