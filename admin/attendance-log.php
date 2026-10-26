@@ -28,13 +28,10 @@ $grades = [];
 while ($row = $gradeResult->fetch_assoc()) {
     $grades[] = (int) $row["GRADE"];
 }
-$latestAttendanceResult = $conn->query(
-    "SELECT MAX(DATE(TIME_IN)) AS latest_date FROM attendance",
-);
-$latestAttendance = $latestAttendanceResult
-    ? $latestAttendanceResult->fetch_assoc()
-    : null;
-$defaultAttendanceDate = $latestAttendance["latest_date"] ?? date("Y-m-d");
+$limit = 15;
+// Always default the log to the school's current date instead of the newest
+// saved attendance row, which may be stale.
+$defaultAttendanceDate = date("Y-m-d");
 
 adminHead("Attendance log");
 adminSidebar(
@@ -112,9 +109,17 @@ adminSidebar(
         overflow-wrap: anywhere;
     }
 
-    #attendance-log-table td:nth-child(11) .flex {
+    #attendance-log-table td:nth-child(11) {
+        white-space: nowrap;
+    }
+
+    /* Action cell: reason on top, buttons pinned to the left under it. */
+    #attendance-log-table td:nth-child(11) > div {
+        height: 100%;
+    }
+
+    #attendance-log-table td:nth-child(11) > div > div {
         flex-wrap: nowrap;
-        gap: .75rem;
     }
 
     #attendance-log-table td:nth-child(11) a,
@@ -130,7 +135,7 @@ adminSidebar(
 </style>
 <div class="card p-5">
     <div class="flex flex-col justify-between gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-end">
-        <p class="text-slate-500">Records update quietly when attendance changes.</p>
+        <p class="text-slate-500">Records update quietly when attendance changes. Students who have timed in appear first.</p>
         <a id="export-link" href="export-attendance.php?date=<?= htmlspecialchars(
         $defaultAttendanceDate,
     ) ?>&grade=all&section=all"
@@ -138,8 +143,8 @@ adminSidebar(
             spreadsheet</a>
     </div>
     <div class="table-filter-bar mt-5">
-        <div class="flex flex-wrap items-end gap-3">
-            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Grade<select
+        <div class="flex w-full flex-wrap items-end gap-3">
+            <label class="table-filter-control flex-1 w-full text-sm font-bold text-slate-700">Grade<select
                     id="grade-filter"
                     class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3">
                     <option value="all">All grades</option><?php foreach (
@@ -147,7 +152,8 @@ adminSidebar(
           as $grade
       ): ?><option value="<?= $grade ?>">Grade <?= $grade ?></option><?php endforeach; ?>
                 </select></label>
-            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Section<select
+            <label id="section-field" hidden
+                class="table-filter-control flex-1 w-full text-sm font-bold text-slate-700">Section<select
                     id="section-filter"
                     class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3">
                     <option value="all">All sections</option><?php foreach (
@@ -159,11 +165,11 @@ adminSidebar(
     $section["section"],
 ) ?></option><?php endforeach; ?>
                 </select></label>
-            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Student
+            <label class="table-filter-control flex-1 w-full text-sm font-bold text-slate-700">Student
                 search<input id="student-filter" type="search"
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
                     placeholder="Name or LRN"></label>
-            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Date<input
+            <label class="table-filter-control flex-1 w-full text-sm font-bold text-slate-700">Date<input
                     id="date-filter" type="date" value="<?= htmlspecialchars(
           $defaultAttendanceDate,
       ) ?>" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"></label>
@@ -171,8 +177,8 @@ adminSidebar(
                 class="table-filter-reset shrink-0">Clear filters</button>
         </div>
     </div>
-    <div class="attendance-log-scroll mt-6 overflow-x-auto">
-        <table id="attendance-log-table" class="text-left">
+    <div class="attendance-log-scroll mt-6 w-full overflow-x-auto">
+        <table id="attendance-log-table" class="w-full text-left">
             <thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
                     <th>LRN</th>
@@ -204,22 +210,30 @@ adminSidebar(
             </div><button id="close-attendance-remark" type="button"
                 class="rounded-lg p-2 text-slate-400 hover:text-slate-800"
                 aria-label="Close"><?= icon('x') ?></button>
-        </div><input type="hidden" name="csrf_token" value="<?= htmlspecialchars(
+        </div>
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(
     $_SESSION["csrf_token"],
-) ?>"><input id="attendance-remark-id" type="hidden" name="attendance_id"><input id="attendance-remark-student"
-            type="hidden" name="student_id"><input id="attendance-remark-date" type="hidden"
-            name="attendance_date"><label class="mt-5 block text-sm font-bold text-slate-700">Attendance status<select
-                id="attendance-remark-select" name="attendance_remark"
-                class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3">
-                <option value="">Choose attendance status</option>
-                <option value="Excused absence">Excused absence</option>
-                <option value="Excused late">Excused late</option>
-                <option value="Early dismissal">Early dismissal</option>
-                <option value="Emergency dismissal">Emergency dismissal</option>
-            </select></label><label class="mt-5 block text-sm font-bold text-slate-700">Short reason / comment<textarea
-                id="attendance-note" name="attendance_note" maxlength="255" rows="4"
-                class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 font-normal"
-                placeholder="Example: Excuse letter for illness."></textarea></label>
+) ?>">
+        <input id="attendance-remark-id" type="hidden" name="attendance_id">
+        <input id="attendance-remark-student" type="hidden" name="student_id">
+        <input id="attendance-remark-date" type="hidden" name="attendance_date">
+        <div class="mt-5 flex flex-col gap-4">
+            <label class="block text-sm font-bold text-slate-700">Attendance status
+                <select id="attendance-remark-select" name="attendance_remark"
+                    class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3">
+                    <option value="">Choose attendance status</option>
+                    <option value="Excused absence">Excused absence</option>
+                    <option value="Excused late">Excused late</option>
+                    <option value="Early dismissal">Early dismissal</option>
+                    <option value="Emergency dismissal">Emergency dismissal</option>
+                </select>
+            </label>
+            <label class="block text-sm font-bold text-slate-700">Short reason / comment
+                <textarea id="attendance-note" name="attendance_note" maxlength="255" rows="4"
+                    class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 font-normal"
+                    placeholder="Example: Excuse letter for illness."></textarea>
+            </label>
+        </div>
         <div class="mt-6 flex gap-3"><button
                 class="btn btn-primary flex-1">Save attendance
                 note</button><button id="cancel-attendance-remark" type="button"
@@ -227,7 +241,7 @@ adminSidebar(
     </form>
 </div>
 <script src="../js/quiet-attendance-refresh.js"></script>
-<script src="../js/table-pagination.js?v=6"></script>
+<script src="../js/table-pagination.js?v=7"></script>
 <script>
     const gradeFilter = document.getElementById('grade-filter'),
         sectionFilter = document.getElementById('section-filter'),
@@ -236,21 +250,29 @@ adminSidebar(
         rows = document.getElementById('attendance-rows'),
         exportLink = document.getElementById('export-link');
     const attendanceSections = <?= json_encode($sections) ?>;
+    const sectionField = document.getElementById('section-field');
 
     function updateAttendanceSections() {
         const grade = gradeFilter.value,
-            previous = sectionFilter.value;
+            previous = sectionFilter.value,
+            allGrades = grade === 'all';
+        // The section list is only meaningful for a single grade.
+        if (sectionField) {
+            sectionField.hidden = allGrades;
+            sectionField.classList.toggle('hidden', allGrades);
+        }
         sectionFilter.replaceChildren(new Option('All sections', 'all'));
-        attendanceSections.filter(item => grade === 'all' || String(item.grade) === grade).forEach(item => sectionFilter
+        attendanceSections.filter(item => allGrades || String(item.grade) === grade).forEach(item => sectionFilter
             .add(new Option(item.section, item.section, false, item.section === previous)));
         if (!Array.from(sectionFilter.options).some(option => option.selected)) sectionFilter.value = 'all';
     }
     gradeFilter.addEventListener('change', updateAttendanceSections);
+    updateAttendanceSections();
     const attendancePager = createTablePagination({
         rows,
         pager: document.getElementById('attendance-pagination'),
         label: 'attendance records',
-        perPage: 10
+        perPage: <?= $limit ?>
     });
     createQuietAttendanceRefresh({
         rows,

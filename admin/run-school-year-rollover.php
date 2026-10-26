@@ -6,10 +6,12 @@ require "../includes/student-promotion-schema.php";
 require "../includes/student-placement-options.php";
 require "../includes/section-catalog-schema.php";
 require "../includes/sectioning.php";
+require_once "../includes/teacher-profile-schema.php";
 
 ensureSchoolYearRolloverSchema($conn);
 ensureStudentPromotionSchema($conn);
 ensureSectionCatalogColumns($conn);
+ensureTeacherProfileColumns($conn);
 seedDefaultTeacherSections($conn);
 
 function rolloverFail(string $message): void
@@ -42,6 +44,12 @@ if (count($parts) !== 2) {
 }
 $nextYear = ($parts[0] + 1) . "-" . ($parts[1] + 1);
 
+// Archived teachers are deliberately excluded from the promotion runner. The
+// runner never promotes teacher rows; this guard documents and verifies that
+// archived accounts are skipped rather than silently treated as active staff.
+$archivedTeacherResult = $conn->query("SELECT COUNT(*) total FROM teachers WHERE COALESCE(NULLIF(TEACHER_STATUS,''),'Active')='Archived'");
+$archivedTeacherCount = (int) ($archivedTeacherResult ? $archivedTeacherResult->fetch_assoc()["total"] ?? 0 : 0);
+
 /* ---------------------------------------------------------------
  * Validate the grade-level promotion plan.
  * A source may target one strand, or two for the Grade 10 -> 11 split.
@@ -59,7 +67,7 @@ foreach ($validated as $row) {
 $sourceGroups = [];
 $sourceRows = $conn->query(
     "SELECT GRADE, STRAND FROM students
-      WHERE ENROLLMENT_STATUS='Enrolled' AND GRADE BETWEEN 7 AND 11
+      WHERE ENROLLMENT_STATUS='Enrolled' AND ENROLLMENT_STATUS<>'Archived' AND GRADE BETWEEN 7 AND 11
       GROUP BY GRADE, STRAND
       ORDER BY GRADE, STRAND",
 );
@@ -74,7 +82,7 @@ while ($sourceRows && ($source = $sourceRows->fetch_assoc())) {
     ];
 }
 $grade12Count = (int) ($conn->query(
-    "SELECT COUNT(*) total FROM students WHERE GRADE=12 AND ENROLLMENT_STATUS='Enrolled'",
+    "SELECT COUNT(*) total FROM students WHERE GRADE=12 AND ENROLLMENT_STATUS='Enrolled' AND ENROLLMENT_STATUS<>'Archived'",
 )->fetch_assoc()["total"] ?? 0);
 if (!$sourceGroups && $grade12Count === 0) {
     rolloverFail("There are no enrolled students available for rollover.");
@@ -141,12 +149,12 @@ try {
         "INSERT IGNORE INTO student_school_history (STUDENT_ID,SCHOOL_YEAR,GRADE,STRAND,SECTION,ENROLLMENT_STATUS)
          SELECT STUDENT_ID,?,GRADE,STRAND,SECTION,ENROLLMENT_STATUS
            FROM students
-          WHERE GRADE=? AND STRAND=? AND ENROLLMENT_STATUS='Enrolled'",
+          WHERE GRADE=? AND STRAND=? AND ENROLLMENT_STATUS='Enrolled' AND ENROLLMENT_STATUS<>'Archived'",
     );
     $sourceStudents = $conn->prepare(
         "SELECT STUDENT_ID,LAST_NAME,FIRST_NAME,SECTION
            FROM students
-          WHERE GRADE=? AND STRAND=? AND ENROLLMENT_STATUS='Enrolled'
+          WHERE GRADE=? AND STRAND=? AND ENROLLMENT_STATUS='Enrolled' AND ENROLLMENT_STATUS<>'Archived'
           ORDER BY SECTION,LAST_NAME,FIRST_NAME,STUDENT_ID",
     );
     $saveDecision = $conn->prepare(
@@ -156,7 +164,7 @@ try {
     );
     $promote = $conn->prepare(
         "UPDATE students SET GRADE=?,STRAND=?,SECTION=?
-          WHERE STUDENT_ID=? AND ENROLLMENT_STATUS='Enrolled'",
+          WHERE STUDENT_ID=? AND ENROLLMENT_STATUS='Enrolled' AND ENROLLMENT_STATUS<>'Archived'",
     );
     $trackSection = $conn->prepare(
         "INSERT IGNORE INTO school_year_rollover_sections (SCHOOL_YEAR,SECTION,GRADE,STRAND) VALUES (?,?,?,?)",
@@ -232,17 +240,17 @@ try {
         "INSERT IGNORE INTO student_school_history (STUDENT_ID,SCHOOL_YEAR,GRADE,STRAND,SECTION,ENROLLMENT_STATUS)
          SELECT STUDENT_ID,?,GRADE,STRAND,SECTION,ENROLLMENT_STATUS
            FROM students
-          WHERE GRADE=12 AND ENROLLMENT_STATUS='Enrolled'",
+          WHERE GRADE=12 AND ENROLLMENT_STATUS='Enrolled' AND ENROLLMENT_STATUS<>'Archived'",
     );
     $archiveGrade12->bind_param("s", $currentYear);
     $archiveGrade12->execute();
 
     $grade12Students = $conn->query(
-        "SELECT STUDENT_ID FROM students WHERE GRADE=12 AND ENROLLMENT_STATUS='Enrolled'",
+        "SELECT STUDENT_ID FROM students WHERE GRADE=12 AND ENROLLMENT_STATUS='Enrolled' AND ENROLLMENT_STATUS<>'Archived'",
     );
     $graduate = $conn->prepare(
         "UPDATE students SET ENROLLMENT_STATUS='Archived',ARCHIVE_REASON='Graduated',ARCHIVED_AT=NOW()
-          WHERE STUDENT_ID=? AND GRADE=12 AND ENROLLMENT_STATUS='Enrolled'",
+          WHERE STUDENT_ID=? AND GRADE=12 AND ENROLLMENT_STATUS='Enrolled' AND ENROLLMENT_STATUS<>'Archived'",
     );
     while ($grade12Students && ($grade12Student = $grade12Students->fetch_assoc())) {
         $studentId = (string) $grade12Student["STUDENT_ID"];
@@ -275,8 +283,11 @@ try {
         }
         $sectionsSummary = " Sections: " . implode(", ", $partsOut) . ".";
     }
+    $teacherNote = $archivedTeacherCount > 0
+        ? " {$archivedTeacherCount} archived teacher account" . ($archivedTeacherCount === 1 ? " was" : "s were") . " skipped."
+        : "";
     $_SESSION["toast"] = [
-        "message" => "School year rollover complete: {$promoted} promoted, {$summerClass} assigned to summer class, {$retained} retained, and {$graduated} Grade 12 students graduated and archived.{$sectionsSummary}",
+        "message" => "School year rollover complete: {$promoted} promoted, {$summerClass} assigned to summer class, {$retained} retained, and {$graduated} Grade 12 students graduated and archived.{$sectionsSummary}{$teacherNote}",
         "type" => "success",
     ];
 } catch (Throwable $error) {

@@ -10,7 +10,7 @@ $authorizedMobileScanners = authorizedMobileScanners($conn);
 $activeAuthorizedMobileScanners = array_values(array_filter($authorizedMobileScanners, fn($scanner) => (int) ($scanner['IS_ENABLED'] ?? 1) === 1));
 
 $today = date('Y-m-d');
-$totalStudents = (int) ($conn->query('SELECT COUNT(*) AS total FROM students')->fetch_assoc()['total'] ?? 0);
+$totalStudents = (int) ($conn->query("SELECT COUNT(*) AS total FROM students WHERE COALESCE(NULLIF(ENROLLMENT_STATUS,''),'Enrolled')<>'Archived'")->fetch_assoc()['total'] ?? 0);
 
 $timeInStatement = $conn->prepare("SELECT COUNT(DISTINCT STUDENT_ID) AS total FROM attendance WHERE DATE(TIME_IN)=? AND COALESCE(ATTENDANCE_REMARK,'')<>'Absent'");
 $timeInStatement->bind_param('s', $today);
@@ -30,13 +30,18 @@ adminHead('Dashboard');
 adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
 ?>
 <section class="maruhat-dashboard-hero mb-6">
+    <h2 class="text-3xl font-black sm:text-4xl">Good day, administrator.</h2>
+</section>
+
+<section class="card card-body mb-6">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex min-w-0 flex-col gap-3">
-            <p class="maruhat-eyebrow text-xs font-black uppercase">Maruhat National High School</p>
-            <h2 class="text-3xl font-black sm:text-4xl">Good day, administrator.</h2>
-            <p class="max-w-xl text-sm leading-6 text-blue-50">Your attendance overview for <?= htmlspecialchars(date('l, F j, Y')) ?>. Keep every school day organized, accurate, and ready for review.</p>
+        <div class="min-w-0">
+            <p class="text-xs font-black uppercase tracking-widest text-[#1f4f91]">Maruhat National High School</p>
+            <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Your attendance overview for
+                <?= htmlspecialchars(date('l, F j, Y')) ?>. Keep every school day organized, accurate, and ready for
+                review.</p>
         </div>
-        <div class="flex shrink-0 items-center gap-3 rounded-2xl bg-white/10 px-5 py-4 ring-1 ring-white/20">
+        <div class="flex shrink-0 items-center gap-3 rounded-2xl bg-blue-50 px-5 py-4 text-blue-700 ring-1 ring-blue-100">
             <?= icon('calendar') ?>
             <span class="text-sm font-bold"><?= htmlspecialchars(date('l')) ?></span>
         </div>
@@ -45,9 +50,9 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
 
 <section class="grid gap-5 md:grid-cols-3">
     <article class="maruhat-stat card card-body">
-        <p class="text-sm font-bold text-slate-500">Registered students</p>
+        <p class="text-sm font-bold text-slate-500">Active students</p>
         <p id="stat-total" class="mt-3 text-4xl font-black text-slate-900"><?= $totalStudents ?></p>
-        <p class="card-muted mt-2">Student profiles in the system</p>
+        <p class="card-muted mt-2">Non-archived student profiles</p>
     </article>
     <article class="maruhat-stat card card-body">
         <p class="text-sm font-bold text-emerald-700">Today's time ins</p>
@@ -146,7 +151,7 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
                 const button = document.createElement('button');
                 button.type = 'submit';
                 button.className = scanner.enabled
-                    ? 'font-bold text-rose-600 transition hover:text-rose-700'
+                    ? 'font-bold text-red-500 transition hover:text-red-600'
                     : 'font-bold text-emerald-700 transition hover:text-emerald-800';
                 button.textContent = scanner.enabled ? 'Disable' : 'Activate';
                 form.append(token, scannerId, button);
@@ -165,7 +170,7 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
                 removeScannerId.value = scanner.id;
                 const removeButton = document.createElement('button');
                 removeButton.type = 'button';
-                removeButton.className = 'font-bold text-slate-600 transition hover:text-rose-700';
+                removeButton.className = 'font-bold text-red-500 transition hover:text-red-600';
                 removeButton.textContent = 'Remove';
                 removeButton.addEventListener('click', () => {
                     pendingScannerRemoveForm = removeForm;

@@ -24,15 +24,22 @@ function ui_topbar(array $crumbs, string $subtitle = '', string $actions = '', s
             title="Hide navigation"><?= icon('menu') ?></button>
 
         <div class="min-w-0 flex-1">
+            <?php
+            // Every breadcrumb level is rendered as a link. The current page falls back
+            // to its own URL so the hierarchy never contains a dead-end label.
+            $crumbCount = count($crumbs);
+            $currentUrl = $_SERVER['REQUEST_URI'] ?? '#';
+            ?>
             <nav aria-label="Breadcrumb" class="flex items-center gap-1.5 text-sm">
                 <?php foreach ($crumbs as $index => $crumb): ?>
+                    <?php
+                    $isCurrent = $index === $crumbCount - 1;
+                    $href = trim((string) ($crumb['href'] ?? '')) ?: $currentUrl;
+                    ?>
                     <?php if ($index > 0): ?><span class="text-slate-300" aria-hidden="true">/</span><?php endif; ?>
-                    <?php if (!empty($crumb['href'])): ?>
-                        <a href="<?= htmlspecialchars($crumb['href']) ?>"
-                            class="shrink-0 text-slate-500 transition hover:text-slate-900"><?= htmlspecialchars($crumb['label']) ?></a>
-                    <?php else: ?>
-                        <span class="truncate font-semibold text-slate-900"><?= htmlspecialchars($crumb['label']) ?></span>
-                    <?php endif; ?>
+                    <a href="<?= htmlspecialchars($href) ?>"
+                        class="shrink-0 transition <?= $isCurrent ? 'truncate font-semibold text-slate-900' : 'text-slate-500 hover:text-slate-900' ?>"
+                        <?= $isCurrent ? 'aria-current="page"' : '' ?>><?= htmlspecialchars($crumb['label']) ?></a>
                 <?php endforeach; ?>
             </nav>
             <?php if ($subtitle !== ''): ?>
@@ -92,6 +99,105 @@ function ui_button(string $label, array $options = []): string
 
     return '<button type="' . htmlspecialchars($type, ENT_QUOTES) . '" class="' . $classAttribute . '"'
         . $attributeString . '>' . $inner . '</button>';
+}
+
+/**
+ * Capsule segmented pill control.
+ *
+ * Renders the shared pill shell used for grade and quarter selectors. A hidden
+ * input mirrors the active value so plain form posts (and progressive
+ * enhancement) always receive the current selection. Add `href` to an item to
+ * turn its pill into a navigation control; otherwise it behaves as a filter
+ * button wired up by js/capsule-control.js.
+ *
+ * Visual-only items are supported for long selectors: use
+ * ['type' => 'label', 'label' => 'JHS'] for a grouping label or
+ * ['type' => 'divider'] for a vertical rule. Wrap related items in
+ * ['type' => 'group', 'items' => [...]] so they wrap together in fluid mode.
+ *
+ * @param array<int|string, array{type?: string, value?: string, label?: string, href?: string, items?: array}|string> $items
+ * @param array{aria_label?: string, hidden_input?: bool, container_class?: string, active_class?: string, inactive_class?: string, fluid?: bool} $options
+ */
+function ui_capsule_group(string $name, array $items, string $activeValue, array $options = []): string
+{
+    $activeClass = (string) ($options['active_class']
+        ?? 'rounded-full bg-slate-900 dark:bg-blue-600 text-white font-bold text-xs sm:text-sm px-3.5 py-1.5 shadow-md transition-all shrink-0');
+    $inactiveClass = (string) ($options['inactive_class']
+        ?? 'rounded-full text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-semibold text-xs sm:text-sm px-3.5 py-1.5 transition-all shrink-0');
+    // Fluid capsules fill their grid column, wrap naturally, and never create
+    // an internal horizontal scrollbar. Pair them with a grid-rows-[auto_1fr]
+    // parent when the shell should stretch to match a taller capsule in the row.
+    $fluid = (bool) ($options['fluid'] ?? false);
+    $containerClass = (string) ($options['container_class']
+        ?? ($fluid
+            ? 'flex w-full min-w-0 flex-wrap content-center items-center gap-1 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-1.5 min-h-[46px]'
+            : 'inline-flex flex-wrap items-center gap-1 rounded-full bg-white dark:bg-slate-900/90 p-1.5 border border-slate-200 dark:border-slate-800 shadow-sm'));
+    $ariaLabel = (string) ($options['aria_label'] ?? 'Select an option');
+    $hiddenInput = (bool) ($options['hidden_input'] ?? true);
+    $activeValue = (string) $activeValue;
+
+    $html = '<div class="' . $containerClass . '" role="group" aria-label="' . htmlspecialchars($ariaLabel, ENT_QUOTES) . '"'
+        . ' data-capsule-group="' . htmlspecialchars($name, ENT_QUOTES) . '"'
+        . ' data-capsule-value="' . htmlspecialchars($activeValue, ENT_QUOTES) . '"'
+        . ' data-capsule-active-class="' . htmlspecialchars($activeClass, ENT_QUOTES) . '"'
+        . ' data-capsule-inactive-class="' . htmlspecialchars($inactiveClass, ENT_QUOTES) . '">';
+
+    if ($hiddenInput) {
+        $html .= '<input type="hidden" name="' . htmlspecialchars($name, ENT_QUOTES) . '"'
+            . ' value="' . htmlspecialchars($activeValue, ENT_QUOTES) . '"'
+            . ' data-capsule-input="' . htmlspecialchars($name, ENT_QUOTES) . '">';
+    }
+
+    $renderItems = function (array $items) use (&$renderItems, $activeValue, $activeClass, $inactiveClass): string {
+        $markup = '';
+        foreach ($items as $key => $item) {
+            if (is_string($item)) {
+                $item = ['value' => (string) $key, 'label' => $item];
+            }
+
+            $type = (string) ($item['type'] ?? '');
+            if ($type === 'group') {
+                $groupItems = is_array($item['items'] ?? null) ? $item['items'] : [];
+                $markup .= '<div class="inline-flex flex-wrap items-center gap-1">'
+                    . $renderItems($groupItems) . '</div>';
+                continue;
+            }
+
+            // Non-selectable visual grouping items keep the capsule shell readable
+            // when a long selector is split into related ranges (for example JHS
+            // and SHS grade bands).
+            if ($type === 'label') {
+                $markup .= '<span class="px-1 text-[10px] font-black uppercase tracking-wide text-slate-400" aria-hidden="true">'
+                    . htmlspecialchars((string) ($item['label'] ?? ''), ENT_QUOTES) . '</span>';
+                continue;
+            }
+            if ($type === 'divider') {
+                $markup .= '<span class="mx-1 h-5 w-px shrink-0 bg-slate-300 dark:bg-slate-700" aria-hidden="true"></span>';
+                continue;
+            }
+
+            $value = (string) ($item['value'] ?? $key);
+            $label = (string) ($item['label'] ?? $value);
+            $href = trim((string) ($item['href'] ?? ''));
+            $isActive = $value === $activeValue;
+            $classes = $isActive ? $activeClass : $inactiveClass;
+            $attributes = ' data-capsule-item data-value="' . htmlspecialchars($value, ENT_QUOTES) . '"'
+                . ' aria-pressed="' . ($isActive ? 'true' : 'false') . '"';
+
+            if ($href !== '') {
+                $markup .= '<a href="' . htmlspecialchars($href, ENT_QUOTES) . '" class="' . $classes . '"'
+                    . $attributes . ($isActive ? ' aria-current="page"' : '') . '>'
+                    . htmlspecialchars($label) . '</a>';
+            } else {
+                $markup .= '<button type="button" class="' . $classes . '"' . $attributes . '>'
+                    . htmlspecialchars($label) . '</button>';
+            }
+        }
+
+        return $markup;
+    };
+
+    return $html . $renderItems($items) . '</div>';
 }
 
 /**

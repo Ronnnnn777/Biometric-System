@@ -30,22 +30,24 @@ while ($item = $sectionRows->fetch_assoc()) {
     $sections[] = $item;
 }
 $students = [];
+// Keep every date control and export link anchored to the school's current date.
+$today = date("Y-m-d");
 
 teacherHead("Attendance");
 teacherShell("Attendance records");
 ?>
 <section class="card p-5">
     <div class="flex flex-wrap items-end justify-between gap-4 border-b border-slate-100 pb-5">
-        <p class="text-slate-500">Updates quietly when attendance changes in your assigned grades.</p>
-        <a id="export-link" href="export-attendance.php?date=<?= date(
-        "Y-m-d",
+        <p class="text-slate-500">Updates quietly when attendance changes in your assigned grades. Students who have timed in appear first.</p>
+        <a id="export-link" href="export-attendance.php?date=<?= htmlspecialchars(
+        $today,
     ) ?>&section=all"
             class="btn btn-success">Export
             spreadsheet</a>
     </div>
     <div class="table-filter-bar mt-5">
-        <div class="flex flex-wrap items-end gap-3">
-            <label class="table-filter-control min-w-[12rem] flex-1 text-sm font-bold text-slate-700">Grade and
+        <div class="flex w-full flex-wrap items-end gap-3">
+            <label class="table-filter-control flex-1 w-full text-sm font-bold text-slate-700">Grade and
                 section<select id="section-filter"
                     class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3">
                     <option value="">All assigned sections</option><?php foreach (
@@ -57,7 +59,7 @@ teacherShell("Attendance records");
      $item["SECTION"],
  ) ?></option><?php endforeach; ?>
                 </select></label>
-            <label class="table-filter-control min-w-[12rem] flex-1 text-sm font-bold text-slate-700">Student<select
+            <label class="table-filter-control flex-1 w-full text-sm font-bold text-slate-700">Student<select
                     id="student-filter"
                     class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3">
                     <option value="">All students</option><?php foreach (
@@ -75,9 +77,9 @@ teacherShell("Attendance records");
         $student["SECTION"],
 ) ?></option><?php endforeach; ?>
                 </select></label>
-            <label class="table-filter-control min-w-[10rem] flex-1 text-sm font-bold text-slate-700">Date<input
-                    id="date-filter" type="date" value="<?= date(
-        "Y-m-d",
+            <label class="table-filter-control flex-1 w-full text-sm font-bold text-slate-700">Date<input
+                    id="date-filter" type="date" value="<?= htmlspecialchars(
+        $today,
     ) ?>" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"></label>
             <button id="clear-attendance-filters" type="button"
                 class="table-filter-reset shrink-0">Clear filters</button>
@@ -158,8 +160,8 @@ teacherShell("Attendance records");
             }
         }
     </style>
-    <div class="teacher-attendance-log-scroll mt-6 overflow-x-auto">
-        <table id="teacher-attendance-log-table" class="text-left">
+    <div class="teacher-attendance-log-scroll mt-6 w-full overflow-x-auto">
+        <table id="teacher-attendance-log-table" class="w-full text-left">
             <thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
                     <th>LRN</th>
@@ -175,7 +177,7 @@ teacherShell("Attendance records");
                     <th>Reason / action</th>
                 </tr>
             </thead>
-            <tbody id="attendance-rows" class="divide-y divide-slate-100" aria-live="polite"></tbody>
+            <tbody id="attendance-rows" data-page-size="15" class="divide-y divide-slate-100" aria-live="polite"></tbody>
         </table>
     </div>
     <div id="attendance-pagination"></div>
@@ -303,7 +305,7 @@ teacherShell("Attendance records");
     </form>
 </div>
 <script src="../js/quiet-attendance-refresh.js"></script>
-<script src="../js/table-pagination.js?v=6"></script>
+<script src="../js/table-pagination.js?v=7"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('clear-attendance-filters').onclick = () => {
@@ -312,9 +314,7 @@ teacherShell("Attendance records");
                 date = document.getElementById('date-filter');
             section.value = '';
             student.value = '';
-            date.value = <?= json_encode(
-                date("Y-m-d"),
-            ) ?> ;
+            date.value = <?= json_encode($today) ?>;
             [section, student, date].forEach(control => control.dispatchEvent(new Event('change')));
         };
     });

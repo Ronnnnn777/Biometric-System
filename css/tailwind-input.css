@@ -31,7 +31,7 @@
     }
 
     .btn-danger {
-        @apply bg-rose-600 text-white shadow-sm hover:bg-rose-700 focus-visible:ring-rose-500;
+        @apply bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-500;
     }
 
     .btn-warning {
@@ -99,5 +99,76 @@
     .field-label {
         @apply mb-1.5 block text-sm font-semibold;
         color: var(--ui-text);
+    }
+
+    /* Filters ------------------------------------------------------------- */
+    /*
+     * Shared filter-panel system. The active/inactive pill classes are also
+     * written into data-capsule-*-class attributes because
+     * js/capsule-control.js rewrites each pill's className on selection.
+     */
+    .filter-label {
+        @apply mb-2 block text-xs font-bold uppercase tracking-wider;
+        color: var(--ui-muted);
+    }
+
+    .filter-separator {
+        @apply border-t;
+        border-color: var(--ui-border);
+    }
+
+    .filter-pills {
+        @apply flex min-w-0 flex-wrap items-center justify-start gap-2;
+    }
+
+    .filter-pill {
+        @apply inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-sm font-semibold leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+        border-color: var(--ui-border);
+        background-color: transparent;
+        color: var(--ui-muted);
+    }
+
+    .filter-pill-inactive {
+        @apply focus-visible:ring-brand-600;
+    }
+
+    .filter-pill-inactive:hover {
+        background-color: var(--ui-hover);
+        color: var(--ui-text);
+    }
+
+    .filter-pill-active {
+        @apply border-brand-600 bg-brand-600 font-bold text-white shadow-sm focus-visible:ring-brand-600 dark:border-blue-500 dark:bg-blue-600;
+    }
+
+    .filter-pill-active:hover {
+        @apply border-brand-700 bg-brand-700 text-white dark:border-blue-700 dark:bg-blue-700;
+    }
+
+    /* JHS/SHS are group indicators, not selectable options. No border and no
+       fixed pill height so they read as a category chip rather than a peer
+       grade button; --ui-hover is the theme-aware neutral surface. */
+    .filter-group-badge {
+        @apply inline-flex shrink-0 items-center rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide;
+        background-color: var(--ui-hover);
+        color: var(--ui-muted);
+    }
+
+    .filter-divider {
+        @apply mx-1 h-8 w-px shrink-0;
+        background-color: var(--ui-border);
+    }
+
+    /* Helper copy shown when a filter group is intentionally inactive. */
+    .filter-hint {
+        @apply mt-2 max-w-xs text-xs leading-relaxed;
+        color: var(--ui-muted);
+    }
+
+    /* Vertical rule between filter blocks once they sit side by side.
+       self-stretch keeps the rule as tall as the row's tallest block. */
+    .filter-block-divider {
+        @apply lg:self-stretch lg:border-l lg:pl-6;
+        border-color: var(--ui-border);
     }
 }

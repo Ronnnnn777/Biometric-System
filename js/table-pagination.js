@@ -1,7 +1,8 @@
-window.createTablePagination = ({ rows, pager, label = 'records', perPage = 15 }) => {
+window.createTablePagination = ({ rows, pager, label = 'records', perPage = 0, total = 0 }) => {
   // Render the bottom pager only; earlier entries are kept for backwards compatibility.
   const pagers = (Array.isArray(pager) ? pager : [pager]).filter(Boolean).slice(-1);
   if (!rows || !pagers.length) return { refresh() {} };
+  const pageSize = Number(perPage) || Number(rows.dataset?.pageSize) || 15;
   let currentPage = 1;
 
   const button = (labelText, disabled, onClick, active = false, ariaLabel = '') => {
@@ -49,16 +50,25 @@ window.createTablePagination = ({ rows, pager, label = 'records', perPage = 15 }
   function render(reset = false) {
     if (reset) currentPage = 1;
     const records = Array.from(rows.querySelectorAll(':scope > tr')).filter(row => !row.querySelector('[colspan]'));
-    const totalPages = Math.max(1, Math.ceil(records.length / perPage));
+    const totalRecords = Number(total) || records.length;
+    const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
     currentPage = Math.min(currentPage, totalPages);
-    const first = (currentPage - 1) * perPage;
-    const visible = new Set(records.slice(first, first + perPage));
+    const first = (currentPage - 1) * pageSize;
+    const last = Math.min(first + pageSize, totalRecords);
+    const visible = new Set(records.slice(first, first + pageSize));
     records.forEach(row => { row.hidden = !visible.has(row); });
     pagers.forEach((container, index) => {
       container.replaceChildren();
-      container.className = 'my-5 flex justify-center';
+      container.className = 'my-5 flex flex-wrap items-center justify-between gap-3';
       container.hidden = !records.length;
-      if (records.length) container.append(controls(totalPages, true));
+      if (records.length) {
+        const count = document.createElement('p');
+        count.className = 'text-sm font-semibold text-slate-500';
+        count.setAttribute('aria-live', 'polite');
+        count.textContent = `${first + 1}–${last} of ${totalRecords}`;
+        count.setAttribute('aria-label', `Showing ${first + 1} to ${last} of ${totalRecords} ${label}`);
+        container.append(count, controls(totalPages, true));
+      }
     });
   }
 

@@ -22,6 +22,12 @@ adminSidebar(
     "Create a teacher account. Grade and section access can be added later or assigned from a School Form import.",
 );
 ?>
+<div class="mx-auto max-w-3xl">
+    <a href="teacher-list.php"
+        class="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-slate-400 transition hover:text-blue-500">
+        <?= icon('arrow-left', 'h-4 w-4') ?> Back to Teachers
+    </a>
+</div>
 <section class="card card-body mx-auto max-w-3xl">
     <p class="text-sm font-bold uppercase tracking-widest text-blue-600">People & permissions</p>
     <h2 class="mt-2 text-2xl font-black text-slate-900">Create teacher account</h2>
@@ -82,7 +88,7 @@ adminSidebar(
         row.innerHTML =
             `<div class="flex items-center justify-between gap-3">
                 <p class="font-bold text-slate-800">Assignment</p>
-                <button type="button" class="remove-assignment text-sm font-bold text-rose-600 hover:text-rose-700">Remove</button>
+                <button type="button" class="remove-assignment text-sm font-bold text-red-500 hover:text-red-600">Remove</button>
             </div>
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
                 <label class="text-sm font-bold text-slate-700">Grade

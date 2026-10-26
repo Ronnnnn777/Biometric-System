@@ -84,7 +84,7 @@ $records = $log->get_result();
 teacherHead("Student profile");
 teacherShell("Student profile");
 ?>
-<script src="../js/table-pagination.js?v=6"></script>
+<script src="../js/table-pagination.js?v=7"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const rows = document.querySelector('table tbody');
@@ -145,8 +145,8 @@ teacherShell("Student profile");
     $student["STUDENT_ID"],
 ) ?>&all_dates=1" class="btn btn-success">Export all dates</a>
         </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-full text-left text-sm">
+        <div class="w-full overflow-x-auto">
+            <table class="w-full min-w-full text-left text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                     <tr>
                         <th class="px-5 py-4">Date</th>

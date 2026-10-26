@@ -87,43 +87,53 @@ function teacherShell(string $title, string $actions = ''): void {
     }
 ?>
 <div class="lg:flex">
-    <aside data-teacher-nav class="fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col overflow-y-auto bg-slate-950 p-4 text-slate-200 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0">
-        <a href="students.php" class="mb-6 flex items-center gap-3 px-2 text-base font-bold text-white">
+    <aside data-teacher-nav class="fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col overflow-y-auto bg-slate-950 px-0 py-4 text-slate-200 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0">
+        <a href="students.php" class="mb-6 flex items-center gap-3 px-6 text-base font-bold text-white">
             <img src="../image/logo.png" alt="Maruhat National High School logo" class="h-9 w-9 rounded-lg bg-white object-contain p-0.5 shadow-sm">
             <span>Biometric<span class="text-blue-400">.</span><span class="block text-[11px] font-normal leading-tight text-slate-400">Teacher portal</span></span>
         </a>
 
-        <nav class="space-y-1" aria-label="Teacher navigation">
-            <a href="students.php" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold <?= in_array($page, ['students.php', 'student-profile.php'], true) ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-                <?= icon('users') ?>Students
+        <nav class="flex w-full flex-col gap-1" aria-label="Teacher navigation">
+            <a href="students.php" <?= in_array($page, ['students.php', 'student-profile.php'], true) ? 'aria-current="page"' : '' ?> class="flex w-full items-center gap-4 rounded-lg px-6 py-4 text-base transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 <?= in_array($page, ['students.php', 'student-profile.php'], true) ? 'bg-blue-600 font-black text-white shadow-md' : 'font-bold text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
+                <span class="grid h-6 w-6 shrink-0 place-items-center"><?= icon('users', 'w-6 h-6 shrink-0') ?></span>
+                <span class="min-w-0 truncate">Students</span>
             </a>
-            <a href="home.php" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold <?= $page === 'home.php' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-                <?= icon('clipboard-list') ?>Attendance logs
+            <a href="home.php" <?= $page === 'home.php' ? 'aria-current="page"' : '' ?> class="flex w-full items-center gap-4 rounded-lg px-6 py-4 text-base transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 <?= $page === 'home.php' ? 'bg-blue-600 font-black text-white shadow-md' : 'font-bold text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
+                <span class="grid h-6 w-6 shrink-0 place-items-center"><?= icon('clipboard-list', 'w-6 h-6 shrink-0') ?></span>
+                <span class="min-w-0 truncate">Attendance logs</span>
             </a>
-            <a href="settings.php" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold <?= $page === 'settings.php' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-                <?= icon('settings') ?>Settings
+            <a href="settings.php" <?= $page === 'settings.php' ? 'aria-current="page"' : '' ?> class="flex w-full items-center gap-4 rounded-lg px-6 py-4 text-base transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 <?= $page === 'settings.php' ? 'bg-blue-600 font-black text-white shadow-md' : 'font-bold text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
+                <span class="grid h-6 w-6 shrink-0 place-items-center"><?= icon('settings', 'w-6 h-6 shrink-0') ?></span>
+                <span class="min-w-0 truncate">Settings</span>
             </a>
         </nav>
 
-        <div class="mt-auto rounded-lg border border-slate-800 bg-slate-800/60 p-4">
-            <p class="text-sm font-semibold text-white"><?= htmlspecialchars($_SESSION['teacher-name']) ?></p>
-            <p class="mt-2 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Assigned sections and subjects</p>
-            <div class="mt-2 space-y-1">
-                <?php foreach ($assignmentLabels as $assignmentLabel): ?><p class="text-xs text-slate-300"><?= htmlspecialchars($assignmentLabel) ?></p><?php endforeach; ?>
+        <div class="mt-auto px-3 pt-6">
+            <div class="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Teacher profile</p>
+                <p class="mt-2 truncate text-sm font-bold text-white"><?= htmlspecialchars($_SESSION['teacher-name']) ?></p>
+                <div class="mt-3 border-t border-slate-800 pt-3">
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Assigned sections</p>
+                    <ul class="mt-2 space-y-1.5">
+                        <?php foreach ($assignmentLabels as $assignmentLabel): ?>
+                        <li class="truncate text-xs text-slate-300"><?= htmlspecialchars($assignmentLabel) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
             </div>
         </div>
 
-        <a href="../common/logout.php" class="mt-3 flex items-center gap-3 rounded-lg border-t border-slate-800/80 px-3 pb-2 pt-4 text-sm font-medium text-slate-400 transition hover:bg-slate-800 hover:text-white">
-            <?= icon('log-out') ?><span>Sign out</span>
+        <a href="../common/logout.php" class="mt-2 flex w-full items-center gap-4 border-t border-slate-800/80 px-6 py-4 text-base font-bold text-red-500 transition hover:bg-red-500/10 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/80">
+            <?= icon('log-out', 'w-6 h-6 shrink-0') ?><span>Sign out</span>
         </a>
     </aside>
 
     <div data-teacher-overlay class="fixed inset-0 z-30 hidden bg-slate-950/50 lg:hidden"></div>
 
-    <main class="min-w-0 flex-1">
+    <main class="w-full min-w-0 flex-1">
         <?php ui_topbar($crumbs, $pageDescription, $actions, 'data-teacher-menu'); ?>
 
-        <div class="mx-auto max-w-6xl p-5 lg:p-7">
+        <div class="w-full p-5 lg:p-7">
             <?php if ($toast): ?>
             <div data-auto-toast class="fixed bottom-5 right-5 z-50 rounded-lg px-5 py-4 font-bold text-white shadow-xl <?= ($toast['type'] ?? 'success') === 'error' ? 'bg-rose-600' : 'bg-emerald-600' ?>" role="status"><?= htmlspecialchars($toast['message'] ?? '') ?></div>
             <?php endif; ?>

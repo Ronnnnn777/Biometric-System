@@ -1,12 +1,18 @@
-<?php $currentPage = $currentPage ?? 'home'; ?>
-<header class="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
-    <nav class="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8" aria-label="Main navigation">
-        <a href="index.php" class="flex items-center gap-3 font-bold text-slate-900">
-            <img src="image/logo.png" alt="" class="h-10 w-10 rounded-xl object-cover shadow-sm">
-            <span>Biometric<span class="text-blue-600">.</span><span class="block text-xs font-medium text-slate-500">Attendance system</span></span>
-        </a>
-        <button type="button" data-site-menu class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 lg:hidden" aria-expanded="false" aria-controls="site-navigation">Menu</button>
-        <div id="site-navigation" data-site-navigation class="absolute left-0 right-0 top-full hidden border-b border-slate-200 bg-white px-5 py-4 shadow-lg lg:static lg:flex lg:items-center lg:gap-7 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
-        </div>
-    </nav>
-</header>
+<?php
+/**
+ * Canonical administrator navigation.
+ *
+ * URLs are relative to /admin because this array is rendered by the admin
+ * sidebar. Archived students and teachers are views inside Students and
+ * Teachers, not standalone destinations.
+ *
+ * @return array<int, array{url: string, label: string, key: string, icon: string}>
+ */
+return [
+    ['url' => 'home.php', 'label' => 'Dashboard', 'key' => 'dashboard', 'icon' => 'home'],
+    ['url' => 'student-list.php', 'label' => 'Students', 'key' => 'students', 'icon' => 'users'],
+    ['url' => 'teacher-list.php', 'label' => 'Teachers', 'key' => 'teachers', 'icon' => 'briefcase'],
+    ['url' => 'attendance-log.php', 'label' => 'Attendance logs', 'key' => 'attendance', 'icon' => 'clipboard-list'],
+    ['url' => 'school-year-rollover.php', 'label' => 'School year', 'key' => 'rollover', 'icon' => 'calendar'],
+    ['url' => 'settings.php', 'label' => 'Settings', 'key' => 'settings', 'icon' => 'settings'],
+];

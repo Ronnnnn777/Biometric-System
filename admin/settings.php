@@ -236,8 +236,8 @@ adminSidebar(
                     class="btn btn-primary">Add authorized
                     phone</button></div>
         </form>
-        <div class="mt-6 overflow-x-auto">
-            <table class="min-w-full text-left text-sm">
+        <div class="mt-6 w-full overflow-x-auto">
+            <table class="w-full min-w-full text-left text-sm">
                 <thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
                     <tr>
                         <th class="px-4 py-3">Phone</th>
@@ -265,7 +265,7 @@ adminSidebar(
 ) ?>"><input type="hidden" name="action" value="remove_mobile_scanner"><input type="hidden" name="mobile_scanner_id"
                                     value="<?= htmlspecialchars(
     $authorizedScanner["SCANNER_ID"],
-) ?>"><button class="font-bold text-rose-600 hover:text-rose-700">Remove</button></form>
+) ?>"><button class="font-bold text-red-500 hover:text-red-600">Remove</button></form>
                         </td>
                     </tr><?php endforeach;
 else:
@@ -864,7 +864,7 @@ foreach ($strands as $strand):
      "teachers"
  ] ?> teachers</span><button class="btn btn-primary btn-sm">Save</button><button
                                     type="submit" name="action" value="delete_section"
-                                    class="rounded-lg px-3 py-2 text-sm font-bold text-rose-600 hover:bg-rose-50"
+                                    class="rounded-lg px-3 py-2 text-sm font-bold text-red-500 transition hover:bg-red-500/10"
                                     onclick="return confirm('Delete this section?')">Delete</button></form>
                             <?php endforeach; ?></div>
                     </div><?php

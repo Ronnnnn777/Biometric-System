@@ -62,7 +62,17 @@ import java.io.File;
 import java.io.IOException;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -104,11 +114,24 @@ public class MainActivity extends AppCompatActivity {
   private final OkHttpClient http = new OkHttpClient.Builder()
     .cookieJar(new JavaNetCookieJar(cookieManager))
     .build();
+  private final OkHttpClient scanHttp = new OkHttpClient.Builder()
+    .cookieJar(new JavaNetCookieJar(cookieManager))
+    .connectTimeout(8, TimeUnit.SECONDS)
+    .writeTimeout(20, TimeUnit.SECONDS)
+    .readTimeout(35, TimeUnit.SECONDS)
+    .callTimeout(40, TimeUnit.SECONDS)
+    .build();
+  private final OkHttpClient discoveryHttp = new OkHttpClient.Builder()
+    .connectTimeout(1500, TimeUnit.MILLISECONDS)
+    .readTimeout(1500, TimeUnit.MILLISECONDS)
+    .writeTimeout(1500, TimeUnit.MILLISECONDS)
+    .callTimeout(2200, TimeUnit.MILLISECONDS)
+    .build();
   private SharedPreferences preferences;
   private EditText serverInput;
-  private TextView loginStatus, scannerStatus;
+  private TextView loginStatus, scannerStatus, serverDetectionStatus;
   private TextView scanResultAction, scanResultName;
-  private Button loginButton, startButton;
+  private Button loginButton, startButton, detectServerButton;
   private Button updateButton;
   private LinearLayout bottomControls;
   private LinearLayout scanResultCard;
@@ -353,8 +376,19 @@ public class MainActivity extends AppCompatActivity {
     serverInput.setHintTextColor(Color.rgb(148, 163, 184));
     serverInput.setBackground(round(Color.argb(210, 2, 6, 23), 12));
     card.addView(serverInput);
+    detectServerButton = button("Detect IP address", Color.rgb(30, 64, 175));
+    LinearLayout.LayoutParams detectParams = new LinearLayout.LayoutParams(
+      -1,
+      dp(48)
+    );
+    detectParams.topMargin = dp(2);
+    card.addView(detectServerButton, detectParams);
+    detectServerButton.setOnClickListener(v -> detectServerAddress());
+    serverDetectionStatus = text("", 13, Color.rgb(191, 219, 254));
+    serverDetectionStatus.setVisibility(View.GONE);
+    card.addView(serverDetectionStatus);
     TextView hint = text(
-      "Use the same Wi-Fi as the XAMPP computer. Example: http://192.168.1.10/biometric/",
+      "Connect to the same Wi-Fi as the XAMPP computer, then tap Detect IP address. You can also enter it manually.",
       12,
       Color.rgb(191, 219, 254)
     );
@@ -381,6 +415,149 @@ public class MainActivity extends AppCompatActivity {
     scroll.addView(page);
     shell.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
     setContentView(shell);
+  }
+
+  private void detectServerAddress() {
+    if (detectServerButton == null || serverInput == null) return;
+    detectServerButton.setEnabled(false);
+    detectServerButton.setText("Detecting IP address...");
+    if (loginButton != null) loginButton.setEnabled(false);
+    showLoginError("");
+    setServerDetectionStatus(
+      "Searching the current Wi-Fi network for MNHS Attendance...",
+      Color.rgb(191, 219, 254)
+    );
+    networkExecutor.execute(() -> {
+      try {
+        String detectedUrl = detectSchoolServerUrl();
+        if (detectedUrl == null) {
+          throw new IOException(
+            "MNHS Attendance was not found. Confirm that this phone and the XAMPP computer use the same Wi-Fi."
+          );
+        }
+        runOnUiThread(() -> {
+          serverInput.setText(detectedUrl);
+          setServerDetectionStatus(
+            "Detected " + detectedUrl + ". Tap Start scanner.",
+            Color.rgb(134, 239, 172)
+          );
+        });
+      } catch (Exception error) {
+        runOnUiThread(() ->
+          setServerDetectionStatus(
+            readableError(error),
+            Color.rgb(253, 164, 175)
+          )
+        );
+      } finally {
+        runOnUiThread(() -> {
+          if (detectServerButton != null) {
+            detectServerButton.setEnabled(true);
+            detectServerButton.setText("Detect IP address");
+          }
+          if (loginButton != null) loginButton.setEnabled(true);
+        });
+      }
+    });
+  }
+
+  private String detectSchoolServerUrl() throws IOException {
+    Set<String> prefixes = localPrivateIpv4Prefixes();
+    if (prefixes.isEmpty()) {
+      throw new IOException("Connect this phone to the school Wi-Fi first.");
+    }
+    List<String> basePaths = discoveryBasePaths();
+    ExecutorService probes = Executors.newFixedThreadPool(24);
+    CompletionService<String> completed = new ExecutorCompletionService<>(
+      probes
+    );
+    int probeCount = 0;
+    try {
+      for (String prefix : prefixes) {
+        for (int host = 1; host <= 254; host++) {
+          final String candidateHost = prefix + host;
+          completed.submit(() -> probeSchoolServer(candidateHost, basePaths));
+          probeCount++;
+        }
+      }
+      for (int attempt = 0; attempt < probeCount; attempt++) {
+        try {
+          String serverUrl = completed.take().get();
+          if (serverUrl != null) return serverUrl;
+        } catch (InterruptedException error) {
+          Thread.currentThread().interrupt();
+          throw new IOException("IP address detection was cancelled.", error);
+        } catch (Exception ignored) {
+          // A non-school device may reject the short discovery request.
+        }
+      }
+      return null;
+    } finally {
+      probes.shutdownNow();
+    }
+  }
+
+  private Set<String> localPrivateIpv4Prefixes() throws SocketException {
+    Set<String> prefixes = new LinkedHashSet<>();
+    Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+    while (interfaces != null && interfaces.hasMoreElements()) {
+      NetworkInterface network = interfaces.nextElement();
+      if (!network.isUp() || network.isLoopback() || network.isVirtual()) continue;
+      Enumeration<InetAddress> addresses = network.getInetAddresses();
+      while (addresses.hasMoreElements()) {
+        InetAddress address = addresses.nextElement();
+        if (!(address instanceof Inet4Address) || !address.isSiteLocalAddress()) continue;
+        String[] octets = address.getHostAddress().split("\\.");
+        if (octets.length == 4) {
+          prefixes.add(octets[0] + "." + octets[1] + "." + octets[2] + ".");
+        }
+      }
+    }
+    return prefixes;
+  }
+
+  private List<String> discoveryBasePaths() {
+    Set<String> paths = new LinkedHashSet<>();
+    String entered = normaliseUrl(
+      serverInput == null ? "" : serverInput.getText().toString()
+    );
+    if (entered != null) {
+      int hostStart = entered.indexOf("://") + 3;
+      int pathStart = entered.indexOf('/', hostStart);
+      if (pathStart >= 0) paths.add(entered.substring(pathStart));
+    }
+    paths.add("/biometric/");
+    paths.add("/");
+    return new ArrayList<>(paths);
+  }
+
+  private String probeSchoolServer(String host, List<String> basePaths) {
+    for (String basePath : basePaths) {
+      Request request = new Request.Builder()
+        .url("http://" + host + basePath + "api/mobile-discovery.php")
+        .get()
+        .build();
+      try (Response response = discoveryHttp.newCall(request).execute()) {
+        if (!response.isSuccessful() || response.body() == null) continue;
+        JSONObject result = new JSONObject(response.body().string());
+        if (
+          result.optBoolean("ok") &&
+          "mnhs-attendance-scanner".equals(result.optString("application"))
+        ) {
+          return normaliseUrl(result.optString("server_url", ""));
+        }
+      } catch (Exception ignored) {
+        // Keep probing the remaining local devices and possible project paths.
+      }
+    }
+    return null;
+  }
+
+  private void setServerDetectionStatus(String message, int color) {
+    if (serverDetectionStatus == null) return;
+    serverDetectionStatus.setText(message);
+    serverDetectionStatus.setTextColor(color);
+    serverDetectionStatus.setVisibility(message.isEmpty() ? View.GONE : View.VISIBLE);
   }
 
   private void signIn() {
@@ -955,7 +1132,7 @@ public class MainActivity extends AppCompatActivity {
       .url(baseUrl + "api/mobile-scan.php")
       .post(form)
       .build();
-    try (Response response = http.newCall(request).execute()) {
+    try (Response response = scanHttp.newCall(request).execute()) {
       String payload = response.body() == null ? "" : response.body().string();
       JSONObject json = new JSONObject(payload);
       if (response.code() == 401) {

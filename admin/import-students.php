@@ -68,8 +68,8 @@ adminSidebar(
         <p class="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm leading-6 text-blue-900"><strong>Maruhat
                 School Form/ECR supported:</strong> the importer can also read the learner list from the official
             worksheet and automatically use its LRN, name, birthdate, grade level, and section.</p>
-        <div class="mt-5 overflow-x-auto rounded-xl border border-slate-200">
-            <table class="min-w-full text-left text-sm">
+        <div class="mt-5 w-full overflow-x-auto rounded-xl border border-slate-200">
+            <table class="w-full min-w-full text-left text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                     <tr>
                         <th class="px-4 py-3">LRN</th>

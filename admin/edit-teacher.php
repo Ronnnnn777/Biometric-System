@@ -28,6 +28,10 @@ adminSidebar(
     "Update account details and grade-section assignments.",
 );
 ?>
+<a href="teacher-list.php"
+    class="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-slate-400 transition hover:text-blue-500">
+    <?= icon('arrow-left', 'h-4 w-4') ?> Back to Teachers
+</a>
 <div class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
     <section class="card card-body">
         <h2 class="text-2xl font-black text-slate-900"><?= htmlspecialchars(
@@ -86,7 +90,7 @@ adminSidebar(
             <h3 class="font-bold text-white">Danger zone</h3>
             <p class="mt-2 text-sm text-blue-200">Remove this teacher's access permanently.</p><button type="button"
                 id="open-delete-teacher"
-                class="mt-5 w-full rounded-xl border border-rose-300/40 px-4 py-3 font-bold text-rose-200 hover:bg-rose-500/20">Delete
+                class="mt-5 w-full rounded-xl border border-red-500/40 px-4 py-3 font-bold text-red-400 transition-colors hover:bg-red-600 hover:text-white">Delete
                 account</button>
         </form>
     </aside>
@@ -145,7 +149,7 @@ adminSidebar(
         row.innerHTML =
             `<div class="flex items-center justify-between gap-3">
                 <p class="font-bold text-slate-800">Assignment</p>
-                <button type="button" class="remove-assignment text-sm font-bold text-rose-600 hover:text-rose-700">Remove</button>
+                <button type="button" class="remove-assignment text-sm font-bold text-red-500 hover:text-red-600">Remove</button>
             </div>
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
                 <label class="text-sm font-bold text-slate-700">Grade
@@ -240,7 +244,7 @@ adminSidebar(
                 'This keeps the teacher profile and assignments, but prevents future sign-ins.';
             document.getElementById('confirm-delete-teacher').textContent = 'Archive';
             document.getElementById('confirm-delete-teacher').className =
-                'flex-1 btn btn-warning';
+                'flex-1 btn btn-danger';
         }
     });
 </script><?php adminFoot(); ?>

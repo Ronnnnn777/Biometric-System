@@ -39,7 +39,7 @@ $displayName =
     $student["STUDENT_NAME"];
 adminHead("Archived student record");
 adminSidebar(
-    "archived_students",
+    "students",
     "Archived student record",
     "Read-only profile and retained attendance history.",
 );
@@ -55,7 +55,7 @@ adminSidebar(
         }
     }
 </style>
-<a href="archived-students.php"
+<a href="student-list.php?view=archived"
     class="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 transition hover:text-blue-700">
     <?= icon('arrow-left', 'h-4 w-4') ?> Back to Archived Students
 </a>
@@ -97,8 +97,8 @@ adminSidebar(
             <h3 class="text-xl font-black text-slate-900">Attendance history</h3>
             <p class="mt-1 text-sm text-slate-500">All attendance records retained for this student.</p>
         </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-full text-left text-sm">
+        <div class="w-full overflow-x-auto">
+            <table class="w-full min-w-full text-left text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                     <tr>
                         <th class="px-5 py-4">Date</th>
@@ -186,7 +186,7 @@ adminSidebar(
         <div id="archived-attendance-pagination" class="px-6 pb-6"></div>
     </section>
 </div>
-<script src="../js/table-pagination.js?v=6"></script>
+<script src="../js/table-pagination.js?v=7"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const rows = document.getElementById('archived-attendance-rows');
