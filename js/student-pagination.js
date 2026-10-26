@@ -37,9 +37,12 @@
   emptyState.innerHTML = '<td colspan="99" class="px-5 py-14 text-center"><p class="text-base font-bold text-slate-800 dark:text-slate-200"></p><p class="mt-1 text-xs text-slate-500"></p><button type="button" class="mt-4 rounded-xl bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/20"></button></td>';
   rowsContainer.append(emptyState);
 
+  // Cache searchable text before the "#" column is populated. Otherwise the
+  // row number itself would match numeric searches (e.g. searching "16").
+  const searchText = new Map(rows.map(row => [row, row.textContent.toLowerCase()]));
   const matches = row => {
     const query = search.value.trim().toLowerCase();
-    return (!query || row.textContent.toLowerCase().includes(query))
+    return (!query || (searchText.get(row) || '').includes(query))
       && (!grade || !grade.value || row.dataset.grade === grade.value)
       && (!section || !section.value || row.dataset.section === section.value)
       && (!status || !status.value || row.dataset.status === status.value);
@@ -120,8 +123,15 @@
     currentPage = Math.min(currentPage, totalPages);
     const first = (currentPage - 1) * perPage;
     const last = Math.min(first + perPage, totalRecords);
-    const visibleRows = new Set(matchingRows.slice(first, first + perPage));
+    const pageRows = matchingRows.slice(first, first + perPage);
+    const visibleRows = new Set(pageRows);
     rows.forEach(row => { row.hidden = !visibleRows.has(row); });
+    // Number by absolute position in the filtered set, so page 2 starts at 16
+    // (not 1) and filtered results stay sequential.
+    pageRows.forEach((row, index) => {
+      const indexCell = row.querySelector('.student-index');
+      if (indexCell) indexCell.textContent = first + index + 1;
+    });
     emptyState.hidden = matchingRows.length > 0;
     if (!matchingRows.length) {
       const title = emptyState.querySelector('p:first-child');

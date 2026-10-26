@@ -156,19 +156,28 @@ require_once __DIR__ . '/../includes/student-placement-options.php';
 $filterPillActiveClass = 'filter-pill filter-pill-active';
 $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
 
-// "Top Classes" is presentation logic, not a database table: Tier 1..3 are the
-// first three canonical sections for ONE grade (JHS fill order, then SHS
-// Academic/Techpro). Because "Tier 1" is a different section per grade, the
-// group is intentionally grade-scoped and is disabled while Grade Level = All.
-$tierMap = [];
-foreach ([7, 8, 9, 10] as $tierGrade) {
-    $tierMap[(string) $tierGrade] = studentSectionsForGrade($tierGrade);
+// Section 1 is the only honor section. Derive it from the same DB-ordered
+// section map used by the filters so a deactivated/renamed section cannot leave
+// a stale shortcut. JHS has one honor section per grade; SHS has one per strand
+// (Academic and Techpro). The filter is grade-scoped and is disabled while
+// Grade Level = All.
+$honorSectionMap = [];
+foreach ([7, 8, 9, 10] as $honorGrade) {
+    $honorSectionMap[(string) $honorGrade] = array_slice($sectionMap[(string) $honorGrade] ?? [], 0, 1);
 }
-foreach ([11, 12] as $tierGrade) {
-    $tierMap[(string) $tierGrade] = array_slice(array_merge(
-        studentSectionsForGrade($tierGrade, 'Academic'),
-        studentSectionsForGrade($tierGrade, 'Techpro'),
-    ), 0, 3);
+foreach ([11, 12] as $honorGrade) {
+    $honorSections = [];
+    $availableSections = $sectionMap[(string) $honorGrade] ?? [];
+    foreach (['Academic', 'Techpro'] as $honorStrand) {
+        $strandSections = studentSectionsForGrade($honorGrade, $honorStrand);
+        foreach ($availableSections as $candidate) {
+            if (in_array($candidate, $strandSections, true)) {
+                $honorSections[] = $candidate;
+                break;
+            }
+        }
+    }
+    $honorSectionMap[(string) $honorGrade] = array_values(array_unique($honorSections));
 }
 ?>
 <div class="card mb-5">
@@ -238,7 +247,7 @@ foreach ([11, 12] as $tierGrade) {
             </select>
         </div>
 
-        <!-- Row 3: status + top classes (fluid, content-width columns) -->
+        <!-- Row 3: status + honor section (fluid, content-width columns) -->
         <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
             <div class="min-w-0">
                 <p class="filter-label">Enrollment status</p>
@@ -256,27 +265,21 @@ foreach ([11, 12] as $tierGrade) {
                 </select>
             </div>
 
-            <div id="top-classes-filter" class="filter-block-divider min-w-0"
-                data-tier-map="<?= htmlspecialchars(json_encode($tierMap), ENT_QUOTES) ?>">
-                <p class="filter-label">Top classes</p>
-                <div data-top-classes-pills>
-                    <?= ui_capsule_group('top_class_filter', [['value' => '', 'label' => 'All']], '', [
-                        'aria_label' => 'Top classes honor section filter',
+            <div id="honor-section-filter" class="filter-block-divider min-w-0"
+                data-honor-sections="<?= htmlspecialchars(json_encode($honorSectionMap), ENT_QUOTES) ?>">
+                <p class="filter-label">Honor section</p>
+                <div data-honor-section-pills>
+                    <?= ui_capsule_group('honor_section_filter', [['value' => '', 'label' => 'All']], '', [
+                        'aria_label' => 'Honor section filter',
                         'hidden_input' => false,
                         'container_class' => 'filter-pills',
                         'active_class' => $filterPillActiveClass,
                         'inactive_class' => $filterPillInactiveClass,
                     ]) ?>
                 </div>
-                <p id="top-classes-note" class="filter-hint hidden" role="status">
-                    Select a specific grade to filter by top sections.
+                <p id="honor-section-note" class="filter-hint hidden" role="status">
+                    Select a specific grade to filter by the honor section.
                 </p>
-                <select id="tier-filter" class="hidden" tabindex="-1" aria-hidden="true">
-                    <option value="">All tiers</option>
-                    <option value="1">Tier 1</option>
-                    <option value="2">Tier 2</option>
-                    <option value="3">Tier 3</option>
-                </select>
             </div>
         </div>
     </div>
@@ -287,6 +290,7 @@ foreach ([11, 12] as $tierGrade) {
         <table class="w-full min-w-full text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
+                    <th class="w-12 px-4 py-3 text-center text-xs font-black uppercase tracking-wider text-slate-400">#</th>
                     <th class="px-5 py-4">Student</th>
                     <th class="px-5 py-4">LRN</th>
                     <th class="px-5 py-4">Grade</th>
@@ -329,6 +333,7 @@ foreach ([11, 12] as $tierGrade) {
                 <tr class="hover:bg-slate-50" data-grade="<?= (int) $row['GRADE'] ?>"
                     data-section="<?= htmlspecialchars($row['SECTION'] ?? '') ?>"
                     data-status="<?= htmlspecialchars($rowStatus) ?>">
+                    <td class="student-index w-12 px-4 py-3 text-center text-sm font-semibold text-slate-400"></td>
                     <td class="px-5 py-4">
                         <div class="flex items-center gap-3"><img src="../<?= htmlspecialchars($row['IMAGE_PATH']) ?>"
                                 alt="" class="h-10 w-10 rounded-full object-cover"><span
@@ -383,7 +388,7 @@ foreach ([11, 12] as $tierGrade) {
     window.studentSectionMap = <?= json_encode($sectionMap) ?>;
 </script>
 <script src="../js/capsule-control.js?v=3"></script>
-<script src="../js/student-pagination.js?v=12"></script>
+<script src="../js/student-pagination.js?v=13"></script>
 <script>
     // student-pagination.js follows a "conditional Section filter" rule: it hides
     // the Section control until a grade is chosen. This roster keeps the control
@@ -408,21 +413,19 @@ foreach ([11, 12] as $tierGrade) {
             const search = document.getElementById('student-search'),
                 grade = document.getElementById('grade-filter'),
                 section = document.getElementById('section-filter'),
-                status = document.getElementById('status-filter'),
-                tier = document.getElementById('tier-filter');
+                status = document.getElementById('status-filter');
             search.value = '';
             // Reset the visible pills without firing duplicate capsule events;
             // the mirrored selects below are the source of truth for filtering.
             window.CapsuleControl?.setValue('grade_filter', '', { silent: true });
             window.CapsuleControl?.setValue('status_filter', '', { silent: true });
-            window.CapsuleControl?.setValue('top_class_filter', '', { silent: true });
+            window.CapsuleControl?.setValue('honor_section_filter', '', { silent: true });
             grade.value = '';
             grade.dispatchEvent(new Event('change'));
             status.value = '';
             status.dispatchEvent(new Event('change'));
             section.value = '';
             section.dispatchEvent(new Event('change'));
-            if (tier) tier.value = '';
             search.dispatchEvent(new Event('input'));
         };
     })();
@@ -431,60 +434,55 @@ foreach ([11, 12] as $tierGrade) {
     (() => {
         const gradeSelect = document.getElementById('grade-filter');
         const sectionSelect = document.getElementById('section-filter');
-        const tierSelect = document.getElementById('tier-filter');
-        const topClassesBlock = document.getElementById('top-classes-filter');
-        const topClassesGroup = document.querySelector('[data-capsule-group="top_class_filter"]');
-        const topClassesPills = document.querySelector('[data-top-classes-pills]');
-        const topClassesNote = document.getElementById('top-classes-note');
-        if (!gradeSelect || !sectionSelect || !topClassesGroup) return;
+        const honorBlock = document.getElementById('honor-section-filter');
+        const honorGroup = document.querySelector('[data-capsule-group="honor_section_filter"]');
+        const honorPills = document.querySelector('[data-honor-section-pills]');
+        const honorNote = document.getElementById('honor-section-note');
+        if (!gradeSelect || !sectionSelect || !honorGroup) return;
 
         const sectionMap = window.studentSectionMap || {};
-        let tierMap = {};
+        let honorSectionMap = {};
         try {
-            tierMap = JSON.parse(topClassesBlock?.dataset.tierMap || '{}');
+            honorSectionMap = JSON.parse(honorBlock?.dataset.honorSections || '{}');
         } catch (_) {
-            tierMap = {};
+            honorSectionMap = {};
         }
-        let topSections = [];
+        let honorSections = [];
 
-        const syncTopClassSelection = () => {
+        const syncHonorSelection = () => {
             const selected = sectionSelect.value || '';
-            const index = topSections.indexOf(selected);
-            const activeValue = index >= 0 ? selected : '';
-            window.CapsuleControl?.setValue('top_class_filter', activeValue, { silent: true });
-            // The tier select mirrors the selected honor-section rank; the
-            // section select remains the filtering source of truth.
-            if (tierSelect) tierSelect.value = index >= 0 ? String(index + 1) : '';
+            const activeValue = honorSections.includes(selected) ? selected : '';
+            window.CapsuleControl?.setValue('honor_section_filter', activeValue, { silent: true });
         };
 
-        // Tier pills only make sense for a single grade (Tier 1 is a different
-        // section per grade), so the group is muted with a helper note while
-        // Grade Level = "All" instead of rendering a meaningless lone "All" pill.
-        const setTopClassesEnabled = (enabled) => {
-            topClassesPills?.classList.toggle('hidden', !enabled);
-            topClassesNote?.classList.toggle('hidden', enabled);
-            topClassesBlock?.setAttribute('aria-disabled', String(!enabled));
+        // Section 1 has a different name per grade/strand, so the shortcut is
+        // grade-scoped. Grade Level = "All" shows a helper note instead of a
+        // meaningless lone "All" pill.
+        const setHonorEnabled = (enabled) => {
+            honorPills?.classList.toggle('hidden', !enabled);
+            honorNote?.classList.toggle('hidden', enabled);
+            honorBlock?.setAttribute('aria-disabled', String(!enabled));
         };
 
-        const renderTopClasses = () => {
+        const renderHonorSections = () => {
             const grade = gradeSelect.value || '';
-            // Prefer the canonical Tier 1..3 list computed in PHP; fall back to
-            // the DB-derived section map if a grade is missing from it.
-            const canonical = grade ? (tierMap[grade] || []) : [];
-            const fallback = grade ? (sectionMap[grade] || []) : [];
-            topSections = (canonical.length ? canonical : fallback).slice(0, 3);
-            setTopClassesEnabled(Boolean(grade));
+            // Prefer the canonical Section 1 list computed in PHP; fall back to
+            // the first DB-derived section if a grade is missing from it.
+            const canonical = grade ? (honorSectionMap[grade] || []) : [];
+            const fallback = grade ? (sectionMap[grade] || []).slice(0, 1) : [];
+            honorSections = canonical.length ? canonical : fallback;
+            setHonorEnabled(Boolean(grade));
 
-            const inactiveClass = topClassesGroup.dataset.capsuleInactiveClass || '';
+            const inactiveClass = honorGroup.dataset.capsuleInactiveClass || '';
             const items = [
                 { value: '', label: 'All' },
-                ...topSections.map((section, index) => ({
+                ...honorSections.map(section => ({
                     value: section,
-                    label: `Tier ${index + 1} · ${section}`,
+                    label: `Honor · ${section}`,
                 })),
             ];
 
-            topClassesGroup.replaceChildren(...items.map(item => {
+            honorGroup.replaceChildren(...items.map(item => {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.dataset.capsuleItem = '';
@@ -495,20 +493,20 @@ foreach ([11, 12] as $tierGrade) {
                 return button;
             }));
 
-            syncTopClassSelection();
+            syncHonorSelection();
         };
 
-        gradeSelect.addEventListener('change', renderTopClasses);
-        sectionSelect.addEventListener('change', syncTopClassSelection);
+        gradeSelect.addEventListener('change', renderHonorSections);
+        sectionSelect.addEventListener('change', syncHonorSelection);
 
         document.addEventListener('capsule:change', event => {
-            if (event.detail.name !== 'top_class_filter') return;
+            if (event.detail.name !== 'honor_section_filter') return;
             if (sectionSelect.value === event.detail.value) return;
             sectionSelect.value = event.detail.value;
             sectionSelect.dispatchEvent(new Event('change'));
         });
 
-        renderTopClasses();
+        renderHonorSections();
     })();
 </script>
 <?php adminFoot(); ?>

@@ -518,7 +518,7 @@ teacherShell("Students");
     </div>
 </div>
 <script src="../js/capsule-control.js?v=3"></script>
-<script src="../js/student-pagination.js?v=12"></script>
+<script src="../js/student-pagination.js?v=13"></script>
 <script>
     const clearFilters = document.getElementById('clear-student-filters');
     const studentSearch = document.getElementById('student-search');
