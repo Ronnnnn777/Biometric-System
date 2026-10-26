@@ -52,7 +52,7 @@ if ($placementFilters) {
 
 adminHead("Archived teacher record");
 adminSidebar(
-    "archived_teachers",
+    "teachers",
     "Archived teacher record",
     "Read-only profile, assignments, and retained class attendance history.",
 );
@@ -91,19 +91,21 @@ adminSidebar(
         }
     }
 </style>
-<div class="mb-6 flex flex-wrap items-center justify-between gap-4"><a href="archived-teachers.php"
-        class="text-sm font-bold text-blue-600 hover:text-blue-800">&larr; Back to archived teachers</a><span
+<a href="teacher-list.php?view=archived"
+    class="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 transition hover:text-blue-700">
+    <?= icon('arrow-left', 'h-4 w-4') ?> Back to Archived Teachers
+</a>
+<div class="mb-6 flex flex-wrap items-center justify-end gap-4"><span
         class="rounded-full bg-amber-50 px-3 py-1 text-sm font-bold text-amber-700">Archived record</span></div>
 <div class="archived-teacher-record-layout grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
-    <section class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+    <section class="card overflow-hidden">
         <div class="border-b border-slate-100 p-6">
             <h2 class="text-xl font-black text-slate-900">Class attendance history</h2>
             <p class="mt-1 text-sm text-slate-500">All saved attendance records from this teacher's retained class
                 assignments.</p>
         </div>
-        <div id="archived-teacher-attendance-top"></div>
-        <div class="overflow-x-auto">
-            <table class="min-w-full text-left text-sm">
+        <div class="w-full overflow-x-auto">
+            <table class="w-full min-w-full text-left text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                     <tr>
                         <th class="px-5 py-4">Student</th>
@@ -224,14 +226,13 @@ if (
             change these records.</p>
     </aside>
 </div>
-<script src="../js/table-pagination.js?v=6"></script>
+<script src="../js/table-pagination.js?v=7"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const rows = document.getElementById('archived-teacher-attendance-rows');
         if (rows) createTablePagination({
             rows,
-            pager: [document.getElementById('archived-teacher-attendance-top'), document.getElementById(
-                'archived-teacher-attendance-bottom')],
+            pager: document.getElementById('archived-teacher-attendance-bottom'),
             label: 'attendance records'
         });
     });

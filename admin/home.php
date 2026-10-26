@@ -10,7 +10,7 @@ $authorizedMobileScanners = authorizedMobileScanners($conn);
 $activeAuthorizedMobileScanners = array_values(array_filter($authorizedMobileScanners, fn($scanner) => (int) ($scanner['IS_ENABLED'] ?? 1) === 1));
 
 $today = date('Y-m-d');
-$totalStudents = (int) ($conn->query('SELECT COUNT(*) AS total FROM students')->fetch_assoc()['total'] ?? 0);
+$totalStudents = (int) ($conn->query("SELECT COUNT(*) AS total FROM students WHERE COALESCE(NULLIF(ENROLLMENT_STATUS,''),'Enrolled')<>'Archived'")->fetch_assoc()['total'] ?? 0);
 
 $timeInStatement = $conn->prepare("SELECT COUNT(DISTINCT STUDENT_ID) AS total FROM attendance WHERE DATE(TIME_IN)=? AND COALESCE(ATTENDANCE_REMARK,'')<>'Absent'");
 $timeInStatement->bind_param('s', $today);
@@ -29,37 +29,51 @@ $completionRate = $todayCount ? round($timeOutCount / $todayCount * 100) : 0;
 adminHead('Dashboard');
 adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
 ?>
-<section class="maruhat-dashboard-hero mb-7">
-    <p class="maruhat-eyebrow text-xs font-black uppercase">Maruhat National High School</p>
-    <h2 class="mt-3 text-3xl font-black sm:text-4xl">Good day, administrator.</h2>
-    <p class="mt-3 max-w-xl text-sm leading-6 text-blue-50">Your attendance overview for <?= htmlspecialchars(date('l, F j, Y')) ?>. Keep every school day organized, accurate, and ready for review.</p>
+<section class="maruhat-dashboard-hero mb-6">
+    <h2 class="text-3xl font-black sm:text-4xl">Good day, administrator.</h2>
+</section>
+
+<section class="card card-body mb-6">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="min-w-0">
+            <p class="text-xs font-black uppercase tracking-widest text-[#1f4f91]">Maruhat National High School</p>
+            <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Your attendance overview for
+                <?= htmlspecialchars(date('l, F j, Y')) ?>. Keep every school day organized, accurate, and ready for
+                review.</p>
+        </div>
+        <div class="flex shrink-0 items-center gap-3 rounded-2xl bg-blue-50 px-5 py-4 text-blue-700 ring-1 ring-blue-100">
+            <?= icon('calendar') ?>
+            <span class="text-sm font-bold"><?= htmlspecialchars(date('l')) ?></span>
+        </div>
+    </div>
 </section>
 
 <section class="grid gap-5 md:grid-cols-3">
-    <article class="maruhat-stat rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-        <p class="text-sm font-bold text-slate-500">Registered students</p>
+    <article class="maruhat-stat card card-body">
+        <p class="text-sm font-bold text-slate-500">Active students</p>
         <p id="stat-total" class="mt-3 text-4xl font-black text-slate-900"><?= $totalStudents ?></p>
-        <p class="mt-2 text-sm text-slate-500">Student profiles in the system</p>
+        <p class="card-muted mt-2">Non-archived student profiles</p>
     </article>
-    <article class="maruhat-stat rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+    <article class="maruhat-stat card card-body">
         <p class="text-sm font-bold text-emerald-700">Today's time ins</p>
         <p id="stat-today" class="mt-3 text-4xl font-black text-slate-900"><?= $todayCount ?></p>
-        <p class="mt-2 text-sm text-slate-500">Unique students who arrived today</p>
+        <p class="card-muted mt-2">Unique students who arrived today</p>
     </article>
-    <article class="maruhat-stat rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+    <article class="maruhat-stat card card-body">
         <p class="text-sm font-bold text-amber-700">Today's time outs</p>
         <p id="stat-time-out" class="mt-3 text-4xl font-black text-slate-900"><?= $timeOutCount ?></p>
-        <p class="mt-2 text-sm text-slate-500">Students with completed attendance</p>
+        <p class="card-muted mt-2">Students with completed attendance</p>
     </article>
 </section>
 
-<section id="mobile-scanner-card" class="mt-7 rounded-2xl bg-white p-6 shadow-sm ring-2 ring-[#102e5e] sm:p-8"></section>
+<section id="mobile-scanner-card" class="card mt-7 p-6 shadow-sm ring-2 ring-[#102e5e] sm:p-8"></section>
 
 <script>
     const authorizedPhoneScanners = <?= json_encode(array_map(fn($scanner) => ['name' => $scanner['SCANNER_NAME'], 'id' => $scanner['SCANNER_ID'], 'enabled' => (int) ($scanner['IS_ENABLED'] ?? 1) === 1], $authorizedMobileScanners), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     const dashboardCsrfToken = <?= json_encode($_SESSION['csrf_token']) ?>;
     const renderedActiveScannerCount = authorizedPhoneScanners.filter(scanner => scanner.enabled).length;
     const mobileScannerCard = document.getElementById('mobile-scanner-card');
+    const smartphoneIcon = <?= json_encode(icon('smartphone')) ?>;
     if (mobileScannerCard) {
         mobileScannerCard.innerHTML = `
             <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
@@ -69,7 +83,7 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
                     <p id="mobile-scanner-copy" class="mt-2 max-w-xl text-sm leading-6 text-slate-500">A phone appears here automatically the first time it connects to MNHS Attendance.</p>
                 </div>
                 <div class="flex items-center gap-3 rounded-2xl bg-blue-50 px-5 py-4 ring-1 ring-blue-100">
-                    <div class="grid h-12 w-12 place-items-center rounded-xl bg-emerald-100 text-2xl text-emerald-700">&#128241;</div>
+                    <div class="grid h-12 w-12 place-items-center rounded-xl bg-emerald-100 text-emerald-700">${smartphoneIcon}</div>
                     <p id="mobile-scanner-status" class="whitespace-nowrap text-base font-black text-emerald-700"><?= count($activeAuthorizedMobileScanners) === 1 ? '1 active scanner' : count($activeAuthorizedMobileScanners) . ' active scanners' ?></p>
                 </div>
             </div><div id="authorized-phone-list" class="mt-6 grid gap-3 md:grid-cols-2"></div><div id="authorized-phone-pagination" class="mt-5 flex items-center justify-center gap-3"></div>`;
@@ -96,9 +110,9 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
                 const details = document.createElement('div');
                 details.className = 'flex min-w-0 items-center gap-3';
                 const phoneIcon = document.createElement('div');
-                phoneIcon.className = 'grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-100 text-lg text-blue-700';
+                phoneIcon.className = 'grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-100 text-blue-700';
                 phoneIcon.setAttribute('aria-hidden', 'true');
-                phoneIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5"><rect x="6" y="2.5" width="12" height="19" rx="2"></rect><path d="M10 18.5h4"></path></svg>';
+                phoneIcon.innerHTML = smartphoneIcon;
                 const copy = document.createElement('div');
                 copy.className = 'min-w-0';
                 const name = document.createElement('p');
@@ -137,7 +151,7 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
                 const button = document.createElement('button');
                 button.type = 'submit';
                 button.className = scanner.enabled
-                    ? 'font-bold text-rose-600 transition hover:text-rose-700'
+                    ? 'font-bold text-red-500 transition hover:text-red-600'
                     : 'font-bold text-emerald-700 transition hover:text-emerald-800';
                 button.textContent = scanner.enabled ? 'Disable' : 'Activate';
                 form.append(token, scannerId, button);
@@ -156,7 +170,7 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
                 removeScannerId.value = scanner.id;
                 const removeButton = document.createElement('button');
                 removeButton.type = 'button';
-                removeButton.className = 'font-bold text-slate-600 transition hover:text-rose-700';
+                removeButton.className = 'font-bold text-red-500 transition hover:text-red-600';
                 removeButton.textContent = 'Remove';
                 removeButton.addEventListener('click', () => {
                     pendingScannerRemoveForm = removeForm;
@@ -198,13 +212,13 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
     const scannerDisableModal = document.createElement('div');
     scannerDisableModal.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5';
     scannerDisableModal.innerHTML = `
-        <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="disable-scanner-title">
+        <div class="card w-full max-w-md p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="disable-scanner-title">
             <h2 id="disable-scanner-title" class="text-xl font-black text-slate-900">Disable mobile scanner?</h2>
             <p class="mt-2 text-sm leading-6 text-slate-600">This phone will no longer be able to sign in or record attendance until you activate it again.</p>
             <p id="disable-scanner-name" class="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-800"></p>
             <div class="mt-6 flex gap-3">
-                <button id="cancel-scanner-disable" type="button" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
-                <button id="confirm-scanner-disable" type="button" class="flex-1 rounded-xl bg-rose-600 px-4 py-3 font-bold text-white hover:bg-rose-700">Disable scanner</button>
+                <button id="cancel-scanner-disable" type="button" class="btn btn-secondary flex-1">Cancel</button>
+                <button id="confirm-scanner-disable" type="button" class="btn btn-danger flex-1">Disable scanner</button>
             </div>
         </div>`;
     document.body.appendChild(scannerDisableModal);
@@ -237,13 +251,13 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
     const scannerRemoveModal = document.createElement('div');
     scannerRemoveModal.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5';
     scannerRemoveModal.innerHTML = `
-        <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="remove-scanner-title">
+        <div class="card w-full max-w-md p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="remove-scanner-title">
             <h2 id="remove-scanner-title" class="text-xl font-black text-slate-900">Remove mobile scanner?</h2>
             <p class="mt-2 text-sm leading-6 text-slate-600">This removes the phone from the Dashboard and blocks it from registering again.</p>
             <p id="remove-scanner-name" class="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-800"></p>
             <div class="mt-6 flex gap-3">
-                <button id="cancel-scanner-remove" type="button" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
-                <button id="confirm-scanner-remove" type="button" class="flex-1 rounded-xl bg-rose-600 px-4 py-3 font-bold text-white hover:bg-rose-700">Remove scanner</button>
+                <button id="cancel-scanner-remove" type="button" class="btn btn-secondary flex-1">Cancel</button>
+                <button id="confirm-scanner-remove" type="button" class="btn btn-danger flex-1">Remove scanner</button>
             </div>
         </div>`;
     document.body.appendChild(scannerRemoveModal);

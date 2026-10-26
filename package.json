@@ -2,7 +2,9 @@
   "name": "maruhat-biometric-attendance",
   "private": true,
   "scripts": {
-    "build:css": "tailwindcss -i ./css/tailwind-input.css -o ./css/tailwind.css"
+    "build:css": "tailwindcss -i ./css/tailwind-input.css -o ./css/tailwind.css",
+    "watch:css": "tailwindcss -i ./css/tailwind-input.css -o ./css/tailwind.css --watch",
+    "postinstall": "npm run build:css"
   },
   "devDependencies": {
     "tailwindcss": "3.4.17"

@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once __DIR__ . '/../includes/icons.php';
 require "../config/db_conn.php";
 require "../includes/csrf-token.php";
 $conn->query(
@@ -53,12 +54,14 @@ if ($user) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Reset password | Biometric</title>
-    <link rel="stylesheet" href="../css/tailwind.css">
+    <script src="../js/theme.js?v=<?= (int) @filemtime(__DIR__ . '/../js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="../css/tailwind.css?v=<?= (int) @filemtime(__DIR__ . '/../css/tailwind.css') ?>">
+    <link rel="stylesheet" href="../css/theme.css?v=<?= (int) @filemtime(__DIR__ . '/../css/theme.css') ?>">
 </head>
 
 <body class="grid min-h-screen place-items-center bg-slate-950 p-5">
-    <main class="w-full max-w-md rounded-2xl bg-white p-7 shadow-2xl"><a href="login.php"
-            class="text-sm font-bold text-blue-600">← Back to sign in</a>
+    <main class="card w-full max-w-md p-7 shadow-2xl"><a href="login.php"
+            class="inline-flex items-center gap-1 text-sm font-bold text-blue-600"><?= icon('arrow-left') ?> Back to sign in</a>
         <h1 class="mt-5 text-2xl font-black text-slate-900">Reset password</h1><?php
 if (
     $error
@@ -73,7 +76,7 @@ if (
 ) ?>"><input type="hidden" name="step" value="identify"><label class="block text-sm font-bold">Administrator
                 username<input class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="username" required
                     autofocus></label><button
-                class="w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white">Continue</button></form>
+                class="btn btn-primary w-full">Continue</button></form>
         <?php else: ?><p class="mt-3 text-sm font-bold text-slate-700">Security question</p>
         <p class="mt-1 rounded-xl bg-slate-100 p-4 text-slate-800"><?= htmlspecialchars(
     $question,
@@ -88,7 +91,7 @@ if (
                     minlength="8" required></label><label class="block text-sm font-bold">Confirm new password<input
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password"
                     name="confirm_password" minlength="8" required></label><button
-                class="w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white">Reset password</button></form><?php endif;
+                class="btn btn-primary w-full">Reset password</button></form><?php endif;
 ?>
     </main>
 </body>

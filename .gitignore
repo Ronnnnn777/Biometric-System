@@ -30,3 +30,6 @@ tmp/
 # One-off diagram helpers are local tooling; keep the operational backup script.
 tools/*
 !tools/run-daily-backup.ps1
+
+# Local planning documents
+docs/

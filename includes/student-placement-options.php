@@ -9,7 +9,7 @@ function studentSectionsForGrade(int $grade, string $strand = ''): array
 {
     $juniorHigh = [
         7 => ['Camia', 'Orchids', 'Rose'],
-        8 => ['Jade', 'Amethyst', 'Emerald'],
+        8 => ['Amethyst', 'Emerald', 'Jade'],
         9 => ['Peace', 'Faith', 'Hope'],
         10 => ['Aristotle', 'Newton', 'Einsten'],
     ];

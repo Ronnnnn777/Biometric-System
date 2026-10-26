@@ -8,7 +8,7 @@ exit;
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Camera Portal | Biometric</title>
-    <link rel="stylesheet" href="../css/tailwind.css">
+    <link rel="stylesheet" href="../css/tailwind.css?v=<?= (int) @filemtime(__DIR__ . '/../css/tailwind.css') ?>">
     <style>
         body { background: radial-gradient(circle at center, #1e3a5f 0%, #0f172a 48%, #020617 100%); }
         #camera-portal-card { background: radial-gradient(circle at center, #1e3a5f 0%, #0f172a 48%, #020617 100%); }
@@ -32,7 +32,7 @@ exit;
                     <h1 class="mt-2 text-3xl font-black text-slate-900">Camera Portal</h1>
                     <p class="mt-2 text-slate-500">Choose the attendance camera, then open the scanner.</p>
                 </div>
-                <a href="logout.php" class="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-rose-950/30 hover:bg-rose-700">Sign out</a>
+                <a href="logout.php" class="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-red-950/30 hover:bg-red-700">Sign out</a>
             </div>
 
             <div class="relative z-10 mt-8 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">

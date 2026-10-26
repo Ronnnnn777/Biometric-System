@@ -1,3 +1,174 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    :root {
+        --ui-surface: #ffffff;
+        --ui-border: #e2e8f0;
+        --ui-text: #0f172a;
+        --ui-muted: #64748b;
+        --ui-field: #ffffff;
+        --ui-hover: #f8fafc;
+    }
+}
+
+@layer components {
+    /* Buttons ------------------------------------------------------------- */
+    .btn {
+        @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60;
+    }
+
+    .btn-primary {
+        @apply bg-brand-600 text-white shadow-sm hover:bg-brand-700 focus-visible:ring-brand-600;
+    }
+
+    .btn-secondary {
+        @apply border shadow-sm focus-visible:ring-slate-400;
+        background-color: var(--ui-surface);
+        border-color: var(--ui-border);
+        color: var(--ui-text);
+    }
+
+    .btn-danger {
+        @apply bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-500;
+    }
+
+    .btn-warning {
+        @apply bg-amber-500 text-white shadow-sm hover:bg-amber-600 focus-visible:ring-amber-500;
+    }
+
+    .btn-success {
+        @apply bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 focus-visible:ring-emerald-500;
+    }
+
+    .btn-info {
+        @apply bg-violet-700 text-white shadow-sm hover:bg-violet-800 focus-visible:ring-violet-500;
+    }
+
+    .btn-ghost {
+        @apply text-slate-600 focus-visible:ring-slate-300;
+    }
+
+    .btn-sm {
+        @apply px-3 py-1.5 text-xs;
+    }
+
+    .btn-lg {
+        @apply px-5 py-3 text-base;
+    }
+
+    .btn-icon {
+        @apply p-2;
+    }
+
+    /* Cards --------------------------------------------------------------- */
+    .card {
+        @apply rounded-lg border shadow-sm;
+        background-color: var(--ui-surface);
+        border-color: var(--ui-border);
+    }
+
+    .card-header {
+        @apply flex items-center justify-between gap-4 border-b px-5 py-4;
+        border-color: var(--ui-border);
+    }
+
+    .card-body {
+        @apply p-5 sm:p-6;
+    }
+
+    .card-title {
+        @apply text-base font-semibold;
+        color: var(--ui-text);
+    }
+
+    .card-muted {
+        @apply text-sm;
+        color: var(--ui-muted);
+    }
+
+    /* Forms --------------------------------------------------------------- */
+    .field {
+        @apply w-full rounded-lg border px-4 py-2.5 text-sm shadow-sm focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20;
+        background-color: var(--ui-field);
+        border-color: var(--ui-border);
+        color: var(--ui-text);
+    }
+
+    .field-label {
+        @apply mb-1.5 block text-sm font-semibold;
+        color: var(--ui-text);
+    }
+
+    /* Filters ------------------------------------------------------------- */
+    /*
+     * Shared filter-panel system. The active/inactive pill classes are also
+     * written into data-capsule-*-class attributes because
+     * js/capsule-control.js rewrites each pill's className on selection.
+     */
+    .filter-label {
+        @apply mb-2 block text-xs font-bold uppercase tracking-wider;
+        color: var(--ui-muted);
+    }
+
+    .filter-separator {
+        @apply border-t;
+        border-color: var(--ui-border);
+    }
+
+    .filter-pills {
+        @apply flex min-w-0 flex-wrap items-center justify-start gap-2;
+    }
+
+    .filter-pill {
+        @apply inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-sm font-semibold leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+        border-color: var(--ui-border);
+        background-color: transparent;
+        color: var(--ui-muted);
+    }
+
+    .filter-pill-inactive {
+        @apply focus-visible:ring-brand-600;
+    }
+
+    .filter-pill-inactive:hover {
+        background-color: var(--ui-hover);
+        color: var(--ui-text);
+    }
+
+    .filter-pill-active {
+        @apply border-brand-600 bg-brand-600 font-bold text-white shadow-sm focus-visible:ring-brand-600 dark:border-blue-500 dark:bg-blue-600;
+    }
+
+    .filter-pill-active:hover {
+        @apply border-brand-700 bg-brand-700 text-white dark:border-blue-700 dark:bg-blue-700;
+    }
+
+    /* JHS/SHS are group indicators, not selectable options. No border and no
+       fixed pill height so they read as a category chip rather than a peer
+       grade button; --ui-hover is the theme-aware neutral surface. */
+    .filter-group-badge {
+        @apply inline-flex shrink-0 items-center rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide;
+        background-color: var(--ui-hover);
+        color: var(--ui-muted);
+    }
+
+    .filter-divider {
+        @apply mx-1 h-8 w-px shrink-0;
+        background-color: var(--ui-border);
+    }
+
+    /* Helper copy shown when a filter group is intentionally inactive. */
+    .filter-hint {
+        @apply mt-2 max-w-xs text-xs leading-relaxed;
+        color: var(--ui-muted);
+    }
+
+    /* Vertical rule between filter blocks once they sit side by side.
+       self-stretch keeps the rule as tall as the row's tallest block. */
+    .filter-block-divider {
+        @apply lg:self-stretch lg:border-l lg:pl-6;
+        border-color: var(--ui-border);
+    }
+}

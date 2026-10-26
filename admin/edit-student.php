@@ -3,7 +3,14 @@ session_start();
 require "../config/db_conn.php";
 require "../includes/student-profile-schema.php";
 require "../includes/student-placement-options.php";
+require "../includes/section-catalog-schema.php";
+require "../includes/school-year-schema.php";
+require "../includes/student-promotion-schema.php";
 ensureStudentProfileColumns($conn);
+ensureSectionCatalogColumns($conn);
+ensureSchoolYearRolloverSchema($conn);
+ensureStudentPromotionSchema($conn);
+seedDefaultTeacherSections($conn);
 require "page-guard.php";
 require "../includes/csrf-token.php";
 require "components.php";
@@ -16,20 +23,71 @@ if (!$row) {
     http_response_code(404);
     exit("Student not found.");
 }
-$placement = [
-    7 => studentSectionsForGrade(7),
-    8 => studentSectionsForGrade(8),
-    9 => studentSectionsForGrade(9),
-    10 => studentSectionsForGrade(10),
-    11 => [
-        "Academic" => studentSectionsForGrade(11, "Academic"),
-        "Techpro" => studentSectionsForGrade(11, "Techpro"),
-    ],
-    12 => [
-        "Academic" => studentSectionsForGrade(12, "Academic"),
-        "Techpro" => studentSectionsForGrade(12, "Techpro"),
-    ],
-];
+$placement = studentSectionPlacementOptions($conn);
+
+/* Academic records are retained for every school year, so the tab below reads
+ * them independently of the student's current grade and section. */
+$academicRows = [];
+$academicQuery = $conn->prepare(
+    "SELECT SCHOOL_YEAR,GRADE,STRAND,SECTION,SUBJECT,Q1_GRADE,Q2_GRADE,Q3_GRADE,Q4_GRADE,FINAL_GRADE,RESULT
+       FROM student_subject_results
+      WHERE TRIM(STUDENT_ID)=TRIM(?)
+      ORDER BY SCHOOL_YEAR DESC,GRADE,SUBJECT",
+);
+$academicQuery->bind_param("s", $row["STUDENT_ID"]);
+$academicQuery->execute();
+$academicResult = $academicQuery->get_result();
+while ($academicResult && ($academicRow = $academicResult->fetch_assoc())) {
+    $academicRows[] = $academicRow;
+}
+
+$yearSetting = $conn->query("SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1")->fetch_assoc();
+$activeSchoolYear = (string) ($yearSetting["ACTIVE_SCHOOL_YEAR"] ?? "");
+$academicYears = [];
+if ($activeSchoolYear !== "") {
+    $academicYears[] = $activeSchoolYear;
+}
+foreach ($academicRows as $academicRow) {
+    $year = (string) $academicRow["SCHOOL_YEAR"];
+    if ($year !== "" && !in_array($year, $academicYears, true)) {
+        $academicYears[] = $year;
+    }
+}
+if (!$academicYears) {
+    $academicYears[] = date("Y") . "-" . ((int) date("Y") + 1);
+}
+usort($academicYears, fn($a, $b) => strcmp($b, $a));
+
+$academicYear = (string) ($_GET["year"] ?? $academicYears[0]);
+if (!in_array($academicYear, $academicYears, true)) {
+    $academicYear = $academicYears[0];
+}
+$currentGrade = (int) ($row["GRADE"] ?? 0);
+$academicGrade = (int) ($_GET["academic_grade"] ?? $currentGrade);
+if ($academicGrade < 7 || $academicGrade > 12) {
+    $academicGrade = $currentGrade >= 7 && $currentGrade <= 12 ? $currentGrade : 7;
+}
+$activeTab = ($_GET["tab"] ?? "") === "academic" ? "academic" : "profile";
+$academicGradeItems = [];
+foreach ([7, 8, 9, 10, 11, 12] as $academicGradeOption) {
+    $academicGradeItems[] = ["value" => (string) $academicGradeOption, "label" => "Grade " . $academicGradeOption];
+}
+$academicYearItems = [];
+foreach ($academicYears as $academicYearOption) {
+    $academicYearItems[] = ["value" => $academicYearOption, "label" => $academicYearOption];
+}
+$displayAcademicGrade = function ($value): string {
+    if ($value === null || $value === "") {
+        return "—";
+    }
+    return rtrim(rtrim(number_format((float) $value, 2, ".", ""), "0"), ".");
+};
+$matchingAcademicRows = array_values(array_filter(
+    $academicRows,
+    fn($academicRow) => (int) $academicRow["GRADE"] === $academicGrade
+        && (string) $academicRow["SCHOOL_YEAR"] === $academicYear,
+));
+
 adminHead("Edit student");
 adminSidebar(
     "students",
@@ -37,11 +95,31 @@ adminSidebar(
     "Update the student profile or registered image",
 );
 ?>
-<div class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
-    <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
-        <a href="student-list.php" class="text-sm font-bold text-blue-600 hover:text-blue-700">&larr; Back to
-            students</a>
-        <h2 class="mt-5 text-2xl font-black text-slate-900">Student details</h2>
+<a href="student-list.php"
+    class="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 transition hover:text-blue-700">
+    <?= icon('arrow-left', 'h-4 w-4') ?> Back to Students
+</a>
+
+<div class="mb-5 flex w-full flex-wrap items-center justify-between gap-3">
+    <nav class="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-sm font-bold shadow-sm"
+        role="tablist" aria-label="Student record view">
+        <button type="button" role="tab" data-student-tab="profile" aria-controls="student-profile-panel"
+            aria-selected="<?= $activeTab === 'profile' ? 'true' : 'false' ?>"
+            class="rounded-lg px-4 py-2 transition <?= $activeTab === 'profile' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' ?>">Profile</button>
+        <button type="button" role="tab" data-student-tab="academic" aria-controls="student-academic-panel"
+            aria-selected="<?= $activeTab === 'academic' ? 'true' : 'false' ?>"
+            class="rounded-lg px-4 py-2 transition <?= $activeTab === 'academic' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' ?>">Academic
+            Records</button>
+    </nav>
+    <p class="text-sm font-semibold text-slate-500">Grade <?= $currentGrade ?: "—" ?> &middot; SY
+        <?= htmlspecialchars($academicYear) ?></p>
+</div>
+
+<div id="student-profile-panel" data-student-panel="profile" role="tabpanel"
+    class="<?= $activeTab === 'profile' ? '' : 'hidden' ?>">
+    <div class="grid w-full gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <section class="card card-body">
+        <h2 class="text-2xl font-black text-slate-900">Student details</h2>
         <form action="update-student.php" method="post" enctype="multipart/form-data" class="mt-7 space-y-5">
             <input type="hidden" name="id" value="<?= $row[
           "ID"
@@ -120,7 +198,7 @@ $status
                         photo</label><span id="student-image-file-name"
                         class="min-w-0 max-w-full truncate text-sm text-slate-500">No file chosen</span></div>
             </div>
-            <button class="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Save
+            <button class="btn btn-primary">Save
                 changes</button>
         </form>
         <form id="archive-form" action="archive-student.php" method="post" class="hidden"><input name="id" value="<?= $row[
@@ -129,7 +207,7 @@ $status
     $_SESSION["csrf_token"],
 ) ?>"></form>
     </section>
-    <aside class="h-fit rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+    <aside class="card card-body h-fit">
         <p class="text-sm font-bold uppercase tracking-widest text-blue-600">Current image</p><img id="main-preview"
             src="../<?= htmlspecialchars(
       $row["IMAGE_PATH"],
@@ -143,11 +221,108 @@ $status
             <h3 class="font-bold text-white">Archive profile</h3>
             <p class="mt-2 text-sm text-blue-200">Keep this student and all attendance records, but prevent future
                 attendance scans.</p><button type="button" id="archive-button"
-                class="mt-5 w-full rounded-xl border border-amber-300/40 px-4 py-3 font-bold text-amber-200 hover:bg-amber-500/20">Archive
+                class="mt-5 w-full rounded-xl border border-red-500/40 px-4 py-3 font-bold text-red-400 transition-colors hover:bg-red-600 hover:text-white">Archive
                 student</button>
         </section>
     </aside>
+    </div>
 </div>
+
+<div id="student-academic-panel" data-student-panel="academic" role="tabpanel"
+    class="w-full <?= $activeTab === 'academic' ? '' : 'hidden' ?>">
+    <section class="card w-full flex-1 p-5">
+        <div class="flex w-full flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+                <h2 class="text-2xl font-black text-slate-900">Academic records</h2>
+                <p class="mt-1 text-sm text-slate-500">Read-only subject grades for
+                    <?= htmlspecialchars($row["STUDENT_NAME"]) ?>. Filter by grade level and school year.
+                </p>
+            </div>
+            <span class="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-600"
+                data-academic-count><?= count($matchingAcademicRows) ?>
+                subject<?= count($matchingAcademicRows) === 1 ? "" : "s" ?></span>
+        </div>
+
+        <div class="mt-5 grid w-full gap-4 xl:grid-cols-2">
+            <div class="flex flex-col gap-2 rounded-xl border border-slate-200 p-4">
+                <p class="text-xs font-bold uppercase tracking-widest text-slate-500">Grade level</p>
+                <?= ui_capsule_group("academic_grade", $academicGradeItems, (string) $academicGrade, [
+                    "aria_label" => "Academic grade level",
+                ]) ?>
+            </div>
+            <div class="flex flex-col gap-2 rounded-xl border border-slate-200 p-4">
+                <p class="text-xs font-bold uppercase tracking-widest text-slate-500">School year</p>
+                <?= ui_capsule_group("academic_year", $academicYearItems, $academicYear, [
+                    "aria_label" => "School year",
+                ]) ?>
+            </div>
+        </div>
+
+        <div class="mt-5 w-full overflow-x-auto" data-academic-table-wrap
+            <?= $matchingAcademicRows ? "" : "hidden" ?>>
+            <table class="w-full min-w-[900px] text-left text-sm">
+                <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+                    <tr>
+                        <th class="px-5 py-4">Subject</th>
+                        <th class="px-5 py-4">Section</th>
+                        <th class="px-3 py-4 text-center">Q1</th>
+                        <th class="px-3 py-4 text-center">Q2</th>
+                        <th class="px-3 py-4 text-center">Q3</th>
+                        <th class="px-3 py-4 text-center">Q4</th>
+                        <th class="px-3 py-4 text-center">Final</th>
+                        <th class="px-3 py-4 text-center">Remark</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    <?php foreach ($academicRows as $academicRow):
+                        $rowVisible = (int) $academicRow["GRADE"] === $academicGrade
+                            && (string) $academicRow["SCHOOL_YEAR"] === $academicYear;
+                        $remark = trim((string) ($academicRow["RESULT"] ?? ""));
+                        if ($remark === "" && $academicRow["FINAL_GRADE"] !== null) {
+                            $remark = studentResultRemark((float) $academicRow["FINAL_GRADE"]);
+                        }
+                        $sectionLabel = (string) ($academicRow["SECTION"] ?? "");
+                        if ((string) ($academicRow["STRAND"] ?? "") !== "") {
+                            $sectionLabel .= " · " . $academicRow["STRAND"];
+                        }
+                    ?>
+                    <tr data-academic-row data-grade="<?= (int) $academicRow["GRADE"] ?>"
+                        data-year="<?= htmlspecialchars((string) $academicRow["SCHOOL_YEAR"]) ?>"
+                        class="<?= $rowVisible ? "hover:bg-slate-50" : "hidden" ?>">
+                        <td class="px-5 py-4 font-bold text-slate-900"><?= htmlspecialchars(
+    (string) $academicRow["SUBJECT"],
+) ?></td>
+                        <td class="px-5 py-4 text-slate-600"><?= htmlspecialchars($sectionLabel) ?></td>
+                        <?php foreach (["Q1_GRADE", "Q2_GRADE", "Q3_GRADE", "Q4_GRADE"] as $quarterColumn): ?>
+                        <td class="px-3 py-4 text-center text-slate-700">
+                            <?= htmlspecialchars($displayAcademicGrade($academicRow[$quarterColumn] ?? null)) ?></td>
+                        <?php endforeach; ?>
+                        <td class="px-3 py-4 text-center text-base font-black text-slate-900">
+                            <?= htmlspecialchars($displayAcademicGrade($academicRow["FINAL_GRADE"] ?? null)) ?></td>
+                        <td class="px-3 py-4 text-center">
+                            <span
+                                class="inline-flex rounded-full px-2.5 py-1 text-xs font-bold <?= $remark === "Passed"
+    ? "bg-emerald-50 text-emerald-700"
+    : ($remark === "Failed"
+        ? "bg-rose-50 text-rose-700"
+        : "bg-slate-100 text-slate-500") ?>"><?= $remark !== "" ? htmlspecialchars($remark) : "Not graded" ?></span>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div data-academic-empty
+            class="flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 px-6 py-14 text-center <?= $matchingAcademicRows ? "hidden" : "" ?>">
+            <p class="text-lg font-black text-slate-800">No academic records for this selection.</p>
+            <p class="mt-1 max-w-md text-sm text-slate-500">Choose another grade level or school year to review saved
+                subject grades.</p>
+        </div>
+    </section>
+</div>
+
+<script src="../js/capsule-control.js?v=3"></script>
 <script>
     const placementOptions = <?php echo json_encode($placement, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         savedSection = <?php echo json_encode($row["SECTION"], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
@@ -200,5 +375,57 @@ $status
         const file = event.target.files[0];
         document.getElementById('student-image-file-name').textContent = file ? file.name : 'No file chosen'
     });
+</script>
+<script>
+    (() => {
+        const tabs = Array.from(document.querySelectorAll('[data-student-tab]'));
+        const panels = Array.from(document.querySelectorAll('[data-student-panel]'));
+        const activeTabClass = 'rounded-lg bg-blue-600 px-4 py-2 text-white shadow-sm transition';
+        const inactiveTabClass = 'rounded-lg px-4 py-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900';
+
+        function setTab(tab, updateUrl = false) {
+            tabs.forEach(button => {
+                const active = button.dataset.studentTab === tab;
+                button.className = active ? activeTabClass : inactiveTabClass;
+                button.setAttribute('aria-selected', String(active));
+            });
+            panels.forEach(panel => panel.classList.toggle('hidden', panel.dataset.studentPanel !== tab));
+            if (updateUrl) {
+                const url = new URL(window.location.href);
+                if (tab === 'academic') url.searchParams.set('tab', 'academic');
+                else url.searchParams.delete('tab');
+                window.history.replaceState({}, '', url);
+            }
+        }
+
+        tabs.forEach(button => button.addEventListener('click', () => setTab(button.dataset.studentTab, true)));
+        setTab(<?= json_encode($activeTab) ?>);
+
+        const academicPanel = document.querySelector('[data-student-panel="academic"]');
+        if (!academicPanel) return;
+        const rows = Array.from(academicPanel.querySelectorAll('[data-academic-row]'));
+        const empty = academicPanel.querySelector('[data-academic-empty]');
+        const tableWrap = academicPanel.querySelector('[data-academic-table-wrap]');
+        const count = academicPanel.querySelector('[data-academic-count]');
+
+        function filterAcademic() {
+            const grade = window.CapsuleControl?.getValue('academic_grade');
+            const year = window.CapsuleControl?.getValue('academic_year');
+            let visible = 0;
+            rows.forEach(row => {
+                const show = row.dataset.grade === grade && row.dataset.year === year;
+                row.classList.toggle('hidden', !show);
+                if (show) visible++;
+            });
+            empty?.classList.toggle('hidden', visible > 0);
+            if (tableWrap) tableWrap.hidden = visible === 0;
+            if (count) count.textContent = `${visible} subject${visible === 1 ? '' : 's'}`;
+        }
+
+        document.addEventListener('capsule:change', event => {
+            if (event.detail.name === 'academic_grade' || event.detail.name === 'academic_year') filterAcademic();
+        });
+        filterAcademic();
+    })();
 </script>
 <?php adminFoot(); ?>
