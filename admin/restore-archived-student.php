@@ -12,6 +12,20 @@ if (!hash_equals($_SESSION["csrf_token"] ?? "", $_POST["csrf_token"] ?? "")) {
 }
 
 $id = (int) ($_POST["id"] ?? 0);
+$student = $conn->prepare("SELECT GRADE,STRAND,SECTION FROM students WHERE ID=? AND ENROLLMENT_STATUS='Archived' LIMIT 1");
+$student->bind_param('i', $id);
+$student->execute();
+$placement = $student->get_result()->fetch_assoc();
+if (!$placement) {
+    $_SESSION['toast'] = ['message' => 'Archived student was not found.', 'type' => 'error'];
+    header('Location: archived-students.php');
+    exit;
+}
+if (!studentSectionHasCapacity($conn, (int) $placement['GRADE'], (string) $placement['STRAND'], (string) $placement['SECTION'])) {
+    $_SESSION['toast'] = ['message' => studentSectionCapacityMessage((int) $placement['GRADE'], (string) $placement['SECTION']), 'type' => 'error'];
+    header('Location: archived-students.php');
+    exit;
+}
 $restore = $conn->prepare("UPDATE students SET ENROLLMENT_STATUS='Enrolled', ARCHIVE_REASON='', ARCHIVED_AT=NULL WHERE ID=? AND ENROLLMENT_STATUS='Archived'");
 $restore->bind_param("i", $id);
 $restore->execute();

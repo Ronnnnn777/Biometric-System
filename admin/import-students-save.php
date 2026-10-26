@@ -110,6 +110,11 @@ try {
             continue;
         }
 
+        if ($enrollmentStatus === 'Enrolled' && !studentSectionHasCapacity($conn, $grade, $strand, $section)) {
+            $skipped[] = "Row {$rowNumber}: " . studentSectionCapacityMessage($grade, $section);
+            continue;
+        }
+
         $insert->bind_param('sssssiisssss', $studentId, $studentName, $firstName, $middleName, $lastName, $grade, $age, $strand, $address, $section, $enrollmentStatus, $defaultImage);
         $insert->execute();
         $inserted++;

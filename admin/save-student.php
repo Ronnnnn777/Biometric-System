@@ -38,6 +38,12 @@ if($checkStmt->get_result()->num_rows > 0) {
     exit; // Stops the script from inserting a duplicate
 }
 
+if (!studentSectionHasCapacity($conn, $grade, $strand, $section)) {
+    $_SESSION['toast'] = ['message' => studentSectionCapacityMessage($grade, $section), 'type' => 'error'];
+    header('Location: add-student.php');
+    exit;
+}
+
 // 2. IMAGE CONFIGURATION
 $targetDir = "../uploads/students/";
 $pythonDir = "C:/Biometric_Capstone/known_faces/"; 

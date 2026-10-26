@@ -43,6 +43,12 @@ if($check_stmt->get_result()->num_rows > 0) {
     exit; 
 }
 
+if ($enrollmentStatus === 'Enrolled' && !studentSectionHasCapacity($conn, $grade, $strand, $section, (int) $id)) {
+    $_SESSION['toast'] = ['message' => studentSectionCapacityMessage($grade, $section), 'type' => 'error'];
+    header("Location: edit-student.php?id=$id");
+    exit;
+}
+
 // 1. Get current path for cleanup
 $stmt_old = $conn->prepare("SELECT IMAGE_PATH FROM students WHERE ID = ?");
 $stmt_old->bind_param("i", $id);
@@ -94,7 +100,11 @@ if(isset($_FILES['student_image']) && $_FILES['student_image']['error'] == 0) {
 }
 
 // 3. Database Update
-$stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, MIDDLE_NAME = ?, LAST_NAME = ?, GRADE = ?, AGE = ?, STRAND = ?, ADDRESS = ?, SECTION = ?, ENROLLMENT_STATUS = ?, IMAGE_PATH = ? WHERE ID = ?");
+if ($enrollmentStatus === 'Archived') {
+    $stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, MIDDLE_NAME = ?, LAST_NAME = ?, GRADE = ?, AGE = ?, STRAND = ?, ADDRESS = ?, SECTION = ?, ENROLLMENT_STATUS = ?, IMAGE_PATH = ?, ARCHIVE_REASON='Manual archive', ARCHIVED_AT=NOW() WHERE ID = ?");
+} else {
+    $stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, MIDDLE_NAME = ?, LAST_NAME = ?, GRADE = ?, AGE = ?, STRAND = ?, ADDRESS = ?, SECTION = ?, ENROLLMENT_STATUS = ?, IMAGE_PATH = ? WHERE ID = ?");
+}
 $stmt->bind_param("sssssiisssssi", $student_id, $student_name, $first_name, $middle_name, $last_name, $grade, $age, $strand, $address, $section, $enrollmentStatus, $db_path, $id);
 
 if($stmt->execute()){

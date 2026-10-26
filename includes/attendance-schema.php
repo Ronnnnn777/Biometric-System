@@ -10,6 +10,8 @@ function ensureAttendanceTimeOutColumn(mysqli $conn): void
     if(!isset($columns['ATTENDANCE_REMARK']))$conn->query("ALTER TABLE attendance ADD COLUMN ATTENDANCE_REMARK VARCHAR(40) NULL DEFAULT NULL AFTER TIME_OUT");
     if(!isset($columns['ATTENDANCE_NOTE']))$conn->query("ALTER TABLE attendance ADD COLUMN ATTENDANCE_NOTE VARCHAR(255) NULL DEFAULT NULL AFTER ATTENDANCE_REMARK");
     if(!isset($columns['IS_AUTO_ABSENT']))$conn->query("ALTER TABLE attendance ADD COLUMN IS_AUTO_ABSENT TINYINT(1) NOT NULL DEFAULT 0 AFTER ATTENDANCE_NOTE");
+    // Lets the dashboard identify a newly scanned or updated attendance record.
+    if(!isset($columns['ATTENDANCE_UPDATED_AT']))$conn->query('ALTER TABLE attendance ADD COLUMN ATTENDANCE_UPDATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER IS_AUTO_ABSENT');
     // Automatic absences were retired in favor of teacher-confirmed records.
     // Remove only the old system-generated rows; teacher-marked absences use 0.
     $conn->query('DELETE FROM attendance WHERE IS_AUTO_ABSENT=1');
@@ -37,7 +39,7 @@ function setWholeDayAttendance(mysqli $conn, bool $enabled): void
 
 const ATTENDANCE_LATE_FROM = '07:21:00';
 const ATTENDANCE_ABSENCE_FINALIZE_AT = '23:59:00';
-const ATTENDANCE_TIME_OUT_COOLDOWN_SECONDS = 300;
+const ATTENDANCE_TIME_OUT_COOLDOWN_SECONDS = 120;
 const ATTENDANCE_LUNCH_OUT_FROM = '11:40:00';
 const ATTENDANCE_AFTERNOON_TIME_IN_FROM = '12:20:00';
 

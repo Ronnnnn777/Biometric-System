@@ -212,17 +212,7 @@ teacherShell("Students");
                             class="rounded-full px-3 py-1 font-bold <?= $todayClass ?>"><?= $todayLabel ?></span></td>
                     <td class="px-5 py-4 text-right"><?php if (
               !$student["attended_today"]
-          ): ?><form class="mark-present-form inline-block align-middle" action="mark-present.php" method="post"><input
-                                type="hidden" name="csrf_token" value="<?= htmlspecialchars(
-    $_SESSION["csrf_token"],
-) ?>"><input type="hidden" name="student_id" value="<?= (int) $student[
-    "ID"
-] ?>"><input type="hidden" name="grade" value="<?= $grade ?>"><input type="hidden" name="section" value="<?= htmlspecialchars(
-    $section,
-) ?>"><input type="hidden" name="student_name" value="<?= htmlspecialchars(
-    $displayName,
-) ?>"><button type="button" class="open-mark-present text-center text-xs font-bold leading-tight text-emerald-600 hover:text-emerald-800"><span
-                                    class="block">Mark</span>present</button></form><form class="mark-absent-form ml-3 inline-block align-middle" action="mark-absent.php" method="post"><input
+          ): ?><form class="mark-absent-form inline-block align-middle" action="mark-absent.php" method="post"><input
                                 type="hidden" name="csrf_token" value="<?= htmlspecialchars(
     $_SESSION["csrf_token"],
 ) ?>"><input type="hidden" name="student_id" value="<?= (int) $student[
@@ -265,17 +255,6 @@ teacherShell("Students");
                 absent</button></div>
     </div>
 </div>
-<div id="mark-present-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
-    role="dialog" aria-modal="true" aria-labelledby="mark-present-title">
-    <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-        <h3 id="mark-present-title" class="text-xl font-black text-slate-900">Mark student present?</h3>
-        <p id="mark-present-message" class="mt-2 text-sm text-slate-600">This will create a present attendance record for today.</p>
-        <div class="mt-6 flex gap-3">
-            <button id="cancel-mark-present" type="button" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700">Cancel</button>
-            <button id="confirm-mark-present" type="button" class="flex-1 rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white hover:bg-emerald-700">Mark present</button>
-        </div>
-    </div>
-</div>
 <script src="../js/student-pagination.js?v=9"></script>
 <script>
     document.getElementById('clear-student-filters').onclick = () => {
@@ -310,34 +289,5 @@ teacherShell("Students");
             }
         })
     });
-</script>
-<script>
-    (() => {
-        const modal = document.getElementById('mark-present-modal');
-        const message = document.getElementById('mark-present-message');
-        const cancel = document.getElementById('cancel-mark-present');
-        const confirm = document.getElementById('confirm-mark-present');
-        let pendingForm = null;
-
-        document.querySelectorAll('.open-mark-present').forEach(button => {
-            button.addEventListener('click', () => {
-                pendingForm = button.form;
-                const studentName = pendingForm.querySelector('[name="student_name"]').value;
-                message.textContent = `Mark ${studentName} present for today?`;
-                modal.classList.replace('hidden', 'flex');
-            });
-        });
-
-        const close = () => {
-            pendingForm = null;
-            modal.classList.replace('flex', 'hidden');
-        };
-
-        cancel.addEventListener('click', close);
-        confirm.addEventListener('click', () => pendingForm?.submit());
-        modal.addEventListener('click', event => {
-            if (event.target === modal) close();
-        });
-    })();
 </script>
 <?php teacherFoot(); ?>

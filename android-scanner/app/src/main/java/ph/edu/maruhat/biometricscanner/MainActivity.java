@@ -154,6 +154,7 @@ public class MainActivity extends AppCompatActivity {
   private volatile long matchMessageUntil = 0;
   private volatile long recognitionGraceUntil = 0;
   private volatile long unrecognizedMessageUntil = 0;
+  private String guideStatusText = "";
   private int unrecognizedStreak = 0;
   private String lastRecognitionKey = "";
   private boolean returnToScannerHomeOnResume = false;
@@ -273,8 +274,9 @@ public class MainActivity extends AppCompatActivity {
           loginButton.setEnabled(true);
           loginButton.setText("Start scanner");
           showLoginError(
-            "Could not restore scanner. Check Wi-Fi, then tap Start scanner."
+            "Could not restore scanner. Checking the current Wi-Fi for MNHS Attendance..."
           );
+          detectServerAddress();
         });
       }
     });
@@ -376,19 +378,20 @@ public class MainActivity extends AppCompatActivity {
     serverInput.setHintTextColor(Color.rgb(148, 163, 184));
     serverInput.setBackground(round(Color.argb(210, 2, 6, 23), 12));
     card.addView(serverInput);
-    detectServerButton = button("Detect IP address", Color.rgb(30, 64, 175));
+    detectServerButton = button("Retry IP address detection", Color.rgb(30, 64, 175));
     LinearLayout.LayoutParams detectParams = new LinearLayout.LayoutParams(
       -1,
       dp(48)
     );
     detectParams.topMargin = dp(2);
     card.addView(detectServerButton, detectParams);
+    detectServerButton.setVisibility(View.GONE);
     detectServerButton.setOnClickListener(v -> detectServerAddress());
     serverDetectionStatus = text("", 13, Color.rgb(191, 219, 254));
     serverDetectionStatus.setVisibility(View.GONE);
     card.addView(serverDetectionStatus);
     TextView hint = text(
-      "Connect to the same Wi-Fi as the XAMPP computer, then tap Detect IP address. You can also enter it manually.",
+      "The app automatically detects the MNHS Attendance address on the current Wi-Fi. You can also enter it manually.",
       12,
       Color.rgb(191, 219, 254)
     );
@@ -415,6 +418,9 @@ public class MainActivity extends AppCompatActivity {
     scroll.addView(page);
     shell.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
     setContentView(shell);
+    if (normaliseUrl(serverInput.getText().toString()) == null) {
+      interfaceHandler.postDelayed(this::detectServerAddress, 250);
+    }
   }
 
   private void detectServerAddress() {
@@ -437,23 +443,25 @@ public class MainActivity extends AppCompatActivity {
         }
         runOnUiThread(() -> {
           serverInput.setText(detectedUrl);
+          detectServerButton.setVisibility(View.GONE);
           setServerDetectionStatus(
             "Detected " + detectedUrl + ". Tap Start scanner.",
             Color.rgb(134, 239, 172)
           );
         });
       } catch (Exception error) {
-        runOnUiThread(() ->
+        runOnUiThread(() -> {
+          detectServerButton.setVisibility(View.VISIBLE);
           setServerDetectionStatus(
             readableError(error),
             Color.rgb(253, 164, 175)
-          )
-        );
+          );
+        });
       } finally {
         runOnUiThread(() -> {
           if (detectServerButton != null) {
             detectServerButton.setEnabled(true);
-            detectServerButton.setText("Detect IP address");
+            detectServerButton.setText("Retry IP address detection");
           }
           if (loginButton != null) loginButton.setEnabled(true);
         });
@@ -972,7 +980,7 @@ public class MainActivity extends AppCompatActivity {
   }
 
   private void startCamera() {
-    scannerStatus.setText("Opening phone camera...");
+    setGuideStatus("Opening camera...", Color.rgb(191, 219, 254));
     ListenableFuture<ProcessCameraProvider> future =
       ProcessCameraProvider.getInstance(this);
     future.addListener(() -> {
@@ -1002,6 +1010,7 @@ public class MainActivity extends AppCompatActivity {
         scanning = true;
         faceVisible.set(false);
         faceGuide.setDetected(false);
+        setGuideStatus("Detecting face...", Color.rgb(191, 219, 254));
         startButton.setText("Stop attendance");
         if (scanTask != null) scanTask.cancel(false);
         // Keep the two-frame server confirmation, but provide those frames
@@ -1044,6 +1053,9 @@ public class MainActivity extends AppCompatActivity {
           if (faceGuide == null) return;
           if (!detected) {
             faceGuide.setDetected(false);
+            if (!captureInFlight.get()) {
+              setGuideStatus("Detecting face...", Color.rgb(191, 219, 254));
+            }
             return;
           }
           try {
@@ -1063,6 +1075,12 @@ public class MainActivity extends AppCompatActivity {
               previewTransform
             ).mapRect(mappedBounds);
             faceGuide.setMappedBounds(mappedBounds);
+            if (!captureInFlight.get()) {
+              setGuideStatus(
+                "Face detected - hold still",
+                Color.rgb(134, 239, 172)
+              );
+            }
           } catch (Exception ignored) {
             faceGuide.setDetected(false);
           }
@@ -1079,6 +1097,9 @@ public class MainActivity extends AppCompatActivity {
       captureInFlight.set(false);
       return;
     }
+    runOnUiThread(() ->
+      setGuideStatus("Recognizing face...", Color.rgb(253, 230, 138))
+    );
     try {
       File frame = File.createTempFile(
         "attendance-frame-",
@@ -1193,11 +1214,24 @@ public class MainActivity extends AppCompatActivity {
     } finally {
       frame.delete();
       captureInFlight.set(false);
+      if (scanning) runOnUiThread(() -> {
+        if (!scanning) return;
+        setGuideStatus(
+          faceVisible.get() ? "Face detected - hold still" : "Detecting face...",
+          faceVisible.get() ? Color.rgb(134, 239, 172) : Color.rgb(191, 219, 254)
+        );
+      });
     }
   }
 
   private void showScanStatus(String message) {
     showFaceToast(message, false);
+  }
+
+  private void setGuideStatus(String message, int color) {
+    if (message.equals(guideStatusText) && faceGuide != null) return;
+    guideStatusText = message;
+    if (faceGuide != null) faceGuide.setStatus(message, color);
   }
 
   private void clearFaceToast() {
@@ -1255,6 +1289,7 @@ public class MainActivity extends AppCompatActivity {
     scanResultCard.animate().cancel();
     scanResultAction.setText(label);
     scanResultName.setText(name);
+    setGuideStatus(label, Color.rgb(134, 239, 172));
     scanResultImage.setImageResource(R.drawable.maruhat_logo);
     String path = student == null ? "" : student.optString("IMAGE_PATH", "");
     loadResultPhoto(path);
@@ -1345,6 +1380,7 @@ public class MainActivity extends AppCompatActivity {
     }
     if (cameraProvider != null) cameraProvider.unbindAll();
     if (faceGuide != null) faceGuide.setDetected(false);
+    setGuideStatus("Scanner stopped", Color.rgb(191, 219, 254));
     if (startButton != null) startButton.setText("Start attendance");
   }
 
@@ -1465,13 +1501,19 @@ public class MainActivity extends AppCompatActivity {
   private final class FaceGuideView extends View {
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private boolean detected;
+    private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint labelBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF bounds = new RectF();
+    private boolean detected;
+    private String statusText = "Detecting face...";
+    private int statusColor = Color.rgb(191, 219, 254);
 
     FaceGuideView(MainActivity activity) {
       super(activity);
       paint.setStyle(Paint.Style.STROKE);
       paint.setStrokeCap(Paint.Cap.SQUARE);
+      labelPaint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+      labelBackgroundPaint.setColor(Color.argb(220, 2, 6, 23));
       setLayerType(View.LAYER_TYPE_SOFTWARE, null);
     }
 
@@ -1487,7 +1529,12 @@ public class MainActivity extends AppCompatActivity {
       }
       bounds.set(value);
       bounds.inset(-bounds.width() * .08f, -bounds.height() * .10f);
-      detected = true;
+      setDetected(true);
+    }
+
+    void setStatus(String message, int color) {
+      statusText = message;
+      statusColor = color;
       invalidate();
     }
 
@@ -1495,12 +1542,12 @@ public class MainActivity extends AppCompatActivity {
     protected void onDraw(Canvas canvas) {
       super.onDraw(canvas);
       if (!detected) return;
-      float left = Math.max(0, bounds.left),
-        right = Math.min(getWidth(), bounds.right),
-        top = Math.max(0, bounds.top),
-        bottom = Math.min(getHeight(), bounds.bottom),
-        width = right - left,
-        height = bottom - top;
+      float left = Math.max(0, bounds.left);
+      float right = Math.min(getWidth(), bounds.right);
+      float top = Math.max(0, bounds.top);
+      float bottom = Math.min(getHeight(), bounds.bottom);
+      float width = right - left;
+      float height = bottom - top;
       if (width <= 0 || height <= 0) return;
       float corner = Math.max(dp(14), Math.min(width, height) * .28f);
       paint.setColor(Color.rgb(34, 197, 94));
@@ -1515,6 +1562,32 @@ public class MainActivity extends AppCompatActivity {
       canvas.drawLine(right, bottom, right - corner, bottom, paint);
       canvas.drawLine(right, bottom, right, bottom - corner, paint);
       paint.clearShadowLayer();
+
+      labelPaint.setColor(statusColor);
+      labelPaint.setTextSize(dp(12));
+      float labelPadding = dp(9);
+      float labelHeight = dp(31);
+      float labelWidth = labelPaint.measureText(statusText) + labelPadding * 2;
+      float labelLeft = Math.max(
+        dp(8),
+        Math.min(right - labelWidth, getWidth() - labelWidth - dp(8))
+      );
+      float labelTop = bottom + dp(9);
+      if (labelTop + labelHeight > getHeight() - dp(8)) {
+        labelTop = Math.max(dp(8), bottom - labelHeight - dp(9));
+      }
+      RectF labelBounds = new RectF(
+        labelLeft,
+        labelTop,
+        labelLeft + labelWidth,
+        labelTop + labelHeight
+      );
+      canvas.drawRoundRect(labelBounds, dp(12), dp(12), labelBackgroundPaint);
+      Paint.FontMetrics fontMetrics = labelPaint.getFontMetrics();
+      float textBaseline = labelTop +
+        (labelHeight - fontMetrics.bottom + fontMetrics.top) / 2f -
+        fontMetrics.top;
+      canvas.drawText(statusText, labelLeft + labelPadding, textBaseline, labelPaint);
     }
   }
 

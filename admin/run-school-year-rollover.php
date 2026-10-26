@@ -3,8 +3,10 @@ require "page-guard.php";
 require "../config/db_conn.php";
 require "../includes/school-year-schema.php";
 require "../includes/student-promotion-schema.php";
+require "../includes/student-profile-schema.php";
 ensureSchoolYearRolloverSchema($conn);
 ensureStudentPromotionSchema($conn);
+ensureStudentProfileColumns($conn);
 if (!hash_equals($_SESSION["csrf_token"] ?? "", $_POST["csrf_token"] ?? "")) {
     $_SESSION["toast"] = [
         "message" => "The rollover request expired.",
@@ -130,6 +132,38 @@ $failedQuery->execute();
 $failedRows = $failedQuery->get_result();
 while ($failedRows && ($failedRow = $failedRows->fetch_assoc())) {
     $failedByStudent[(string) $failedRow['STUDENT_ID']] = (int) $failedRow['FAILED_SUBJECTS'];
+}
+
+// Check the final placements before changing anything. This also prevents two
+// source classes from being mapped into a next-year section beyond its limit.
+$finalSectionCounts = [];
+$enrolledStudents = $conn->query("SELECT STUDENT_ID,GRADE,STRAND,SECTION FROM students WHERE ENROLLMENT_STATUS='Enrolled' AND GRADE BETWEEN 7 AND 12");
+while ($enrolledStudents && ($student = $enrolledStudents->fetch_assoc())) {
+    $studentId = (string) $student['STUDENT_ID'];
+    $grade = (int) $student['GRADE'];
+    $strand = (string) $student['STRAND'];
+    $section = (string) $student['SECTION'];
+    $decision = studentPromotionDecision((int) ($failedByStudent[$studentId] ?? 0));
+
+    // A Grade 12 student who passed graduates; retained and summer students stay.
+    if ($grade === 12 && $decision === 'Promoted') continue;
+    if ($grade <= 11 && $decision === 'Promoted') {
+        $mapKey = $grade . '|' . $strand . '|' . $section;
+        $map = $maps[$mapKey];
+        $grade = (int) $map['TO_GRADE'];
+        $strand = (string) $map['TO_STRAND'];
+        $section = (string) $map['TO_SECTION'];
+    }
+    $key = $grade . '|' . $strand . '|' . $section;
+    $finalSectionCounts[$key] = (int) ($finalSectionCounts[$key] ?? 0) + 1;
+    if ($finalSectionCounts[$key] > STUDENT_SECTION_CAPACITY) {
+        $_SESSION['toast'] = [
+            'message' => studentSectionCapacityMessage($grade, $section) . ' Adjust the rollover section mappings first.',
+            'type' => 'error',
+        ];
+        header('Location: school-year-rollover.php');
+        exit();
+    }
 }
 try {
     $conn->begin_transaction();
