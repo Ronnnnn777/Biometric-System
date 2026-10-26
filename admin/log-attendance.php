@@ -1,5 +1,7 @@
 <?php
 require "../config/db_conn.php";
+require "../includes/attendance-schema.php";
+ensureAttendanceSnapshotColumns($conn);
 date_default_timezone_set('Asia/Manila');
 
 // Use trim() to remove any accidental spaces from Python/Filenames
@@ -16,9 +18,10 @@ if ($student_id && $student_name) {
     $result = $check->get_result();
     
     if ($result->num_rows == 0) {
-        // Log the attendance
-        $stmt = $conn->prepare("INSERT INTO attendance (STUDENT_ID, STUDENT_NAME, TIME_IN) VALUES (?, ?, NOW())");
-        $stmt->bind_param("ss", $student_id, $student_name);
+        // Log the attendance with the student's current section snapshot.
+        $snapshot = attendanceSnapshotForStudent($conn, $student_id);
+        $stmt = $conn->prepare("INSERT INTO attendance (STUDENT_ID, STUDENT_NAME, TIME_IN, GRADE_SNAPSHOT, STRAND_SNAPSHOT, SECTION_SNAPSHOT) VALUES (?, ?, NOW(), ?, ?, ?)");
+        $stmt->bind_param("ssiss", $student_id, $student_name, $snapshot["GRADE"], $snapshot["STRAND"], $snapshot["SECTION"]);
         
         if ($stmt->execute()) {
             echo "Success: Attendance logged for $student_name";

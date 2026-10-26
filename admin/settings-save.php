@@ -8,6 +8,7 @@ ensureAttendanceTimeOutColumn($conn);
 ensureMobileScannerSettingsSchema($conn);
 require "../includes/student-placement-options.php";
 require "../includes/section-catalog-schema.php";
+require "../includes/sectioning.php";
 require "../includes/teacher-assignment-schema.php";
 require "../includes/staff-biometric.php";
 ensureSectionCatalogColumns($conn);
@@ -232,6 +233,24 @@ if ($action === "password") {
                 : "No checked-in students needed an emergency dismissal.",
         "type" => $count > 0 ? "success" : "error",
     ];
+} elseif ($action === "set_default_capacity") {
+    $capacity = (int) ($_POST["default_capacity"] ?? 0);
+    if ($capacity < 1 || $capacity > 50) {
+        $_SESSION["toast"] = [
+            "message" => "Enter a default capacity between 1 and 50.",
+            "type" => "error",
+        ];
+    } else {
+        $up = $conn->prepare(
+            "INSERT INTO section_settings (ID,DEFAULT_CAPACITY) VALUES (1,?) ON DUPLICATE KEY UPDATE DEFAULT_CAPACITY=VALUES(DEFAULT_CAPACITY)",
+        );
+        $up->bind_param("i", $capacity);
+        $up->execute();
+        $_SESSION["toast"] = [
+            "message" => "Default section capacity saved.",
+            "type" => "success",
+        ];
+    }
 } elseif ($action === "add_section") {
     $section = trim($_POST["section"] ?? "");
     $grade = (int) ($_POST["grade"] ?? 0);
@@ -242,10 +261,11 @@ if ($action === "password") {
         ? in_array($strand, studentStrandsForGrade($grade), true)
         : $strand === "";
     if ($section !== "" && $validGrade && $validStrand) {
+        $defaultCapacity = defaultSectionCapacity($conn);
         $add = $conn->prepare(
-            "INSERT IGNORE INTO sections (SECTION,GRADE,STRAND) VALUES (?,?,?)",
+            "INSERT IGNORE INTO sections (SECTION,GRADE,STRAND,CAPACITY) VALUES (?,?,?,?)",
         );
-        $add->bind_param("sis", $section, $grade, $strand);
+        $add->bind_param("sisi", $section, $grade, $strand, $defaultCapacity);
         $add->execute();
         $_SESSION["toast"] = [
             "message" => "Section added successfully.",
@@ -260,6 +280,7 @@ if ($action === "password") {
 } elseif ($action === "rename_section") {
     $old = trim($_POST["old_section"] ?? "");
     $new = trim($_POST["section"] ?? "");
+    $capacity = (int) ($_POST["capacity"] ?? 0);
     if ($old !== "" && $new !== "") {
         $up = $conn->prepare("UPDATE students SET SECTION=? WHERE SECTION=?");
         $up->bind_param("ss", $new, $old);
@@ -275,6 +296,11 @@ if ($action === "password") {
         $up = $conn->prepare("UPDATE sections SET SECTION=? WHERE SECTION=?");
         $up->bind_param("ss", $new, $old);
         $up->execute();
+        if ($capacity >= 1 && $capacity <= 200) {
+            $cap = $conn->prepare("UPDATE sections SET CAPACITY=? WHERE SECTION=?");
+            $cap->bind_param("is", $capacity, $new);
+            $cap->execute();
+        }
         $_SESSION["toast"] = [
             "message" => "Section updated successfully.",
             "type" => "success",

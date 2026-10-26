@@ -5,6 +5,7 @@ require "../config/db_conn.php";
 require "../includes/csrf-token.php";
 require "../includes/student-placement-options.php";
 require "../includes/section-catalog-schema.php";
+require "../includes/sectioning.php";
 require "../includes/teacher-assignment-schema.php";
 require "../includes/staff-biometric.php";
 require "../includes/attendance-schema.php";
@@ -30,9 +31,13 @@ if ($row = $security->get_result()->fetch_assoc()) {
     $securityConfigured = true;
     $securityQuestion = $row["SECURITY_QUESTION"];
 }
+$defaultCapacity = defaultSectionCapacity($conn);
 $wholeDayAttendance = attendanceUsesWholeDay($conn);
 $mobileScannerConfiguration = mobileScannerConfiguration($conn);
 $mobileScannerServerUrl = $mobileScannerConfiguration["server_url"];
+// Public URL of this installation (for example "/biometric-system/"), used in
+// the scanner instructions so they match the real folder on this computer.
+$appBasePath = rtrim(str_replace("\\", "/", dirname(dirname($_SERVER["SCRIPT_NAME"] ?? "/admin/settings.php"))), "/") . "/";
 $mobileScannerName = $mobileScannerConfiguration["scanner_name"];
 $mobileScannerId = $mobileScannerConfiguration["scanner_id"];
 $authorizedMobileScanners = authorizedMobileScanners($conn);
@@ -45,7 +50,7 @@ $emergencyDismissalCount =
         : [])["total"] ?? 0);
 $groups = [];
 $rows = $conn->query(
-    "SELECT c.SECTION,c.GRADE,c.STRAND,c.IS_ACTIVE,COUNT(DISTINCT s.ID) students,COUNT(DISTINCT t.TEACHER_ID) teachers FROM sections c LEFT JOIN students s ON s.SECTION=c.SECTION AND s.GRADE=c.GRADE AND s.STRAND=c.STRAND AND COALESCE(s.ENROLLMENT_STATUS,'Enrolled')='Enrolled' LEFT JOIN teacher_assignments ta ON ta.SECTION=c.SECTION AND ta.GRADE=c.GRADE AND ta.STRAND=c.STRAND LEFT JOIN teachers t ON t.TEACHER_ID=ta.TEACHER_ID AND COALESCE(t.TEACHER_STATUS,'Active')='Active' WHERE c.IS_ACTIVE=1 AND c.GRADE BETWEEN 7 AND 12 GROUP BY c.SECTION,c.GRADE,c.STRAND,c.IS_ACTIVE ORDER BY c.SECTION",
+    "SELECT c.SECTION_ID,c.SECTION,c.GRADE,c.STRAND,c.IS_ACTIVE,c.CAPACITY,c.SORT_ORDER,COUNT(DISTINCT s.ID) students,COUNT(DISTINCT t.TEACHER_ID) teachers FROM sections c LEFT JOIN students s ON s.SECTION=c.SECTION AND s.GRADE=c.GRADE AND s.STRAND=c.STRAND AND COALESCE(s.ENROLLMENT_STATUS,'Enrolled')='Enrolled' LEFT JOIN teacher_assignments ta ON ta.SECTION=c.SECTION AND ta.GRADE=c.GRADE AND ta.STRAND=c.STRAND LEFT JOIN teachers t ON t.TEACHER_ID=ta.TEACHER_ID AND COALESCE(t.TEACHER_STATUS,'Active')='Active' WHERE c.IS_ACTIVE=1 AND c.GRADE BETWEEN 7 AND 12 GROUP BY c.SECTION_ID,c.SECTION,c.GRADE,c.STRAND,c.IS_ACTIVE,c.CAPACITY,c.SORT_ORDER ORDER BY c.GRADE,c.STRAND,c.SORT_ORDER,c.SECTION_ID",
 );
 while ($row = $rows->fetch_assoc()) {
     $groups[(int) $row["GRADE"]][$row["STRAND"]][] = $row;
@@ -74,7 +79,7 @@ adminSidebar(
         max-width: 64rem;
         overflow: hidden;
         border: 1px solid #e2e8f0;
-        border-radius: 1rem;
+        border-radius: .5rem;
         background: #fff;
         box-shadow: 0 1px 2px rgb(15 23 42 / .05)
     }
@@ -111,6 +116,8 @@ adminSidebar(
     }
 
     .settings-group .settings-chevron {
+        display: inline-flex;
+        align-items: center;
         font-size: 1.25rem;
         transition: transform .2s ease
     }
@@ -181,16 +188,30 @@ adminSidebar(
         if (summary) summary.textContent = 'Set the IP address used by the attendance scanner phones.';
         const helper = form?.querySelector('p');
         if (helper) helper.innerHTML =
-            'Use this computer\'s LAN IP and include the <span class="font-semibold">/biometric/</span> folder. Scanner phones register automatically and appear on the Dashboard.';
+            'Use this computer\'s LAN IP and include the <span class="font-semibold"><?= htmlspecialchars($appBasePath) ?></span> folder. Scanner phones register automatically and appear on the Dashboard.';
         form?.querySelector('#save-mobile-scanner-configuration') && (form.querySelector(
             '#save-mobile-scanner-configuration').textContent = 'Save mobile scanner configuration');
         }, 0);
     });
 </script>
+<details class="settings-group" open>
+    <summary><span><span class="block text-base font-black text-slate-900">Appearance</span><span
+                class="mt-1 block text-sm font-medium text-slate-500">Choose a light or dark dashboard, or follow this
+                device.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
+    <div class="border-t border-slate-100 p-5 sm:p-6">
+        <p class="text-sm text-slate-500">Your choice is saved in this browser and applies to the admin and teacher
+            portals on this device.</p>
+        <div class="theme-options" role="group" aria-label="Colour theme">
+            <button type="button" class="theme-option" data-theme-option="light" aria-pressed="false"><?= icon('sun') ?><span>Light</span></button>
+            <button type="button" class="theme-option" data-theme-option="dark" aria-pressed="false"><?= icon('moon') ?><span>Dark</span></button>
+            <button type="button" class="theme-option" data-theme-option="system" aria-pressed="true"><?= icon('monitor') ?><span>System</span></button>
+        </div>
+    </div>
+</details>
 <details class="settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Authorized mobile scanners</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Add each phone that is allowed to connect to MNHS
-                Attendance.</span></span><span class="settings-chevron text-slate-500">⌄</span></summary>
+                Attendance.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
     <div class="border-t border-slate-100 p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -212,11 +233,11 @@ adminSidebar(
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 font-medium text-slate-900"
                     name="mobile_scanner_id" placeholder="MNH-MOBILE-001" maxlength="60" required></label>
             <div class="sm:col-span-2"><button
-                    class="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Add authorized
+                    class="btn btn-primary">Add authorized
                     phone</button></div>
         </form>
-        <div class="mt-6 overflow-x-auto">
-            <table class="min-w-full text-left text-sm">
+        <div class="mt-6 w-full overflow-x-auto">
+            <table class="w-full min-w-full text-left text-sm">
                 <thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
                     <tr>
                         <th class="px-4 py-3">Phone</th>
@@ -244,7 +265,7 @@ adminSidebar(
 ) ?>"><input type="hidden" name="action" value="remove_mobile_scanner"><input type="hidden" name="mobile_scanner_id"
                                     value="<?= htmlspecialchars(
     $authorizedScanner["SCANNER_ID"],
-) ?>"><button class="font-bold text-rose-600 hover:text-rose-700">Remove</button></form>
+) ?>"><button class="font-bold text-red-500 hover:text-red-600">Remove</button></form>
                         </td>
                     </tr><?php endforeach;
 else:
@@ -293,7 +314,7 @@ endif; ?></tbody>
             'Set the scanner name, scanner ID, and IP address used by Maruhat Attendance.';
         const helper = configurationForm.querySelector('p');
         if (helper) helper.innerHTML =
-            'Use this computer\'s LAN IP and include the <span class="font-semibold">/biometric/</span> folder. Enter the same IP address in the mobile app; the phone and computer must use the same Wi-Fi network.';
+            'Use this computer\'s LAN IP and include the <span class="font-semibold"><?= htmlspecialchars($appBasePath) ?></span> folder. Enter the same IP address in the mobile app; the phone and computer must use the same Wi-Fi network.';
         configurationForm.querySelector('#save-mobile-scanner-configuration').textContent =
             'Save mobile scanner configuration';
         identity.remove()
@@ -302,7 +323,7 @@ endif; ?></tbody>
 <details class="settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Mobile scanner identity</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Register the name and ID shown by the Maruhat
-                Attendance mobile scanner.</span></span><span class="settings-chevron text-slate-500">⌄</span></summary>
+                Attendance mobile scanner.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
     <div class="border-t border-slate-100 p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -332,7 +353,7 @@ $mobileScannerId !== ""
     $mobileScannerId,
 ) ?>" placeholder="MNH-MOBILE-001" maxlength="60" required></label>
             <div class="sm:col-span-2"><button
-                    class="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Save scanner
+                    class="btn btn-primary">Save scanner
                     identity</button></div>
         </form>
     </div>
@@ -340,7 +361,7 @@ $mobileScannerId !== ""
 <details class="settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Mobile scanner configuration</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Set the server address the Maruhat Attendance
-                mobile app uses.</span></span><span class="settings-chevron text-slate-500">⌄</span></summary>
+                mobile app uses.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
     <div class="border-t border-slate-100 p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -363,16 +384,16 @@ $mobileScannerId !== ""
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 font-medium text-slate-900"
                     name="mobile_scanner_server_url" value="<?= htmlspecialchars(
     $mobileScannerServerUrl,
-) ?>" placeholder="http://192.168.1.10/biometric/" inputmode="url" required></label>
+) ?>" placeholder="http://192.168.1.10<?= htmlspecialchars($appBasePath) ?>" inputmode="url" required></label>
             <div class="mt-3 flex flex-wrap items-center gap-3"><button id="detect-mobile-scanner-ip" type="button"
                     class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-100">Detect
                     IP Address</button><span id="mobile-scanner-ip-status" class="text-sm font-medium text-slate-500"
                     aria-live="polite"></span></div>
             <p class="mt-3 text-sm text-slate-500">Detection fills the current LAN address only. Review it, then save.
-                Include the <span class="font-semibold">/biometric/</span> folder. The phone and this computer must use
+                Include the <span class="font-semibold"><?= htmlspecialchars($appBasePath) ?></span> folder. The phone and this computer must use
                 the same Wi-Fi network.</p><button
                 id="save-mobile-scanner-configuration"
-                class="mt-5 rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Save mobile scanner
+                class="btn btn-primary mt-5">Save mobile scanner
                 configuration</button>
         </form>
     </div>
@@ -422,7 +443,7 @@ $mobileScannerId !== ""
                 body = document.createElement('div');
             details.className = 'settings-group';
             summary.innerHTML =
-                `<span><span class="block text-base font-black text-slate-900">${title}</span><span class="mt-1 block text-sm font-medium text-slate-500">${description}</span></span><span class="settings-chevron text-slate-500">⌄</span>`;
+                `<span><span class="block text-base font-black text-slate-900">${title}</span><span class="mt-1 block text-sm font-medium text-slate-500">${description}</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span>`;
             body.className = 'border-t border-slate-100 p-5 sm:p-6';
             anchor.before(details);
             details.append(summary, body);
@@ -459,17 +480,17 @@ $mobileScannerId !== ""
         }))
     });
 </script>
-<section class="mx-auto mb-7 max-w-2xl rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+<section class="card card-body mx-auto mb-7 max-w-2xl">
     <h2 class="text-xl font-black text-slate-900">Biometric sign-in</h2>
     <p class="mt-1 text-sm text-slate-500">Enroll a clear face from this device. Password and face verification will
         both be required next time.</p><button id="admin-enable-camera" type="button"
-        class="mt-5 w-full rounded-xl bg-violet-700 px-4 py-3 font-bold text-white shadow-sm hover:bg-violet-800">Enable
+        class="btn btn-info mt-5 w-full">Enable
         camera</button>
 </section>
 <div id="admin-biometric-camera-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
     role="dialog" aria-modal="true" aria-labelledby="admin-biometric-camera-title">
     <form id="admin-biometric-form" action="settings-save.php" method="post"
-        class="relative w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl sm:p-6"><button
+        class="card relative w-full max-w-2xl p-5 shadow-2xl sm:p-6"><button
             id="admin-biometric-camera-close" type="button"
             class="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full text-2xl leading-none text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             aria-label="Close camera">×</button><input type="hidden" name="csrf_token" value="<?= htmlspecialchars(
@@ -484,7 +505,7 @@ $mobileScannerId !== ""
             id="admin-biometric-video" class="mt-5 aspect-video w-full rounded-xl bg-slate-950 object-cover" autoplay
             muted playsinline></video>
         <p id="admin-biometric-camera-status" class="mt-3 text-sm font-semibold text-slate-600">Opening camera…</p>
-        <button class="mt-5 w-full rounded-xl bg-violet-700 px-4 py-3 font-bold text-white hover:bg-violet-800">Save
+        <button class="btn btn-info mt-5 w-full">Save
             biometric sign-in</button>
     </form>
 </div>
@@ -558,7 +579,7 @@ $mobileScannerId !== ""
 <details class="settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Attendance day mode</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Choose between whole-day and half-day
-                attendance.</span></span><span class="settings-chevron text-slate-500">⌄</span></summary>
+                attendance.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
     <div class="border-t border-slate-100 p-5 sm:p-6">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -657,7 +678,7 @@ $mobileScannerId !== ""
 <details class="settings-group">
     <summary><span><span class="block text-base font-black text-slate-900">Emergency dismissal</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">End attendance for all students already checked in
-                today without scanning again.</span></span><span class="settings-chevron text-slate-500">⌄</span>
+                today without scanning again.</span></span><span class="settings-chevron text-slate-500"><?= icon('chevron-down') ?></span>
     </summary>
     <div class="border-t border-slate-100 p-5 sm:p-6">
         <div class="rounded-xl border border-rose-200 bg-rose-50 p-4">
@@ -668,7 +689,7 @@ $mobileScannerId !== ""
             <p class="mt-1 text-sm text-rose-700">This records the current time as final time out and marks each as
                 Emergency dismissal. Students with no time in are not changed.</p><button id="open-emergency-dismissal"
                 type="button"
-                class="mt-4 w-full rounded-xl bg-rose-600 px-4 py-3 font-bold text-white hover:bg-rose-700" <?= $emergencyDismissalCount ===
+                class="btn btn-danger mt-4 w-full" <?= $emergencyDismissalCount ===
  0
      ? "disabled"
      : "" ?>><?= $emergencyDismissalCount > 0
@@ -679,7 +700,7 @@ $mobileScannerId !== ""
 </details>
 <div id="emergency-dismissal-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
     role="dialog" aria-modal="true" aria-labelledby="emergency-dismissal-title">
-    <form action="settings-save.php" method="post" class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><input
+    <form action="settings-save.php" method="post" class="card w-full max-w-md p-6 shadow-2xl"><input
             type="hidden" name="csrf_token" value="<?= htmlspecialchars(
     $_SESSION["csrf_token"],
 ) ?>"><input type="hidden" name="action" value="bulk_emergency_dismissal">
@@ -690,8 +711,8 @@ $mobileScannerId !== ""
      ? ""
      : "s" ?> as Emergency dismissal. No face scan is required.</p>
         <div class="mt-6 flex gap-3"><button id="cancel-emergency-dismissal" type="button"
-                class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700">Cancel</button><button
-                class="flex-1 rounded-xl bg-rose-600 px-4 py-3 font-bold text-white hover:bg-rose-700">Confirm
+                class="btn btn-secondary flex-1">Cancel</button><button
+                class="btn btn-danger flex-1">Confirm
                 dismissal</button></div>
     </form>
 </div>
@@ -709,14 +730,14 @@ $mobileScannerId !== ""
     });
 </script>
 <div id="section-delete-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5">
-    <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+    <div class="card w-full max-w-sm p-6 shadow-2xl">
         <h3 class="text-xl font-black text-slate-900">Delete section?</h3>
         <p id="section-delete-message" class="mt-2 text-sm text-slate-500">This section will be removed if it has no
             linked students or teachers.</p>
         <div class="mt-6 flex gap-3"><button type="button" id="cancel-section-delete"
-                class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold">Cancel</button><button
+                class="btn btn-secondary flex-1">Cancel</button><button
                 type="button" id="confirm-section-delete"
-                class="flex-1 rounded-xl bg-rose-600 px-4 py-3 font-bold text-white">Delete</button></div>
+                class="btn btn-danger flex-1">Delete</button></div>
     </div>
 </div>
 <script>
@@ -745,7 +766,7 @@ $mobileScannerId !== ""
     });
 </script>
 <div class="grid gap-7 lg:grid-cols-2">
-    <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+    <section class="card card-body">
         <h2 class="text-xl font-black text-slate-900">Change admin password</h2>
         <form action="settings-save.php" method="post" class="mt-6 space-y-4"><input type="hidden" name="csrf_token"
                 value="<?= htmlspecialchars(
@@ -757,9 +778,9 @@ $mobileScannerId !== ""
                     minlength="8" required></label><label class="block text-sm font-bold">Confirm new password<input
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password"
                     name="confirm_password" minlength="8" required></label><button
-                class="w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white">Update password</button></form>
+                class="btn btn-primary w-full">Update password</button></form>
     </section>
-    <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+    <section class="card card-body">
         <h2 class="text-xl font-black text-slate-900">Password recovery</h2>
         <p class="mt-1 text-sm text-slate-500">Choose a security question used to reset the administrator password.</p><?php if (
     $securityConfigured
@@ -780,17 +801,31 @@ $mobileScannerId !== ""
                 </select></label><label class="block text-sm font-bold">Answer<input
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="security_answer"
                     autocomplete="off" required></label><button
-                class="w-full rounded-xl bg-slate-900 px-5 py-3 font-bold text-white">Save security question</button>
+                class="btn btn-primary w-full">Save security question</button>
         </form>
     </section>
-    <section id="teacher-sections-card" class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8 lg:col-span-2">
+    <section id="teacher-sections-card" class="card card-body lg:col-span-2">
         <h2 class="text-xl font-black text-slate-900">Sections</h2>
         <p class="mt-1 text-sm text-slate-500">Open a grade to manage its sections. Grade 11 and Grade 12 are separated
-            by strand.</p>
+            by strand. Capacity controls how many promoted students fit before the rollover spills into the next
+            section.</p>
+        <form action="settings-save.php" method="post"
+            class="mt-4 flex flex-wrap items-end gap-3 rounded-xl border border-blue-100 bg-blue-50 p-3">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION["csrf_token"]) ?>">
+            <input type="hidden" name="action" value="set_default_capacity">
+            <label class="text-sm font-bold text-slate-700">Default capacity
+                <input class="mt-1 block w-28 rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+                    type="number" name="default_capacity" min="1" max="50"
+                    value="<?= (int) $defaultCapacity ?>" required>
+            </label>
+            <button class="btn btn-primary btn-sm">Save default</button>
+            <p class="basis-full text-xs text-slate-500">Used for sections without their own limit and for new overflow
+                sections created during a rollover.</p>
+        </form>
         <div class="mt-5 flex gap-2"><input id="draft-section"
                 class="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3"
                 placeholder="New section name"><button type="button" id="open-add-section"
-                class="rounded-xl bg-slate-900 px-4 py-3 font-bold text-white">Add</button></div>
+                class="btn btn-primary">Add</button></div>
         <div class="mt-5 space-y-3"><?php foreach (
     [7, 8, 9, 10, 11, 12]
     as $grade
@@ -819,13 +854,17 @@ foreach ($strands as $strand):
 ) ?>"><input class="min-w-36 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold" name="section"
                                     value="<?= htmlspecialchars(
     $item["SECTION"],
-) ?>"><span class="text-xs text-slate-500"><?= $item[
+) ?>"><label class="flex items-center gap-1 text-xs font-bold text-slate-600">Cap
+                                <input class="w-16 rounded-lg border border-slate-200 px-2 py-2 text-sm text-slate-900"
+                                    type="number" name="capacity" min="1" max="200"
+                                    value="<?= (int) $item["CAPACITY"] ?>"></label><span
+                                class="text-xs text-slate-500"><?= $item[
     "students"
 ] ?> students · <?= $item[
      "teachers"
- ] ?> teachers</span><button class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white">Save</button><button
+ ] ?> teachers</span><button class="btn btn-primary btn-sm">Save</button><button
                                     type="submit" name="action" value="delete_section"
-                                    class="rounded-lg px-3 py-2 text-sm font-bold text-rose-600 hover:bg-rose-50"
+                                    class="rounded-lg px-3 py-2 text-sm font-bold text-red-500 transition hover:bg-red-500/10"
                                     onclick="return confirm('Delete this section?')">Delete</button></form>
                             <?php endforeach; ?></div>
                     </div><?php
@@ -835,7 +874,7 @@ endforeach;
     </section>
 </div>
 <div id="add-section-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5">
-    <form action="settings-save.php" method="post" class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"><input
+    <form action="settings-save.php" method="post" class="card w-full max-w-sm p-6 shadow-2xl"><input
             type="hidden" name="csrf_token" value="<?= htmlspecialchars(
     $_SESSION["csrf_token"],
 ) ?>"><input type="hidden" name="action" value="add_section"><input id="new-section-value" type="hidden"
@@ -856,8 +895,8 @@ endforeach;
                 <option>Academic</option>
             </select></label>
         <div class="mt-6 flex gap-3"><button type="button" id="cancel-add-section"
-                class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold">Cancel</button><button
-                class="flex-1 rounded-xl bg-blue-600 px-4 py-3 font-bold text-white">Save section</button></div>
+                class="btn btn-secondary flex-1">Cancel</button><button
+                class="btn btn-primary flex-1">Save section</button></div>
     </form>
 </div>
 <script>

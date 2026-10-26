@@ -22,7 +22,13 @@ adminSidebar(
     "Create a teacher account. Grade and section access can be added later or assigned from a School Form import.",
 );
 ?>
-<section class="mx-auto max-w-3xl rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+<div class="mx-auto max-w-3xl">
+    <a href="teacher-list.php"
+        class="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-slate-400 transition hover:text-blue-500">
+        <?= icon('arrow-left', 'h-4 w-4') ?> Back to Teachers
+    </a>
+</div>
+<section class="card card-body mx-auto max-w-3xl">
     <p class="text-sm font-bold uppercase tracking-widest text-blue-600">People & permissions</p>
     <h2 class="mt-2 text-2xl font-black text-slate-900">Create teacher account</h2>
     <p class="mt-2 text-slate-500">Create the account first. Grade and section access is optional and can be added later
@@ -57,7 +63,7 @@ adminSidebar(
                     Add assignment</button>
             </div>
             <div id="assignment-list" class="mt-4 space-y-4"></div>
-        </div><button class="w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700">Create
+        </div><button class="btn btn-primary w-full">Create
             teacher account</button>
     </form>
 </section>
@@ -82,7 +88,7 @@ adminSidebar(
         row.innerHTML =
             `<div class="flex items-center justify-between gap-3">
                 <p class="font-bold text-slate-800">Assignment</p>
-                <button type="button" class="remove-assignment text-sm font-bold text-rose-600 hover:text-rose-700">Remove</button>
+                <button type="button" class="remove-assignment text-sm font-bold text-red-500 hover:text-red-600">Remove</button>
             </div>
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
                 <label class="text-sm font-bold text-slate-700">Grade

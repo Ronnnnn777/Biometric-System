@@ -36,5 +36,5 @@ $_SESSION["toast"] = [
         : "Archived student was not found.",
     "type" => $restore->affected_rows ? "success" : "error",
 ];
-header("Location: archived-students.php");
+header("Location: student-list.php?view=archived");
 exit;

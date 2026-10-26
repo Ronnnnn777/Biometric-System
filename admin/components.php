@@ -1,4 +1,7 @@
 <?php
+require_once __DIR__ . '/../includes/icons.php';
+require_once __DIR__ . '/../includes/ui.php';
+
 function adminHead(string $title): void { ?>
 <!doctype html>
 <html lang="en">
@@ -7,7 +10,9 @@ function adminHead(string $title): void { ?>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= htmlspecialchars($title) ?> | Biometric</title>
-    <link rel="stylesheet" href="../css/tailwind.css">
+    <script src="../js/theme.js?v=<?= (int) @filemtime(__DIR__ . '/../js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="../css/tailwind.css?v=<?= (int) @filemtime(__DIR__ . '/../css/tailwind.css') ?>">
+    <link rel="stylesheet" href="../css/theme.css?v=<?= (int) @filemtime(__DIR__ . '/../css/theme.css') ?>">
     <style>
         :root {
             --maruhat-blue: #1f4f91;
@@ -31,12 +36,6 @@ function adminHead(string $title): void { ?>
             font-size: 1.1em;
         }
 
-        main>header h1 {
-            font-size: 1.5rem !important;
-            font-weight: 900 !important;
-            line-height: 1.2 !important;
-        }
-
         main :is(a, button).bg-blue-600 {
             background-color: var(--maruhat-blue) !important;
             box-shadow: 0 1px 2px rgb(15 23 42 / .12);
@@ -54,19 +53,9 @@ function adminHead(string $title): void { ?>
             box-shadow: 0 0 0 4px rgb(191 219 254), 0 8px 18px rgb(31 79 145 / .24);
         }
 
-        main #open-add-section,
-        main input[name="action"][value="security_question"]~button {
-            background: #2563eb !important;
-        }
-
-        main #open-add-section:hover,
-        main input[name="action"][value="security_question"]~button:hover {
-            background: #1d4ed8 !important;
-        }
-
         .table-filter-bar {
             border: 1px solid #d7e5da;
-            border-radius: 1rem;
+            border-radius: .5rem;
             background: linear-gradient(135deg, #fbfdfb, #f1f7f2);
             padding: 1rem;
         }
@@ -100,16 +89,6 @@ function adminHead(string $title): void { ?>
         .table-filter-reset:focus-visible {
             outline: 0;
             box-shadow: 0 0 0 4px #bfdbfe;
-        }
-
-        .portal-menu-button {
-            transition: background-color .15s, border-color .15s, color .15s;
-        }
-
-        .portal-menu-button:hover {
-            border-color: #9fc7ad;
-            background: #edf8f0;
-            color: #21623e;
         }
 
         [data-admin-nav] {
@@ -154,6 +133,10 @@ function adminHead(string $title): void { ?>
         .maruhat-dashboard-hero {
             position: relative;
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 1rem;
             border: 1px solid #c5dcef;
             border-radius: 1.25rem;
             padding: 2rem;
@@ -216,14 +199,6 @@ function adminHead(string $title): void { ?>
         }
 
         @media (max-width: 639px) {
-            main>header {
-                padding: 1rem;
-            }
-
-            main>header h1 {
-                font-size: 1.25rem !important;
-            }
-
             main>header p {
                 line-height: 1.35;
             }
@@ -256,18 +231,25 @@ function adminHead(string $title): void { ?>
 <body class="overflow-x-hidden bg-slate-50 text-slate-800">
     <?php }
 
-function adminSidebar(string $active, string $title, string $subtitle = ''): void {
-    $items = [
-        ['home.php', 'Dashboard', 'dashboard', '&#8962;'],
-        ['student-list.php', 'Students', 'students', '&#9817;'],
-        ['teacher-list.php', 'Teachers', 'teachers', '&#9831;'],
-        ['attendance-log.php', 'Attendance logs', 'attendance', '&#9719;'],
-        ['school-year-rollover.php', 'School year', 'rollover', 'SY'],
-        ['archived-students.php', 'Archived students', 'archived_students', '&#128451;'],
-        ['archived-teachers.php', 'Archived teachers', 'archived_teachers', '&#128451;'],
-        ['settings.php', 'Settings', 'settings', '&#9881;'],
-    ];
-    $section = in_array($active, ['teachers', 'archived_teachers'], true) ? 'Teachers' : (in_array($active, ['students', 'archived_students'], true) ? 'Students' : ($active === 'attendance' ? 'Attendance' : ($active === 'rollover' ? 'School year' : ($active === 'settings' ? 'Settings' : 'Dashboard'))));
+function adminSidebar(string $active, string $title, string $subtitle = '', string $actions = ''): void {
+    // The canonical six-item navigation lives in includes/site-nav.php so the
+    // sidebar and any future admin shell share one source of truth.
+    $items = require __DIR__ . '/../includes/site-nav.php';
+    $section = match ($active) {
+        'teachers' => 'Teachers',
+        'students' => 'Students',
+        'attendance' => 'Attendance',
+        'rollover' => 'School year',
+        'settings' => 'Settings',
+        default => 'Dashboard',
+    };
+    $crumbs = [['label' => 'Dashboard']];
+    if ($active !== 'dashboard') {
+        $crumbs = [['label' => 'Dashboard', 'href' => 'home.php'], ['label' => $section]];
+        if ($title !== $section) {
+            $crumbs[] = ['label' => $title];
+        }
+    }
     $toast = $_SESSION['toast']['message'] ?? null;
     $toastType = $_SESSION['toast']['type'] ?? 'success';
     $toastClass = $toastType === 'error' ? 'bg-rose-600' : 'bg-emerald-600';
@@ -275,63 +257,37 @@ function adminSidebar(string $active, string $title, string $subtitle = ''): voi
 ?>
     <div class="lg:flex">
         <aside data-admin-nav
-            class="fixed inset-y-0 left-0 z-40 flex w-72 -translate-x-full flex-col overflow-y-auto bg-slate-950 p-5 text-slate-200 transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0">
-            <a href="home.php" class="mb-9 flex items-center gap-3 px-2 text-lg font-bold text-white">
+            class="fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col overflow-y-auto bg-slate-950 px-0 py-4 text-slate-200 transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0">
+            <a href="home.php" class="mb-6 flex items-center gap-3 px-6 text-base font-bold text-white">
                 <img src="../image/logo.png" alt="Maruhat National High School logo"
-                    class="h-10 w-10 rounded-xl bg-white object-contain p-0.5 shadow-sm">
+                    class="h-9 w-9 rounded-lg bg-white object-contain p-0.5 shadow-sm">
                 <span>Biometric<span class="text-blue-400">.</span><span
-                        class="block text-xs font-normal text-slate-400">Attendance system</span></span>
+                        class="block text-[11px] font-normal leading-tight text-slate-400">Attendance system</span></span>
             </a>
-            <nav class="space-y-1" aria-label="Admin navigation">
-                <?php foreach ($items as [$url, $label, $key, $icon]): ?>
-                <a href="<?= $url ?>"
-                    class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition <?= $active === $key ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-                    <span class="grid h-6 w-6 place-items-center text-lg" aria-hidden="true"><?= $icon ?></span>
-                    <?= $label ?>
+            <nav class="flex w-full flex-col gap-1" aria-label="Admin navigation">
+                <?php foreach ($items as $item): ?>
+                <a href="<?= $item['url'] ?>" <?= $active === $item['key'] ? 'aria-current="page"' : '' ?>
+                    class="flex w-full items-center gap-4 rounded-lg px-6 py-4 text-base transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 <?= $active === $item['key'] ? 'bg-blue-600 font-black text-white shadow-md' : 'font-bold text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
+                    <span class="grid h-6 w-6 shrink-0 place-items-center"><?= icon($item['icon'], 'w-6 h-6 shrink-0') ?></span>
+                    <span class="min-w-0 truncate"><?= htmlspecialchars($item['label']) ?></span>
                 </a>
                 <?php endforeach; ?>
             </nav>
             <a href="../common/logout.php"
-                class="mt-auto flex items-center gap-3 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm font-bold text-rose-200 transition hover:bg-rose-500 hover:text-white">
-                <span aria-hidden="true">&#8618;</span>Sign out
+                class="mt-auto flex w-full items-center gap-4 border-t border-slate-800/80 px-6 py-4 text-base font-bold text-red-500 transition hover:bg-red-500/10 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/80">
+                <?= icon('log-out', 'w-6 h-6 shrink-0') ?><span>Sign out</span>
             </a>
         </aside>
 
         <div data-admin-overlay class="fixed inset-0 z-30 hidden bg-slate-950/50 lg:hidden"></div>
 
-        <main class="min-w-0 flex-1">
-            <header class="border-b border-slate-200 bg-white px-5 py-4 lg:px-8">
-                <div class="flex items-center gap-4">
-                    <button data-admin-menu type="button"
-                        class="portal-menu-button rounded-lg border border-slate-200 p-2 font-bold"
-                        aria-label="Toggle navigation" aria-expanded="true" title="Hide navigation">&#9776;</button>
-                    <div class="min-w-0 flex-1">
-                        <?php if ($active !== 'dashboard'): ?>
-                        <div class="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-400">
-                            <a href="home.php" class="hover:text-blue-600">Dashboard</a>
-                            <span>/</span>
-                            <span class="text-slate-600"><?= htmlspecialchars($section) ?></span>
-                            <?php if ($title !== $section): ?>
-                            <span>/</span>
-                            <span class="text-slate-600"><?= htmlspecialchars($title) ?></span>
-                            <?php endif; ?>
-                        </div>
-                        <?php endif; ?>
-                        <h1 class="mt-1 truncate text-xl font-bold text-slate-900"><?= htmlspecialchars($title) ?></h1>
-                        <?php if ($subtitle): ?><p class="mt-1 text-sm text-slate-500">
-                            <?= htmlspecialchars($subtitle) ?></p><?php endif; ?>
-                    </div>
-                    <div class="hidden text-right text-sm text-slate-500 sm:block"><span id="clock"></span></div>
-                </div>
-                <?php if ($active !== 'dashboard'): ?><a href="javascript:history.back()"
-                    class="mt-3 inline-flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-700">&larr;
-                    Back</a><?php endif; ?>
-            </header>
+        <main class="w-full min-w-0 flex-1">
+            <?php ui_topbar($crumbs, $subtitle, $actions, 'data-admin-menu'); ?>
 
-            <div class="mx-auto max-w-7xl p-5 lg:p-8">
+            <div class="w-full p-5 lg:p-7">
                 <?php if ($toast): ?>
                 <div data-auto-toast
-                    class="fixed bottom-5 right-5 z-50 rounded-xl <?= $toastClass ?> px-5 py-4 font-bold text-white shadow-xl transition-all duration-300"
+                    class="fixed bottom-5 right-5 z-50 rounded-lg <?= $toastClass ?> px-5 py-4 font-bold text-white shadow-xl transition-all duration-300"
                     role="status"><?= htmlspecialchars($toast) ?></div>
                 <?php endif; ?>
                 <?php }
@@ -435,12 +391,12 @@ function adminFoot(): void { ?>
             modal.id = 'archive-student-modal';
             modal.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5';
             modal.innerHTML =
-                `<div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+                `<div class="card w-full max-w-sm p-6 shadow-2xl">
                     <h3 class="text-xl font-black text-slate-900">Archive student profile?</h3>
                     <p class="mt-2 text-sm text-slate-500">The profile, image, and attendance history will be retained. The student will no longer be able to record attendance.</p>
                     <div class="mt-6 flex gap-3">
-                        <button type="button" id="cancel-archive-student" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-bold">Cancel</button>
-                        <button type="button" id="confirm-archive-student" class="flex-1 rounded-xl bg-amber-500 px-4 py-3 font-bold text-white">Archive</button>
+                        <button type="button" id="cancel-archive-student" class="btn btn-secondary flex-1">Cancel</button>
+                        <button type="button" id="confirm-archive-student" class="btn btn-danger flex-1">Archive</button>
                     </div>
                 </div>`;
             document.body.appendChild(modal);
@@ -462,15 +418,11 @@ function adminFoot(): void { ?>
         });
 
         const archiveActionClass =
-            'mt-5 w-full rounded-xl border border-amber-300/40 px-4 py-3 font-bold text-amber-200 transition-colors hover:bg-amber-500 hover:text-white';
+            'mt-5 w-full rounded-xl border border-red-500/40 px-4 py-3 font-bold text-red-400 transition-colors hover:bg-red-600 hover:text-white';
         const studentArchiveAction = document.getElementById('archive-button');
         const teacherArchiveButton = document.getElementById('open-delete-teacher');
         if (studentArchiveAction) studentArchiveAction.className = archiveActionClass;
         if (teacherArchiveButton) teacherArchiveButton.className = archiveActionClass;
-
-        document.querySelectorAll('a[href="archived-students.php"], a[href="archived-teachers.php"]').forEach(link => {
-            if (link.textContent.trim().startsWith('← Back to archived')) link.remove();
-        });
     </script>
 </body>
 

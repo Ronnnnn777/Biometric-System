@@ -4,8 +4,11 @@ require "../config/db_conn.php";
 require "page-guard.php";
 require '../includes/student-profile-schema.php';
 require '../includes/student-placement-options.php';
+require '../includes/section-catalog-schema.php';
 require '../includes/biometric-image.php';
 ensureStudentProfileColumns($conn);
+ensureSectionCatalogColumns($conn);
+seedDefaultTeacherSections($conn);
 
 if(!isset($_POST["csrf_token"]) || $_POST["csrf_token"] !== $_SESSION["csrf_token"]){
     die("Invalid CSRF token.");
@@ -24,7 +27,8 @@ $strand = trim($_POST['strand'] ?? '');
 $address = trim($_POST['address'] ?? '');
 $enrollmentStatus = trim($_POST['enrollment_status'] ?? 'Enrolled');
 
-if(!$id || $student_id==='' || $first_name==='' || $last_name==='' || !isValidStudentAge($age) || $address==='' || strlen($address)>255 || !isValidStudentPlacement($grade, $strand, $section) || !isValidStudentEnrollmentStatus($enrollmentStatus)){
+$validPlacement = isValidStudentPlacement($grade, $strand, $section) || isApprovedStudentSection($conn, $grade, $strand, $section);
+if(!$id || $student_id==='' || $first_name==='' || $last_name==='' || !isValidStudentAge($age) || $address==='' || strlen($address)>255 || !$validPlacement || !isValidStudentEnrollmentStatus($enrollmentStatus)){
     $_SESSION['toast']=['message'=>'All student details are required.','type'=>'error'];
     header("Location: edit-student.php?id=$id");
     exit;

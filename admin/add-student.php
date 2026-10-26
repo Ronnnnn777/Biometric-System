@@ -1,9 +1,13 @@
 <?php
 session_start();
+require "../config/db_conn.php";
 require "../includes/csrf-token.php";
 require "../includes/student-placement-options.php";
+require "../includes/section-catalog-schema.php";
 require "page-guard.php";
 require "components.php";
+ensureSectionCatalogColumns($conn);
+seedDefaultTeacherSections($conn);
 $toast = $_SESSION["toast"]["message"] ?? null;
 unset($_SESSION["toast"]);
 adminHead("Register student");
@@ -14,7 +18,7 @@ adminSidebar(
 );
 ?>
 <div class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
-    <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+    <section class="card card-body">
         <p class="text-sm font-bold uppercase tracking-widest text-blue-600">Student profile</p>
         <h2 class="mt-2 text-2xl font-black text-slate-900">Registration details</h2>
         <p class="mt-2 text-slate-500">All fields marked below are required.</p>
@@ -102,7 +106,7 @@ adminSidebar(
                 <p id="camera-status" class="mt-2 hidden text-sm font-semibold text-emerald-700"></p>
             </div>
             <button
-                class="w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white shadow-sm hover:bg-blue-700">Register
+                class="btn btn-primary w-full">Register
                 student</button>
         </form>
     </section>
@@ -115,7 +119,7 @@ adminSidebar(
         </div>
         <div id="camera-controls" class="mt-3 hidden gap-3">
             <button id="capture-photo" type="button"
-                class="flex-1 rounded-lg bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-500"
+                class="btn btn-primary flex-1"
                 disabled>Capture photo</button>
             <button id="retake-photo" type="button"
                 class="hidden flex-1 rounded-lg bg-white/15 px-4 py-3 text-sm font-bold text-white hover:bg-white/25">Retake
@@ -138,20 +142,10 @@ adminSidebar(
     }
 </style>
 <script>
-    const placementOptions = <?php echo json_encode([
-        7 => studentSectionsForGrade(7),
-        8 => studentSectionsForGrade(8),
-        9 => studentSectionsForGrade(9),
-        10 => studentSectionsForGrade(10),
-        11 => [
-            "Academic" => studentSectionsForGrade(11, "Academic"),
-            "Techpro" => studentSectionsForGrade(11, "Techpro"),
-        ],
-        12 => [
-            "Academic" => studentSectionsForGrade(12, "Academic"),
-            "Techpro" => studentSectionsForGrade(12, "Techpro"),
-        ],
-    ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    const placementOptions = <?php echo json_encode(
+        studentSectionPlacementOptions($conn),
+        JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT,
+    ); ?>;
     const gradeSelect = document.querySelector('[name="grade"]'),
         sectionSelect = document.getElementById('student-section'),
         strandSelect = document.getElementById('student-strand'),

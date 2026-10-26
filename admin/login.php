@@ -1,7 +1,23 @@
 <?php
 session_start();
+require_once __DIR__ . '/../includes/icons.php';
 
-$appBase = '/biometric';
+// Resolve the public URL of this installation instead of assuming a folder
+// name, so the app works under /biometric-system, /biometric, or the web root.
+$normalizePath = static fn(string $path): string => rtrim(str_replace('\\', '/', $path), '/');
+$documentRoot = $normalizePath((string) (realpath((string) ($_SERVER['DOCUMENT_ROOT'] ?? '')) ?: ''));
+$adminDirectory = $normalizePath((string) (realpath(__DIR__) ?: __DIR__));
+
+if ($documentRoot !== '' && strncasecmp($adminDirectory, $documentRoot, strlen($documentRoot)) === 0) {
+    $adminUrlPath = substr($adminDirectory, strlen($documentRoot));
+} else {
+    // Fall back to the running script for aliased or non-standard web roots.
+    $scriptDirectory = $normalizePath(dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '/admin/index.php')));
+    $adminUrlPath = preg_match('#/admin$#', $scriptDirectory) ? $scriptDirectory : $scriptDirectory . '/admin';
+}
+
+$adminUrlPath = '/' . trim($adminUrlPath, '/');
+$appBase = (string) preg_replace('#/admin$#', '', $adminUrlPath);
 $requestedPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
 
 if (preg_match('#/admin/login\.php$#i', $requestedPath)) {
@@ -36,8 +52,9 @@ header('Pragma: no-cache');
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Sign in | Biometric</title>
-    <base href="<?= htmlspecialchars($appBase) ?>/admin/">
-    <link rel="stylesheet" href="../css/tailwind.css">
+    <base href="<?= htmlspecialchars($adminUrlPath) ?>/">
+    <script src="../js/theme.js?v=<?= (int) @filemtime(__DIR__ . '/../js/theme.js') ?>"></script>
+    <link rel="stylesheet" href="../css/tailwind.css?v=<?= (int) @filemtime(__DIR__ . '/../css/tailwind.css') ?>">
     <style>
         .login-shell { min-height: 100vh; background: radial-gradient(circle at center, #1e3a5f 0%, #0f172a 48%, #020617 100%); }
         .login-card { position: relative; border: 1px solid rgb(255 255 255 / .1); background: radial-gradient(circle at center, #1e3a5f 0%, #0f172a 48%, #020617 100%); box-shadow: 0 24px 58px rgb(0 0 0 / .38); }
@@ -112,7 +129,7 @@ header('Pragma: no-cache');
                     <h2 class="mt-1 text-2xl font-black text-slate-900">Biometric sign in</h2>
                     <p id="scanner-status" class="mt-2 text-sm text-slate-500">Starting camera&hellip;</p>
                 </div>
-                <button id="close-biometric" type="button" class="rounded-lg p-2 text-xl font-bold text-slate-500 hover:bg-slate-100" aria-label="Close">&times;</button>
+                <button id="close-biometric" type="button" class="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close"><?= icon('x') ?></button>
             </div>
             <div class="relative mt-5 aspect-[4/3] overflow-hidden rounded-2xl bg-slate-950">
                 <video id="scanner-video" class="h-full w-full object-cover" autoplay muted playsinline></video>
