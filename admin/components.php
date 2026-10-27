@@ -253,6 +253,10 @@ function adminSidebar(string $active, string $title, string $subtitle = '', stri
     $toast = $_SESSION['toast']['message'] ?? null;
     $toastType = $_SESSION['toast']['type'] ?? 'success';
     $toastClass = $toastType === 'error' ? 'bg-rose-600' : 'bg-emerald-600';
+    $toastPosition = $_SESSION['toast']['position'] ?? '';
+    $toastPositionClass = $toastPosition === 'top-center'
+        ? 'top-5 left-1/2 -translate-x-1/2'
+        : 'bottom-5 right-5';
     unset($_SESSION['toast']);
 ?>
     <div class="lg:flex">
@@ -287,7 +291,7 @@ function adminSidebar(string $active, string $title, string $subtitle = '', stri
             <div class="w-full p-5 lg:p-7">
                 <?php if ($toast): ?>
                 <div data-auto-toast
-                    class="fixed bottom-5 right-5 z-50 rounded-lg <?= $toastClass ?> px-5 py-4 font-bold text-white shadow-xl transition-all duration-300"
+                    class="fixed <?= $toastPositionClass ?> z-50 rounded-lg <?= $toastClass ?> px-5 py-4 font-bold text-white shadow-xl transition-all duration-300"
                     role="status"><?= htmlspecialchars($toast) ?></div>
                 <?php endif; ?>
                 <?php }

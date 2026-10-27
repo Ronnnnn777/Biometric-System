@@ -2,7 +2,8 @@
 /** Shared capacity-aware sectioning helpers used by promotion, preview, and reporting. */
 require_once __DIR__ . '/student-placement-options.php';
 
-const DEFAULT_SECTION_CAPACITY = 40;
+const DEFAULT_SECTION_CAPACITY = 50;
+const MAX_SECTION_CAPACITY = 50;
 
 /** Administrator-configured fallback capacity (section_settings.ID=1). */
 function defaultSectionCapacity(mysqli $conn): int
@@ -11,7 +12,7 @@ function defaultSectionCapacity(mysqli $conn): int
     if ($cached !== null) return $cached;
     $result = $conn->query('SELECT DEFAULT_CAPACITY FROM section_settings WHERE ID=1 LIMIT 1');
     $row = $result ? $result->fetch_assoc() : null;
-    $cached = max(1, (int) ($row['DEFAULT_CAPACITY'] ?? DEFAULT_SECTION_CAPACITY));
+    $cached = min(MAX_SECTION_CAPACITY, max(1, (int) ($row['DEFAULT_CAPACITY'] ?? DEFAULT_SECTION_CAPACITY)));
     return $cached;
 }
 
@@ -19,7 +20,7 @@ function defaultSectionCapacity(mysqli $conn): int
 function sectionCapacity(array $section, ?int $default = null): int
 {
     $capacity = (int) ($section['CAPACITY'] ?? 0);
-    return $capacity > 0 ? $capacity : ($default ?? DEFAULT_SECTION_CAPACITY);
+    return min(MAX_SECTION_CAPACITY, $capacity > 0 ? $capacity : ($default ?? DEFAULT_SECTION_CAPACITY));
 }
 
 /** Active catalog sections for a target grade/strand, in deterministic fill order. */

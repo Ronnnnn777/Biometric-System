@@ -278,6 +278,42 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
         if (event.target === scannerRemoveModal) closeScannerRemoveModal();
     });
 
+    let latestScanCursor = null;
+    let dashboardStatisticsInitialized = false;
+
+    function showScanToast(studentName, imagePath = '', action = 'attendance_update', actionLabel = 'Attendance update') {
+        document.querySelector('[data-scan-toast]')?.remove();
+        const toast = document.createElement('div');
+        toast.dataset.scanToast = 'true';
+        toast.className = 'fixed left-1/2 top-5 z-50 flex max-w-[calc(100vw-2.5rem)] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 text-white shadow-2xl ring-1 ring-blue-300/30 transition-all duration-300';
+        toast.style.background = 'linear-gradient(135deg, #102e5e, #1f4f91)';
+        toast.setAttribute('role', 'status');
+        const photo = document.createElement('img');
+        photo.className = 'h-14 w-14 shrink-0 rounded-xl border-2 border-white/50 bg-slate-800 object-cover';
+        photo.alt = '';
+        const fallbackPhoto = '../image/logo.png';
+        photo.src = /^https?:\/\//i.test(imagePath) ? imagePath : (imagePath ? '../' + imagePath.replace(/^\/+/, '') : fallbackPhoto);
+        photo.onerror = () => { photo.onerror = null; photo.src = fallbackPhoto; };
+        const copy = document.createElement('div');
+        copy.className = 'min-w-0 pr-1';
+        const actionText = document.createElement('p');
+        actionText.className = 'text-xs font-bold uppercase tracking-wide text-blue-200';
+        actionText.textContent = actionLabel + ' recorded';
+        const nameText = document.createElement('p');
+        nameText.className = 'mt-0.5 truncate text-base font-black text-white';
+        nameText.textContent = studentName;
+        const detailText = document.createElement('p');
+        detailText.className = 'mt-0.5 text-xs font-medium text-blue-100';
+        detailText.textContent = 'Student attendance scan';
+        copy.append(actionText, nameText, detailText);
+        toast.append(photo, copy);
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            toast.classList.add('translate-y-3', 'opacity-0');
+            setTimeout(() => toast.remove(), 300);
+        }, 4500);
+    }
+
     function refreshDashboardStatistics() {
         fetch('get-stats.php', { cache: 'no-store' })
             .then(response => response.json())
@@ -289,10 +325,23 @@ adminSidebar('dashboard', 'Dashboard', 'Your attendance overview for today');
                 const activePhoneStatus = document.getElementById('mobile-scanner-status');
                 if (activePhoneStatus) activePhoneStatus.textContent = activePhones === 1 ? '1 active scanner' : activePhones + ' active scanners';
                 if (activePhones !== renderedActiveScannerCount) window.location.reload();
+                const latestScan = data.latestScan;
+                const nextScanCursor = latestScan ? `${latestScan.updatedAt}:${latestScan.id}` : null;
+                if (dashboardStatisticsInitialized && nextScanCursor && nextScanCursor !== latestScanCursor) {
+                    showScanToast(
+                        latestScan.studentName || 'A student',
+                        latestScan.imagePath || '',
+                        latestScan.action,
+                        latestScan.actionLabel || 'Attendance update'
+                    );
+                }
+                latestScanCursor = nextScanCursor;
+                dashboardStatisticsInitialized = true;
             })
             .catch(() => {});
     }
 
+    refreshDashboardStatistics();
     setInterval(refreshDashboardStatistics, 5000);
 
 </script>

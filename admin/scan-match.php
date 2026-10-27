@@ -91,7 +91,10 @@ function recognizeWithService(string $imagePath): ?array
         $context,
     );
     $result = json_decode($raw ?: "", true);
-    return is_array($result) ? $result : null;
+    if (!is_array($result) || !empty($result['service_error']) || ($result['message'] ?? '') === 'Recognition service error.') {
+        return null;
+    }
+    return $result;
 }
 $pythonPath =
     "C:\\Users\\jaxim\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe";
@@ -235,7 +238,7 @@ foreach ($recognized as $recognizedFace) {
     $distance = isset($recognizedFace["distance"])
         ? (float) $recognizedFace["distance"]
         : 1 - (float) ($recognizedFace["confidence"] ?? 0);
-    if ($distance > 0.54) {
+    if ($distance > 0.60) {
         continue;
     }
     if ($box) {

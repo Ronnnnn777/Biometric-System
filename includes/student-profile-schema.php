@@ -17,6 +17,9 @@ function ensureStudentProfileColumns(mysqli $conn): void
     if (!isset($columns['ENROLLMENT_STATUS'])) $conn->query("ALTER TABLE students ADD COLUMN ENROLLMENT_STATUS VARCHAR(20) NOT NULL DEFAULT 'Enrolled' AFTER SECTION");
     if (!isset($columns['ARCHIVE_REASON'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVE_REASON VARCHAR(40) NOT NULL DEFAULT '' AFTER ENROLLMENT_STATUS");
     if (!isset($columns['ARCHIVED_AT'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVED_AT DATETIME NULL AFTER ARCHIVE_REASON");
+    // Graduation is performed only by the year-end rollover and is kept in
+    // the archive with its reason, not as an active manual status.
+    $conn->query("UPDATE students SET ENROLLMENT_STATUS='Archived', ARCHIVE_REASON='Graduated', ARCHIVED_AT=COALESCE(ARCHIVED_AT, NOW()) WHERE ENROLLMENT_STATUS='Graduated'");
 
     $students = $conn->query("SELECT ID, STUDENT_NAME FROM students WHERE FIRST_NAME='' OR LAST_NAME=''");
     $update = $conn->prepare('UPDATE students SET FIRST_NAME=?, LAST_NAME=? WHERE ID=?');
@@ -36,10 +39,33 @@ function isValidStudentAge(int $age): bool
 
 function studentEnrollmentStatuses(): array
 {
-    return ['Enrolled', 'Transferred', 'Dropped', 'Graduated', 'Archived'];
+    return ['Enrolled', 'Transferred', 'Dropped', 'Archived'];
 }
 
 function isValidStudentEnrollmentStatus(string $status): bool
 {
     return in_array($status, studentEnrollmentStatuses(), true);
+}
+
+const STUDENT_SECTION_CAPACITY = 50;
+
+/** Returns whether an active student can be placed in the requested class. */
+function studentSectionHasCapacity(mysqli $conn, int $grade, string $strand, string $section, int $excludeStudentId = 0): bool
+{
+    $sql = "SELECT COUNT(*) AS total FROM students WHERE GRADE=? AND STRAND=? AND SECTION=? AND COALESCE(ENROLLMENT_STATUS,'Enrolled')='Enrolled'";
+    if ($excludeStudentId > 0) $sql .= ' AND ID<>?';
+    $statement = $conn->prepare($sql);
+    if ($excludeStudentId > 0) {
+        $statement->bind_param('issi', $grade, $strand, $section, $excludeStudentId);
+    } else {
+        $statement->bind_param('iss', $grade, $strand, $section);
+    }
+    $statement->execute();
+    $row = $statement->get_result()->fetch_assoc();
+    return (int) ($row['total'] ?? 0) < STUDENT_SECTION_CAPACITY;
+}
+
+function studentSectionCapacityMessage(int $grade, string $section): string
+{
+    return "Grade $grade - $section already has the maximum of " . STUDENT_SECTION_CAPACITY . ' enrolled students.';
 }

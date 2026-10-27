@@ -815,7 +815,7 @@ $mobileScannerId !== ""
             <input type="hidden" name="action" value="set_default_capacity">
             <label class="text-sm font-bold text-slate-700">Default capacity
                 <input class="mt-1 block w-28 rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
-                    type="number" name="default_capacity" min="1" max="200"
+                    type="number" name="default_capacity" min="1" max="50"
                     value="<?= (int) $defaultCapacity ?>" required>
             </label>
             <button class="btn btn-primary btn-sm">Save default</button>

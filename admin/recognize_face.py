@@ -35,18 +35,19 @@ _next_fingerprint_check = 0.0
 # similarly-looking enrolled student.
 # Phone-camera frames can vary from the enrollment portrait because of the
 # front camera's exposure, lens distortion, and a slightly different angle.
-# Keep this below face_recognition's normal 0.60 cutoff. Borderline matches
-# are still confirmed in two consecutive frames by scan-match.php.
-MAX_MATCH_DISTANCE = 0.54
-MIN_RUNNER_UP_MARGIN = 0.09
+# Use face_recognition's standard 0.60 cutoff for live phone-camera frames.
+# Borderline matches are still confirmed in two consecutive frames by
+# scan-match.php, and the runner-up margin prevents look-alike mismatches.
+MAX_MATCH_DISTANCE = 0.60
+MIN_RUNNER_UP_MARGIN = 0.06
 # Lighting/detail fallbacks are deliberately a little stricter than the main
 # camera pass: image enhancement should recover a student, not create one.
-ENHANCED_MATCH_DISTANCE = 0.52
-ENHANCED_RUNNER_UP_MARGIN = 0.10
+ENHANCED_MATCH_DISTANCE = 0.58
+ENHANCED_RUNNER_UP_MARGIN = 0.07
 # An unmatched face near an enrolled profile can be caused by lighting, focus,
 # or an older enrollment photo. It is ambiguous, not evidence of a visitor.
 # Only a face this far from every enrolled profile may raise an unknown warning.
-CLEAR_UNKNOWN_DISTANCE = 0.60
+CLEAR_UNKNOWN_DISTANCE = 0.66
 # 480px leaves a face large enough for reliable recognition at the scanner's
 # normal distance while reducing HOG detector work on every daytime frame.
 MAX_SCAN_WIDTH = 480

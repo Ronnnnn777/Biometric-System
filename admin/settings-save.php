@@ -235,9 +235,9 @@ if ($action === "password") {
     ];
 } elseif ($action === "set_default_capacity") {
     $capacity = (int) ($_POST["default_capacity"] ?? 0);
-    if ($capacity < 1 || $capacity > 200) {
+    if ($capacity < 1 || $capacity > 50) {
         $_SESSION["toast"] = [
-            "message" => "Enter a default capacity between 1 and 200.",
+            "message" => "Enter a default capacity between 1 and 50.",
             "type" => "error",
         ];
     } else {
