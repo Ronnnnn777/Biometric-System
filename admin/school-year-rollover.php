@@ -14,8 +14,6 @@ ensureSchoolYearRolloverSchema($conn);
 
 $setting=$conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc();
 $activeSchoolYear=(string)($setting['ACTIVE_SCHOOL_YEAR']??'');
-$nextSchoolYear='';
-if(preg_match('/^(\d{4})-(\d{4})$/',$activeSchoolYear,$years)) $nextSchoolYear=((int)$years[1]+1).'-'.((int)$years[2]+1);
 
 $defaultCapacity=defaultSectionCapacity($conn);
 $planRows=$conn->query('SELECT FROM_GRADE,FROM_STRAND,TO_GRADE,TO_STRAND,SPLIT_PERCENT FROM school_year_promotion_plan ORDER BY FROM_GRADE,FROM_STRAND,TO_STRAND');
@@ -99,14 +97,14 @@ adminSidebar('rollover','End-of-school-year rollover','Promote students grade by
         section and name, then placed <strong><?= (int) $defaultCapacity ?> students per section</strong>. Extra sections
         are created automatically when a batch does not fit. Grade 10 can be split across Academic and Techpro.</p>
     <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        <strong>Important:</strong> Use this only when the school year has ended. Grade 12 students stay enrolled until
-        the final end-of-year confirmation, then they are archived as Graduated. Review the projected sections first.
+        <strong>Important:</strong> Use this only when the school year has ended. Grade 12 students are archived as
+        Graduated when you run the rollover. Review the projected sections below, then enter your administrator password
+        and confirm.
     </div>
 
     <form id="rollover-form" action="run-school-year-rollover.php" method="post" class="mt-7">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-        <input id="rollover-password" type="hidden" name="current_password">
-        <input id="rollover-end-confirmation" type="hidden" name="end_school_year_confirmation">
+        <input type="hidden" name="end_school_year_confirmation" value="1">
         <div class="w-full overflow-x-auto">
             <table class="w-full min-w-full text-left text-sm">
                 <thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
@@ -191,28 +189,33 @@ adminSidebar('rollover','End-of-school-year rollover','Promote students grade by
                 </tbody>
             </table>
         </div>
+        <div class="mt-6 rounded-xl border border-rose-200 bg-rose-50 p-4">
+            <div class="flex items-start gap-3">
+                <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+                    <?= icon('alert-triangle', 'h-5 w-5') ?>
+                </span>
+                <div class="min-w-0 flex-1">
+                    <p class="font-bold text-rose-900">This action runs immediately. There is no preview step.</p>
+                    <p class="mt-1 text-sm leading-6 text-rose-800">The capacity-aware chunker promotes every eligible
+                        student, creates sections as needed, archives Grade 12 graduates, and advances the active school
+                        year in one transaction.</p>
+                    <label for="rollover-password" class="mt-4 block text-sm font-bold text-rose-900">Administrator
+                        password</label>
+                    <input id="rollover-password" type="password" name="current_password" autocomplete="current-password"
+                        required
+                        class="mt-2 w-full max-w-sm rounded-xl border border-rose-300 bg-white px-4 py-3 text-slate-900 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-200">
+                </div>
+            </div>
+        </div>
         <div class="mt-6 flex flex-wrap justify-end gap-3">
-            <button type="submit" formaction="save-school-year-rollover-map.php"
-                class="btn btn-secondary">Preview plan</button>
             <button id="open-undo-rollover" type="button" <?= $canUndo?'':'disabled' ?>
                 class="rounded-xl border px-5 py-3 font-bold disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400" style="border-color:#f59e0b;background:#fffbeb;color:#92400e">Undo rollover</button>
-            <button id="open-rollover-confirmation" type="button"
-                class="btn btn-danger">Confirm rollover</button>
+            <button type="submit" class="btn btn-danger">
+                <?= icon('alert-triangle', 'h-4 w-4') ?> Promote &amp; Auto-Section Students
+            </button>
         </div>
     </form>
 </section>
-<div id="rollover-confirmation-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5" role="dialog" aria-modal="true" aria-labelledby="rollover-confirmation-title">
-    <div class="card w-full max-w-md p-6 shadow-2xl">
-        <h3 id="rollover-confirmation-title" class="text-xl font-black text-slate-900">Confirm end-of-school-year rollover</h3>
-        <p class="mt-2 text-sm leading-6 text-slate-600">This promotes enrolled Grade 7–11 students into the next grade,
-            auto-sections them at <?= (int) $defaultCapacity ?> per section, archives graduating Grade 12 students, and advances the active school
-            year<?= $nextSchoolYear!==''?' to '.htmlspecialchars($nextSchoolYear):'' ?>.</p>
-        <label class="mt-5 flex items-start gap-3 text-sm font-bold text-slate-800"><input id="rollover-ended-check" type="checkbox" class="mt-1 h-4 w-4">I confirm the school year has ended and eligible Grade 12 students have graduated.</label>
-        <label class="mt-5 block text-sm font-bold text-slate-800">Administrator password<input id="rollover-password-input" type="password" autocomplete="current-password" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" required></label>
-        <p id="rollover-confirmation-error" class="mt-3 hidden text-sm font-bold text-rose-600"></p>
-        <div class="mt-6 flex gap-3"><button id="cancel-rollover-confirmation" type="button" class="btn btn-secondary flex-1">Cancel</button><button id="submit-rollover-confirmation" type="button" class="btn btn-danger flex-1">Run rollover</button></div>
-    </div>
-</div>
 <form id="undo-rollover-form" action="undo-school-year-rollover.php" method="post">
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
     <input id="undo-rollover-year" type="hidden" name="target_school_year">
@@ -229,22 +232,6 @@ adminSidebar('rollover','End-of-school-year rollover','Promote students grade by
         <div class="mt-6 flex gap-3"><button id="cancel-undo-rollover" type="button" class="btn btn-secondary flex-1">Cancel</button><button id="submit-undo-rollover" type="button" class="flex-1 rounded-xl px-4 py-3 font-bold shadow-sm" style="display:inline-flex;align-items:center;justify-content:center;background:#b45309;color:#fff">Undo rollover</button></div>
     </div>
 </div>
-<script>
-    (() => {
-        const form = document.getElementById('rollover-form'), open = document.getElementById('open-rollover-confirmation'), modal = document.getElementById('rollover-confirmation-modal'), cancel = document.getElementById('cancel-rollover-confirmation'), submit = document.getElementById('submit-rollover-confirmation'), password = document.getElementById('rollover-password-input'), ended = document.getElementById('rollover-ended-check'), error = document.getElementById('rollover-confirmation-error');
-        if (!form || !open || !modal || !cancel || !submit) return;
-        const close = () => { modal.classList.replace('flex', 'hidden'); error.classList.add('hidden'); };
-        open.addEventListener('click', () => { if (!form.reportValidity()) return; password.value = ''; ended.checked = false; modal.classList.replace('hidden', 'flex'); password.focus(); });
-        cancel.addEventListener('click', close);
-        modal.addEventListener('click', event => { if (event.target === modal) close(); });
-        submit.addEventListener('click', () => {
-            if (!ended.checked || !password.value) { error.textContent = !ended.checked ? 'Confirm that the school year has ended.' : 'Enter the administrator password.'; error.classList.remove('hidden'); return; }
-            document.getElementById('rollover-password').value = password.value;
-            document.getElementById('rollover-end-confirmation').value = '1';
-            form.submit();
-        });
-    })();
-</script>
 <script>
     (() => {
         const form = document.getElementById('undo-rollover-form'), open = document.getElementById('open-undo-rollover'), modal = document.getElementById('undo-rollover-modal'), cancel = document.getElementById('cancel-undo-rollover'), submit = document.getElementById('submit-undo-rollover'), password = document.getElementById('undo-rollover-password-input'), year = document.getElementById('undo-rollover-year-select'), targetYear = document.getElementById('undo-rollover-year'), summary = document.getElementById('undo-rollover-summary'), error = document.getElementById('undo-rollover-error');

@@ -110,6 +110,7 @@ $promoted = 0;
 $summerClass = 0;
 $retained = 0;
 $graduated = 0;
+$sectionsCreated = 0;
 $distribution = [];
 
 try {
@@ -216,6 +217,7 @@ try {
 
             $targetSections = orderedTargetSections($conn, $toGrade, $toStrand);
             $createdSections = ensureSectionCapacity($conn, $toGrade, $toStrand, count($chunk), $targetSections, $defaultCapacity);
+            $sectionsCreated += count($createdSections);
             foreach ($createdSections as $created) {
                 $trackSection->bind_param("ssis", $currentYear, $created["SECTION"], $toGrade, $toStrand);
                 $trackSection->execute();
@@ -286,8 +288,9 @@ try {
     $teacherNote = $archivedTeacherCount > 0
         ? " {$archivedTeacherCount} archived teacher account" . ($archivedTeacherCount === 1 ? " was" : "s were") . " skipped."
         : "";
+    $sectionWord = $sectionsCreated === 1 ? "section" : "sections";
     $_SESSION["toast"] = [
-        "message" => "School year rollover complete: {$promoted} promoted, {$summerClass} assigned to summer class, {$retained} retained, and {$graduated} Grade 12 students graduated and archived.{$sectionsSummary}{$teacherNote}",
+        "message" => "School year rollover complete: {$promoted} students promoted, {$sectionsCreated} new {$sectionWord} created, {$summerClass} assigned to summer class, {$retained} retained, and {$graduated} Grade 12 students graduated and archived.{$sectionsSummary}{$teacherNote}",
         "type" => "success",
     ];
 } catch (Throwable $error) {

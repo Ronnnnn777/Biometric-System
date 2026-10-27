@@ -1,15 +1,8 @@
 <?php
 require 'page-guard.php';
-require '../includes/csrf-token.php';
 
-$grade = (int) ($_POST['grade'] ?? 0);
-$section = trim($_POST['section'] ?? '');
-$studentId = (int) ($_POST['student_id'] ?? 0);
-$redirect = 'students.php?grade=' . $grade . '&section=' . urlencode($section);
-
-$_SESSION['toast'] = [
-    'message' => 'Present attendance is recorded only through the scanner.',
-    'type' => 'error',
-];
-header('Location: ' . $redirect);
-exit;
+// Teacher attendance is recorded through the facial-recognition scanner.
+// Keep this route closed for bookmarked forms and direct HTTP requests.
+http_response_code(403);
+header('Content-Type: text/plain; charset=utf-8');
+exit('Manual attendance recording is disabled. Use the facial-recognition scanner.');

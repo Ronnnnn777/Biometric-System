@@ -48,31 +48,67 @@ function generatedSectionName(int $grade, string $strand, int $index): string
 }
 
 /**
- * Chunk ordered student IDs into sections, honoring each section's capacity.
- * Students 1-40 go to section 1, 41-80 to section 2, and so on.
+ * Divides an array into a specific number of balanced chunks.
+ * When the split is uneven, the earlier chunks receive one extra item.
+ *
+ * @param array<int,mixed> $items
+ * @return array<int,array<int,mixed>>
+ */
+function chunkEvenly(array $items, int $numChunks): array
+{
+    if ($numChunks <= 0) return [];
+    if (empty($items)) return array_fill(0, $numChunks, []);
+
+    $result = [];
+    $total = count($items);
+    $baseSize = intdiv($total, $numChunks);
+    $remainder = $total % $numChunks;
+    $offset = 0;
+    for ($i = 0; $i < $numChunks; $i++) {
+        $size = $baseSize + ($i < $remainder ? 1 : 0);
+        $result[] = array_slice($items, $offset, $size);
+        $offset += $size;
+    }
+    return $result;
+}
+
+/**
+ * Chunk ordered student IDs into sections.
+ *
+ * Section 1 is the designated honor section. It is filled first and may end
+ * up with a different population size than the regular sections. The
+ * remaining students are divided evenly across Sections 2 onwards instead of
+ * filling each section to capacity one at a time.
  *
  * @param array<int,string|int> $studentIds Already ordered.
- * @param array<int,array>      $sections   Ordered catalog rows.
+ * @param array<int,array>      $sections   Ordered catalog rows; the first row
+ *                                          is the honor section.
  * @return array<int,array{section:array,students:array}>
  */
 function assignStudentsToSections(array $studentIds, array $sections, ?int $default = null): array
 {
+    if (!$sections || !$studentIds) return [];
+
+    $honorSection = array_shift($sections);
+    $honorStudents = array_slice($studentIds, 0, sectionCapacity($honorSection, $default));
     $groups = [];
-    $index = 0;
-    $total = count($studentIds);
-    foreach ($sections as $section) {
-        if ($index >= $total) break;
-        $chunk = array_slice($studentIds, $index, sectionCapacity($section, $default));
+    if ($honorStudents) {
+        $groups[] = ['section' => $honorSection, 'students' => $honorStudents];
+    }
+
+    $remaining = array_slice($studentIds, count($honorStudents));
+    if (!$remaining || !$sections) return $groups;
+
+    foreach (chunkEvenly($remaining, count($sections)) as $index => $chunk) {
         if (!$chunk) continue;
-        $groups[] = ['section' => $section, 'students' => $chunk];
-        $index += count($chunk);
+        $groups[] = ['section' => $sections[$index], 'students' => $chunk];
     }
     return $groups;
 }
 
 /**
  * Plans a batch without touching the database: appends virtual sections when the
- * existing catalog cannot hold the whole batch. Used by the preview screen.
+ * existing catalog cannot hold the whole batch. Used by the inline rollover projection.
  */
 function sectionPlanForBatch(array $studentIds, array $sections, int $grade, string $strand, ?int $default = null): array
 {

@@ -144,9 +144,7 @@ biometric-system/
 │   ├── export-attendance.php     # Roster-driven XLSX export
 │   ├── get-stats.php / check-status.php
 │   ├── run-automatic-absences.php
-│   ├── school-year-rollover.php          # Rollover UI (grade-level plan)
-│   ├── school-year-rollover-preview.php  # Dry-run preview + final confirm
-│   ├── save-school-year-rollover-map.php # Persist plan
+│   ├── school-year-rollover.php          # Rollover UI (grade-level plan, direct submit)
 │   ├── run-school-year-rollover.php      # *** Rollover runner (auto-sectioning) ***
 │   ├── undo-school-year-rollover.php     # Restore from history + cleanup
 │   ├── settings.php / settings-save.php  # Sections, capacity, scanners, security
@@ -190,7 +188,7 @@ biometric-system/
 |---|---|
 | `config/db_conn.php` | Single `mysqli` connection; timezone enforcement. |
 | `includes/ui.php` | `ui_topbar()`, `ui_button()`, `ui_card_header()` — shared chrome. |
-| `includes/sectioning.php` | **New** capacity-aware chunker: `orderedTargetSections()`, `assignStudentsToSections()`, `sectionPlanForBatch()`, `ensureSectionCapacity()`, `splitStudentsByWeights()`, `normalisePromotionPlans()`. |
+| `includes/sectioning.php` | **New** capacity-aware chunker: `orderedTargetSections()`, `chunkEvenly()`, `assignStudentsToSections()`, `sectionPlanForBatch()`, `ensureSectionCapacity()`, `splitStudentsByWeights()`, `normalisePromotionPlans()`. |
 | `includes/section-catalog-schema.php` | `sections` schema, `CAPACITY`/`SORT_ORDER`, seeding, `reconcileBaseSectionOrder()`, placement validation. |
 | `includes/school-year-schema.php` | `school_year_settings`, `school_year_promotion_plan`, `student_school_history`, `school_year_rollover_sections`, snapshot backfill. |
 | `includes/attendance-schema.php` | `attendance` columns, snapshot columns + helpers, late/status logic, whole-day mode. |
@@ -199,7 +197,7 @@ biometric-system/
 | `admin/get-latest-attendance.php` | Renders the attendance `<tbody>` rows (AJAX), incl. the REASON/ACTION cell. |
 | `admin/export-attendance.php` | Roster-driven XLSX export, snapshot-first. |
 | `admin/scan-match.php` | Face recognition → attendance decision → DB write (used by webcam + mobile API). |
-| `admin/school-year-rollover.php` / `-preview.php` / `save-school-year-rollover-map.php` | Rollover UI, dry-run preview, plan persistence. |
+| `admin/school-year-rollover.php` / `run-school-year-rollover.php` | Rollover UI submits directly to the capacity-aware runner; no preview step. |
 | `admin/undo-school-year-rollover.php` | Restores placements from `student_school_history`, removes empty auto-created sections. |
 
 ---
@@ -445,10 +443,11 @@ $promote = $conn->prepare(
 
 ### 4.3 The Rollover Solution (In Progress) — capacity-aware auto-sectioning
 
-The redesign promotes **by source grade + strand** and auto-chunks students into
-sections of **≤ 40**, spilling sequentially and **auto-creating overflow sections**.
-This turns the ~40-step manual mapping into a **1-click batch upgrade**
-("Promote & auto-section").
+The redesign promotes **by source grade + strand** and auto-sections students
+with **Section 1 reserved for the honor group**; the remaining students are
+balanced evenly across Sections 2+ (≤ 40 each whenever capacity allows), and
+overflow sections are auto-created. This turns the ~40-step manual mapping into
+a **1-click batch upgrade** ("Promote & auto-section").
 
 #### 4.3.1 Chunker core (`includes/sectioning.php`)
 
@@ -458,8 +457,9 @@ This turns the ~40-step manual mapping into a **1-click batch upgrade**
 | `sectionCapacity($section, $default)` | Section `CAPACITY` if > 0, else default |
 | `orderedTargetSections($conn, $grade, $strand)` | Active sections `ORDER BY SORT_ORDER, SECTION_ID` |
 | `generatedSectionName($grade, $strand, $index)` | `Grade 8 - Section 4`, `Grade 11 - Academic - Section 2` |
-| `assignStudentsToSections($ids, $sections, $default)` | Walk sections in order, take ≤ capacity each |
-| `sectionPlanForBatch(...)` | **Dry-run**: appends *virtual* sections for the preview screen |
+| `chunkEvenly($items, $numChunks)` | Splits an array into balanced chunks; earlier chunks take the remainder |
+| `assignStudentsToSections($ids, $sections, $default)` | Reserves Section 1 for the honor group, then splits the remainder evenly across Sections 2+ |
+| `sectionPlanForBatch(...)` | **Dry-run**: appends *virtual* sections for the inline projection on the rollover setup page |
 | `ensureSectionCapacity($conn, $grade, $strand, $needed, &$sections, $default)` | **Creates real overflow sections** until the batch fits; returns created rows |
 | `splitStudentsByWeights($ids, $percents)` | Largest-remainder split (Grade 10 → 11 strand split) |
 | `normalisePromotionPlans($posted, $fail)` | Validates/among-strands the plan rows |
@@ -467,13 +467,15 @@ This turns the ~40-step manual mapping into a **1-click batch upgrade**
 Chunking algorithm:
 
 ```php
-$index = 0; $total = count($studentIds);
-foreach ($sections as $section) {                 // ordered by SORT_ORDER
-    if ($index >= $total) break;
-    $chunk = array_slice($studentIds, $index, sectionCapacity($section, $default));
-    if (!$chunk) continue;
-    $groups[] = ['section' => $section, 'students' => $chunk];
-    $index += count($chunk);
+// Section 1 is the honor section; its population may differ from the rest.
+$honorSection = array_shift($sections);
+$honorStudents = array_slice($studentIds, 0, sectionCapacity($honorSection, $default));
+$groups[] = ['section' => $honorSection, 'students' => $honorStudents];
+
+// Sections 2+ are balanced evenly instead of filled to capacity one at a time.
+$remaining = array_slice($studentIds, count($honorStudents));
+foreach (chunkEvenly($remaining, count($sections)) as $index => $chunk) {
+    $groups[] = ['section' => $sections[$index], 'students' => $chunk];
 }
 ```
 
@@ -504,37 +506,39 @@ ON DUPLICATE KEY UPDATE GRADE=VALUES(GRADE), STRAND=VALUES(STRAND), IS_ACTIVE=1
 8. Grade 12: archive + mark `Graduated` for Promoted students.
 9. Advance `ACTIVE_SCHOOL_YEAR`.
 10. **Commit**; any exception → `rollback()` (no partial changes).
-11. Toast includes the **per-section distribution**, e.g. `Amethyst (40), Emerald (40), Jade (40), Grade 8 - Section 4 (10)`.
+11. Toast includes the **per-section distribution**, e.g. `Amethyst (40), Emerald (30), Jade (30), Grade 8 - Section 4 (30)`.
 
 #### 4.3.3 Expected behavior (documented test matrix)
 
 | Promoted students | Result |
 |---|---|
-| 40 | 1 section |
+| 40 | 1 section (40) |
 | 41 | 40 + 1 |
 | 80 | 40 + 40 |
-| 81 | 40 + 40 + 1 |
+| 81 | 40 + 21 + 20 |
 | 120 | 40 + 40 + 40 |
-| 130 | 40 + 40 + 40 + 10 (4th section auto-created) |
+| 130 | 40 + 30 + 30 + 30 (4th section auto-created) |
 
 Worked example (the panel's Amethyst scenario, fixed):
 
 | Order | Section | Students |
 |---|---|---|
-| 1 | Amethyst | 40 |
-| 2 | Emerald | 40 |
-| 3 | Jade | 40 |
-| 4 | `Grade 8 - Section 4` (auto-created) | 10 |
+| 1 | Amethyst (honor) | 40 |
+| 2 | Emerald | 30 |
+| 3 | Jade | 30 |
+| 4 | `Grade 8 - Section 4` (auto-created) | 30 |
 
-Grade 10 → 11 split, e.g. 200 students 50/50 → 100 Academic (40/40/20) + 100 Techpro (40/40/20).
+Grade 10 → 11 split, e.g. 200 students 50/50 → 100 Academic (40/30/30) + 100 Techpro (40/30/30).
 
-#### 4.3.4 Preview, undo, and attendance integration
+#### 4.3.4 Direct rollover, undo, and attendance integration
 
-- **Preview (`school-year-rollover-preview.php`)** is a dry run using the *same* planner
-  (`sectionPlanForBatch`), so preview and runner cannot diverge; it shows promoted/summer/
-  retained counts and which sections **will be created**.
-- **Plan persistence (`save-school-year-rollover-map.php`)** upserts
-  `school_year_promotion_plan`, then redirects to the preview.
+- **Direct rollover:** `school-year-rollover.php` submits straight to
+  `run-school-year-rollover.php` with the CSRF token, a hidden end-of-year confirmation,
+  and the administrator password. There is no intermediate preview page.
+- **Runner:** validates the plan, upserts `school_year_promotion_plan`, and executes the
+  capacity-aware chunker (`assignStudentsToSections`) inside one transaction. The success
+  toast reports promoted students, newly created sections, summer-class/retained counts,
+  and Grade 12 graduates.
 - **Undo (`undo-school-year-rollover.php`)** restores `GRADE/STRAND/SECTION/ENROLLMENT_STATUS`
   from `student_school_history` for the target year, then **deletes empty auto-created
   sections** (or deactivates if still referenced), clears tracking rows, and rewinds the
@@ -676,7 +680,6 @@ shift between rows:
 `scanner-guard.php`, `manual-attendance-save.php`, `manual-student.php`,
 `manual-students-search.php`, `get-stats.php`, `check-status.php`,
 `run-automatic-absences.php`, `school-year-rollover.php`,
-`school-year-rollover-preview.php`, `save-school-year-rollover-map.php`,
 `run-school-year-rollover.php`, `undo-school-year-rollover.php`, `settings.php`,
 `settings-save.php`, `activate-mobile-scanner.php`, `disable-mobile-scanner.php`,
 `remove-mobile-scanner.php`, `detect-mobile-scanner-server.php`, `mobile-scanner-feed.php`,
@@ -718,7 +721,8 @@ shift between rows:
 | **Snapshot** | `GRADE_SNAPSHOT` / `STRAND_SNAPSHOT` / `SECTION_SNAPSHOT` frozen onto an attendance row at record time |
 | **Base section** | A named catalog section (`BASE_SECTION <> ''`); auto/overflow sections have `BASE_SECTION = ''` |
 | **Overflow section** | Auto-created section (e.g. `Grade 8 - Section 4`) created by `ensureSectionCapacity()` |
-| **Chunker** | `assignStudentsToSections()` — slices an ordered ID list into capacity-sized groups |
+| **Chunker** | `assignStudentsToSections()` — reserves Section 1 for honor students, then balances the rest evenly across the remaining sections |
+| **Honor section** | The first section in a grade/strand fill order (Section 1); its size may differ from the regular sections |
 | **Promotion decision** | `Promoted` / `Summer class required` (`=2` failed) / `Retained` (`≥3` failed) |
 | **Rollover** | End-of-year promotion that advances `ACTIVE_SCHOOL_YEAR` and re-sections students |
 | **Split (Grade 10 → 11)** | Percentage split of a Grade 10 cohort into `Academic` / `Techpro` |

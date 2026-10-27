@@ -84,15 +84,17 @@ $records = $log->get_result();
 teacherHead("Student profile");
 teacherShell("Student profile");
 ?>
+<style>
+    /* Override the portal mobile minimum for this compact four-column log. */
+    .student-profile-layout #student-attendance { min-width: 32rem; }
+</style>
 <script src="../js/table-pagination.js?v=7"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const rows = document.querySelector('table tbody');
+        const rows = document.querySelector('#student-attendance tbody');
         if (!rows) return;
-        const scroll = rows.closest('.overflow-x-auto'),
-            bottom = document.createElement('div');
-        bottom.className = 'mx-6 mb-6';
-        scroll?.insertAdjacentElement('afterend', bottom);
+        const bottom = document.createElement('div');
+        document.getElementById('attendance-pagination')?.append(bottom);
         createTablePagination({
             rows,
             pager: bottom,
@@ -107,89 +109,146 @@ teacherShell("Student profile");
         });
     });
 </script>
-<a href="students.php?grade=<?= (int) $grade ?>&section=<?= urlencode($section) ?>"
-    class="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 transition hover:text-blue-700">
-    <?= icon('arrow-left', 'h-4 w-4') ?> Back to Students
+<a href="students.php" class="inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 hover:text-blue-700 mb-6 transition-colors">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+        stroke="currentColor" class="h-4 w-4" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+    </svg>
+    Back to Students
 </a>
-<section class="card card-body">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-        <div><h2 class="text-xl font-black text-slate-900">Academic results</h2><p class="mt-1 text-sm text-slate-500">School year <?= htmlspecialchars($schoolYear) ?>. Record this student's result for your subject.</p></div>
-        <span class="rounded-full px-3 py-1 text-sm font-bold <?= $promotionDecision === 'Promoted' ? 'bg-emerald-50 text-emerald-700' : ($promotionDecision === 'Summer class required' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700') ?>"><?= htmlspecialchars($promotionDecision) ?></span>
-    </div>
-    <?php if ($academicResults): ?><div class="mt-4 flex flex-wrap gap-2"><?php foreach ($academicResults as $academicResult): ?><span class="rounded-lg px-3 py-2 text-sm font-bold <?= $academicResult['RESULT'] === 'Passed' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700' ?>"><?= htmlspecialchars($academicResult['SUBJECT']) ?>: <?= htmlspecialchars($academicResult['RESULT']) ?></span><?php endforeach; ?></div><?php endif; ?>
-    <p class="mt-4 text-sm text-slate-600">Promotion rule: 0–1 failed subject = promoted; 2 = summer class; 3 or more = retained in the current grade.</p>
-    <form action="save-subject-result.php" method="post" class="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px_auto]"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>"><input type="hidden" name="student_record_id" value="<?= (int) $student['ID'] ?>"><input type="hidden" name="grade" value="<?= (int) $grade ?>"><input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>"><?php if ($assignedSubject !== ''): ?><input type="hidden" name="subject" value="<?= htmlspecialchars($assignedSubject) ?>"><div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"><span class="block text-xs font-bold uppercase tracking-wide text-slate-500">Assigned subject</span><span class="font-bold text-slate-900"><?= htmlspecialchars($assignedSubject) ?></span></div><?php else: ?><label class="text-sm font-bold text-slate-700">Subject<input name="subject" maxlength="80" required placeholder="Subject taught" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"></label><?php endif; ?><label class="text-sm font-bold text-slate-700">Result<select name="result" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" required><option value="">Choose result</option><option>Passed</option><option>Failed</option></select></label><button class="btn btn-primary self-end">Save result</button></form>
-</section>
-<div class="mt-5 grid gap-7 lg:grid-cols-[320px_minmax(0,1fr)]">
-    <aside class="card card-body h-fit"><img src="../<?= htmlspecialchars(
-    $student["IMAGE_PATH"],
-) ?>" alt="<?= htmlspecialchars(
-    $student["STUDENT_NAME"],
-) ?>" class="aspect-square w-full rounded-2xl object-cover">
-        <h2 class="mt-5 text-2xl font-black text-slate-900"><?= htmlspecialchars(
-    $student["STUDENT_NAME"],
-) ?></h2>
-        <p class="mt-1 text-slate-500"><?= htmlspecialchars(
-    $student["STUDENT_ID"],
-) ?></p><span class="mt-4 inline-block rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-700">Grade
-            <?= $grade ?> | <?= htmlspecialchars(
-     $student["SECTION"],
- ) ?></span>
-    </aside>
-    <section class="card overflow-hidden">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-6">
-            <div>
-                <h3 class="text-xl font-black text-slate-900">Attendance log</h3>
-                <p class="mt-1 text-sm text-slate-500">All recorded attendance for this student.</p>
-            </div><a href="export-attendance.php?student=<?= urlencode(
-    $student["STUDENT_ID"],
-) ?>&all_dates=1" class="btn btn-success">Export all dates</a>
-        </div>
-        <div class="w-full overflow-x-auto">
-            <table class="w-full min-w-full text-left text-sm">
-                <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
-                    <tr>
-                        <th class="px-5 py-4">Date</th>
-                        <th class="px-5 py-4">Time in</th>
-                        <th class="px-5 py-4">Time out</th>
-                        <th class="px-5 py-4">Status</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100"><?php if (
-    $records->num_rows
-):
-    while ($record = $records->fetch_assoc()):
 
-        $timeIn = new DateTime($record["TIME_IN"]);
-        $timeOut = empty($record["TIME_OUT"])
-            ? null
-            : new DateTime($record["TIME_OUT"]);
-        $status = attendanceStatusLabel(
-            $record["TIME_IN"],
-            $record["TIME_OUT"] ?? null,
-        );
-        ?><tr>
-                        <td class="px-5 py-4 text-slate-700"><?= $timeIn->format(
-    "F j, Y",
-) ?></td>
-                        <td class="px-5 py-4 text-slate-700"><?= $timeIn->format(
-    "g:i A",
-) ?></td>
-                        <td class="px-5 py-4 text-slate-700"><?= $timeOut
-    ? $timeOut->format("g:i A")
-    : "—" ?></td>
-                        <td class="px-5 py-4"><span class="rounded-full px-3 py-1 text-xs font-bold <?= attendanceStatusClass(
-    $record["TIME_IN"],
-    $record["TIME_OUT"] ?? null,
-) ?>"><?= htmlspecialchars($status) ?></span></td>
-                    </tr><?php
-    endwhile;
-else:
-     ?><tr>
-                        <td colspan="4" class="px-5 py-10 text-center text-slate-500">No attendance records found.</td>
-                    </tr><?php
-endif; ?></tbody>
-            </table>
-        </div>
-    </section>
-</div><?php teacherFoot(); ?>
+<div class="student-profile-layout grid grid-cols-1 lg:grid-cols-12 items-start gap-5 w-full min-w-0">
+    <!-- Profile card stays at its natural height. -->
+    <div class="lg:col-span-4 xl:col-span-3 w-full min-w-0">
+        <aside
+            class="card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 flex flex-col items-center text-center">
+            <img src="../<?= htmlspecialchars($student["IMAGE_PATH"]) ?>"
+                alt="<?= htmlspecialchars($student["STUDENT_NAME"]) ?>"
+                class="h-24 w-24 rounded-full object-cover border-2 border-slate-100 dark:border-slate-800">
+            <h2 class="mt-3 text-xl font-black break-words max-w-full text-slate-900 dark:text-white">
+                <?= htmlspecialchars($student["STUDENT_NAME"]) ?>
+            </h2>
+            <p class="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+                LRN: <?= htmlspecialchars($student["STUDENT_ID"]) ?>
+            </p>
+            <span
+                class="mt-3 inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                Grade <?= $grade ?> · <?= htmlspecialchars($student["SECTION"]) ?>
+            </span>
+        </aside>
+    </div>
+
+    <!-- Academic Results + Attendance Log -->
+    <div class="lg:col-span-8 xl:col-span-9 w-full min-w-0 flex flex-col gap-5">
+        <!-- Academic Results Card -->
+        <section class="card border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="card-header">
+                <div class="flex items-start justify-between gap-3 w-full min-w-0">
+                    <div>
+                        <h2 class="text-lg font-black text-slate-900 dark:text-white">Academic results</h2>
+                        <p class="mt-0.5 text-sm text-slate-500 dark:text-slate-400">School year <?= htmlspecialchars($schoolYear) ?>. Record
+                            this student's result for your subject.</p>
+                    </div>
+                    <span
+                        class="shrink-0 max-w-[45%] text-center rounded-full px-3 py-1 text-sm font-bold <?= $promotionDecision === 'Promoted' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : ($promotionDecision === 'Summer class required' ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400') ?>"><?= htmlspecialchars($promotionDecision) ?></span>
+                </div>
+            </div>
+            <div class="card-body">
+                <?php if ($academicResults): ?>
+                <div class="flex flex-wrap gap-2 mb-4">
+                    <?php foreach ($academicResults as $academicResult): ?>
+                    <span
+                        class="rounded-lg px-3 py-1.5 text-sm font-bold <?= $academicResult['RESULT'] === 'Passed' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400' ?>"><?= htmlspecialchars($academicResult['SUBJECT']) ?>:
+                        <?= htmlspecialchars($academicResult['RESULT']) ?></span>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+                <p class="text-sm text-slate-600 dark:text-slate-400 mb-4">Promotion rule: 0–1 failed subject = promoted; 2 = summer class; 3
+                    or more = retained in the current grade.</p>
+
+                <form action="save-subject-result.php" method="post"
+                    class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_12rem] xl:grid-cols-[minmax(0,1fr)_12rem_auto] items-end gap-3">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                    <input type="hidden" name="student_record_id" value="<?= (int) $student['ID'] ?>">
+                    <input type="hidden" name="grade" value="<?= (int) $grade ?>">
+                    <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
+                    <?php if ($assignedSubject !== ''): ?>
+                    <input type="hidden" name="subject" value="<?= htmlspecialchars($assignedSubject) ?>">
+                    <div class="min-w-0 text-sm text-slate-700 dark:text-slate-300">
+                        <span class="block mb-1.5 font-bold">Assigned subject</span>
+                        <span class="flex min-h-11 items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-4 py-2.5 font-bold break-words text-slate-900 dark:text-white"><?= htmlspecialchars($assignedSubject) ?></span>
+                    </div>
+                    <?php else: ?>
+                    <label class="min-w-0 flex-1 text-sm font-bold text-slate-700 dark:text-slate-300">Subject
+                        <input name="subject" maxlength="80" required placeholder="Subject taught"
+                            class="field min-h-11 mt-1.5">
+                    </label>
+                    <?php endif; ?>
+                    <div class="min-w-0">
+                        <label for="subject-result" class="text-sm font-bold text-slate-700 dark:text-slate-300 block mb-1.5">Result</label>
+                        <select id="subject-result" name="result" class="field min-h-11" required>
+                            <option value="">Choose result</option>
+                            <option>Passed</option>
+                            <option>Failed</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary min-h-11 sm:col-start-2 xl:col-start-auto">Save result</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Attendance Log Card -->
+        <section class="card border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div class="card-header">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 w-full">
+                    <div>
+                        <h3 class="text-lg font-black text-slate-900 dark:text-white">Attendance log</h3>
+                        <p class="mt-0.5 text-sm text-slate-500 dark:text-slate-400">All recorded attendance for this student.</p>
+                    </div>
+                    <a href="export-attendance.php?student=<?= urlencode($student["STUDENT_ID"]) ?>&all_dates=1"
+                        class="btn btn-secondary shrink-0">Export all dates</a>
+                </div>
+            </div>
+            <div>
+                <div class="w-full overflow-x-auto">
+                    <table id="student-attendance" class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 dark:bg-slate-800/50 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                            <tr>
+                                <th scope="col" class="px-5 py-3 whitespace-nowrap">Date</th>
+                                <th scope="col" class="px-5 py-3 whitespace-nowrap">Time in</th>
+                                <th scope="col" class="px-5 py-3 whitespace-nowrap">Time out</th>
+                                <th scope="col" class="px-5 py-3 whitespace-nowrap">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                            <?php if ($records->num_rows): ?>
+                            <?php while ($record = $records->fetch_assoc()): ?>
+                            <?php
+                            $timeIn = new DateTime($record["TIME_IN"]);
+                            $timeOut = empty($record["TIME_OUT"]) ? null : new DateTime($record["TIME_OUT"]);
+                            $status = attendanceStatusLabel($record["TIME_IN"], $record["TIME_OUT"] ?? null);
+                            ?>
+                            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                                <td class="px-5 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap"><?= $timeIn->format("F j, Y") ?></td>
+                                <td class="px-5 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap"><?= $timeIn->format("g:i A") ?></td>
+                                <td class="px-5 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap"><?= $timeOut ? $timeOut->format("g:i A") : "—" ?></td>
+                                <td class="px-5 py-3 whitespace-nowrap"><span
+                                        class="rounded-full px-3 py-1 text-xs font-bold <?= attendanceStatusClass($record["TIME_IN"], $record["TIME_OUT"] ?? null) ?>"><?= htmlspecialchars($status) ?></span>
+                                </td>
+                            </tr>
+                            <?php endwhile; ?>
+                            <?php else: ?>
+                            <tr>
+                                <td colspan="4" class="px-5 py-8 text-center text-slate-500 dark:text-slate-400">No attendance records found.
+                                </td>
+                            </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="attendance-pagination" class="px-5"></div>
+            </div>
+        </section>
+    </div>
+</div>
+<?php teacherFoot(); ?>
