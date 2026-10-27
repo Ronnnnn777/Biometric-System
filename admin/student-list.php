@@ -49,31 +49,20 @@ if ($isArchivedView) {
 $stmt->execute();
 $result = $stmt->get_result();
 
-$sections = [];
-$sectionMap = [];
-$sectionResult = $conn->query(
-    "SELECT GRADE, SECTION, MIN(SORT_ORDER) AS SORT_ORDER
-     FROM (
-         SELECT GRADE, SECTION, SORT_ORDER
-         FROM sections
-         WHERE IS_ACTIVE=1 AND GRADE BETWEEN 7 AND 12
-         UNION ALL
-         SELECT DISTINCT GRADE, SECTION, 1000 AS SORT_ORDER
-         FROM students
-         WHERE GRADE BETWEEN 7 AND 12 AND SECTION IS NOT NULL AND SECTION<>''
-     ) AS section_catalog
-     GROUP BY GRADE, SECTION
-     ORDER BY GRADE, SORT_ORDER, SECTION",
-);
-while ($item = $sectionResult->fetch_assoc()) {
-    $sections[] = $item['SECTION'];
-    $sectionMap[(string) (int) $item['GRADE']][] = $item['SECTION'];
+// One active, ordered catalog supplies PHP options and browser filters.
+$sectionCatalog = studentSectionPlacementOptions($conn);
+// The sectioning helper designates the first DB-ordered section in each
+// grade/strand as Section 1 (honor). This is a section label, not a student award.
+$honorSectionMap = [];
+foreach ($sectionCatalog as $catalogGrade => $placements) {
+    $groups = $catalogGrade >= 11 ? $placements : ['' => $placements];
+    foreach ($groups as $catalogStrand => $names) {
+        $honorSectionMap[$catalogGrade][$catalogStrand] = $names[0] ?? '';
+    }
 }
 
-// Hidden <select> options: every status the data can hold. "Archived" is not
-// offerable on the active view; on the archived view the select keeps it so
-// #status-filter's option values stay exactly as they were.
-$statusItems = [['value' => '', 'label' => 'All statuses']];
+// Archived status remains available only in the archived roster.
+$statusItems = [['value' => '', 'label' => 'All Statuses']];
 foreach (studentEnrollmentStatuses() as $statusOption) {
     if ($statusOption === 'Archived' && !$isArchivedView) {
         continue;
@@ -81,30 +70,10 @@ foreach (studentEnrollmentStatuses() as $statusOption) {
     $statusItems[] = ['value' => $statusOption, 'label' => $statusOption];
 }
 
-// Visible pills: the archived view is already scoped to archived students, so
-// an "Archived" pill is redundant there. Enrolled/Transferred/Dropped/Graduated
-// remain meaningful reason sub-filters on both views.
-$statusPillItems = array_values(array_filter(
-    $statusItems,
-    static fn (array $item): bool => $item['value'] !== 'Archived',
-));
-
-$gradeItems = [
-    ['value' => '', 'label' => 'All'],
-    ['type' => 'group', 'items' => [
-        ['type' => 'label', 'label' => 'JHS'],
-        ['value' => '7', 'label' => 'Grade 7'],
-        ['value' => '8', 'label' => 'Grade 8'],
-        ['value' => '9', 'label' => 'Grade 9'],
-        ['value' => '10', 'label' => 'Grade 10'],
-    ]],
-    ['type' => 'group', 'items' => [
-        ['type' => 'divider'],
-        ['type' => 'label', 'label' => 'SHS'],
-        ['value' => '11', 'label' => 'Grade 11'],
-        ['value' => '12', 'label' => 'Grade 12'],
-    ]],
-];
+$gradeItems = [['value' => '', 'label' => 'All Grades']];
+foreach ([7, 8, 9, 10, 11, 12] as $grade) {
+    $gradeItems[] = ['value' => (string) $grade, 'label' => 'Grade ' . $grade];
+}
 
 $statusClassMap = [
     'Enrolled' => 'bg-emerald-50 text-emerald-700',
@@ -156,131 +125,64 @@ require_once __DIR__ . '/../includes/student-placement-options.php';
 $filterPillActiveClass = 'filter-pill filter-pill-active';
 $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
 
-// Section 1 is the only honor section. Derive it from the same DB-ordered
-// section map used by the filters so a deactivated/renamed section cannot leave
-// a stale shortcut. JHS has one honor section per grade; SHS has one per strand
-// (Academic and Techpro). The filter is grade-scoped and is disabled while
-// Grade Level = All.
-$honorSectionMap = [];
-foreach ([7, 8, 9, 10] as $honorGrade) {
-    $honorSectionMap[(string) $honorGrade] = array_slice($sectionMap[(string) $honorGrade] ?? [], 0, 1);
-}
-foreach ([11, 12] as $honorGrade) {
-    $honorSections = [];
-    $availableSections = $sectionMap[(string) $honorGrade] ?? [];
-    foreach (['Academic', 'Techpro'] as $honorStrand) {
-        $strandSections = studentSectionsForGrade($honorGrade, $honorStrand);
-        foreach ($availableSections as $candidate) {
-            if (in_array($candidate, $strandSections, true)) {
-                $honorSections[] = $candidate;
-                break;
-            }
-        }
-    }
-    $honorSectionMap[(string) $honorGrade] = array_values(array_unique($honorSections));
-}
 ?>
 <div class="card mb-5">
-    <div class="card-body space-y-5">
-        <!-- Row 1: section + search + reset -->
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div id="section-filter-container" class="table-filter-control w-full shrink-0 sm:w-52">
-                <label for="section-filter" class="filter-label">Section</label>
-                <select id="section-filter" class="field">
-                    <option value="">All sections</option>
-                    <?php foreach ($sections as $section): ?>
-                    <option><?= htmlspecialchars($section) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <div class="table-filter-control min-w-0 flex-1">
-                <label for="student-search" class="filter-label">Search</label>
-                <input type="text" id="student-search" class="field" placeholder="Name or LRN">
-            </div>
-
-            <button type="button" id="clear-student-filters"
-                class="btn btn-secondary h-[42px] w-full shrink-0 px-4 text-sm font-semibold sm:w-auto">Clear
-                filters</button>
-        </div>
-
-        <div class="filter-separator"></div>
-
-        <!-- Row 2: grade level -->
+    <div class="card-body space-y-3">
+        <!-- Grade is the first step in section filtering. -->
         <div class="min-w-0">
             <p class="filter-label">Grade level</p>
             <div class="filter-pills" role="group" aria-label="Filter by grade"
                 data-capsule-group="grade_filter" data-capsule-value=""
                 data-capsule-active-class="<?= htmlspecialchars($filterPillActiveClass, ENT_QUOTES) ?>"
                 data-capsule-inactive-class="<?= htmlspecialchars($filterPillInactiveClass, ENT_QUOTES) ?>">
-                <?php $gradeGroupCount = 0; ?>
                 <?php foreach ($gradeItems as $gradeItem): ?>
-                <?php if (($gradeItem['type'] ?? '') === 'group'): ?>
-                <?php if ($gradeGroupCount > 0): ?>
-                <span class="filter-divider hidden sm:block" aria-hidden="true"></span>
-                <?php endif; ?>
-                <div class="inline-flex flex-wrap items-center gap-2">
-                    <?php foreach ($gradeItem['items'] as $groupItem): ?>
-                    <?php if (($groupItem['type'] ?? '') === 'label'): ?>
-                    <span class="filter-group-badge"><?= htmlspecialchars($groupItem['label']) ?></span>
-                    <?php elseif (($groupItem['type'] ?? '') !== 'divider'): ?>
-                    <button type="button" class="<?= $filterPillInactiveClass ?>" data-capsule-item
-                        data-value="<?= htmlspecialchars((string) $groupItem['value'], ENT_QUOTES) ?>"
-                        aria-pressed="false"><?= htmlspecialchars($groupItem['label']) ?></button>
-                    <?php endif; ?>
-                    <?php endforeach; ?>
-                </div>
-                <?php $gradeGroupCount++; ?>
-                <?php else: ?>
                 <button type="button"
                     class="<?= $gradeItem['value'] === '' ? $filterPillActiveClass : $filterPillInactiveClass ?>"
                     data-capsule-item data-value="<?= htmlspecialchars((string) $gradeItem['value'], ENT_QUOTES) ?>"
                     aria-pressed="<?= $gradeItem['value'] === '' ? 'true' : 'false' ?>"><?= htmlspecialchars($gradeItem['label']) ?></button>
-                <?php endif; ?>
                 <?php endforeach; ?>
             </div>
             <select id="grade-filter" class="sr-only" tabindex="-1" aria-hidden="true">
-                <option value="">All grades</option>
+                <option value="">All Grades</option>
                 <?php foreach ([7, 8, 9, 10, 11, 12] as $grade): ?>
                 <option value="<?= $grade ?>">Grade <?= $grade ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
 
-        <!-- Row 3: status + honor section (fluid, content-width columns) -->
-        <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
-            <div class="min-w-0">
-                <p class="filter-label">Enrollment status</p>
-                <?= ui_capsule_group('status_filter', $statusPillItems, '', [
-                    'aria_label' => 'Filter by enrollment status',
-                    'hidden_input' => false,
-                    'container_class' => 'filter-pills',
-                    'active_class' => $filterPillActiveClass,
-                    'inactive_class' => $filterPillInactiveClass,
-                ]) ?>
-                <select id="status-filter" class="hidden" tabindex="-1" aria-hidden="true">
+        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <div id="section-filter-container" class="table-filter-control w-full min-w-0 flex-1 sm:min-w-64">
+                <label for="section-filter" class="filter-label">Section</label>
+                <select id="section-filter" class="field min-h-11 py-2 pr-10 text-base leading-6 [&>option]:text-base disabled:opacity-60" data-always-visible="true" disabled>
+                    <option value="">All Sections</option>
+                </select>
+            </div>
+            <div class="table-filter-control w-full min-w-0 flex-1 sm:min-w-64">
+                <label for="status-filter" class="filter-label">Enrollment Status</label>
+                <select id="status-filter" class="field min-h-11 py-2 pr-10 text-base leading-6 [&>option]:text-base">
                     <?php foreach ($statusItems as $statusItem): ?>
-                    <option value="<?= htmlspecialchars($statusItem['value']) ?>"><?= htmlspecialchars($statusItem['label']) ?></option>
+                    <option value="<?= htmlspecialchars($statusItem['value'], ENT_QUOTES) ?>"><?= htmlspecialchars($statusItem['label']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
-
-            <div id="honor-section-filter" class="filter-block-divider min-w-0"
-                data-honor-sections="<?= htmlspecialchars(json_encode($honorSectionMap), ENT_QUOTES) ?>">
-                <p class="filter-label">Honor section</p>
-                <div data-honor-section-pills>
-                    <?= ui_capsule_group('honor_section_filter', [['value' => '', 'label' => 'All']], '', [
-                        'aria_label' => 'Honor section filter',
-                        'hidden_input' => false,
-                        'container_class' => 'filter-pills',
-                        'active_class' => $filterPillActiveClass,
-                        'inactive_class' => $filterPillInactiveClass,
-                    ]) ?>
-                </div>
-                <p id="honor-section-note" class="filter-hint hidden" role="status">
-                    Select a specific grade to filter by the honor section.
-                </p>
+            <div id="strand-filter-container" class="table-filter-control w-full min-w-0 flex-1 sm:min-w-[12rem]" hidden>
+                <label for="strand-filter" class="filter-label">Strand</label>
+                <select id="strand-filter" class="field h-11" disabled>
+                    <option value="">All Strands</option>
+                    <?php foreach (array_keys($sectionCatalog[11]) as $strandOption): ?>
+                    <option value="<?= htmlspecialchars($strandOption, ENT_QUOTES) ?>"><?= htmlspecialchars($strandOption) ?></option>
+                    <?php endforeach; ?>
+                </select>
             </div>
+        </div>
+
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div class="table-filter-control min-w-0 flex-1">
+                <label for="student-search" class="filter-label">Search</label>
+                <input type="search" id="student-search" class="field h-11" placeholder="Student name or LRN">
+            </div>
+            <button type="button" id="clear-student-filters"
+                class="btn btn-secondary h-11 w-full shrink-0 px-4 text-sm font-semibold sm:w-auto">Clear Filters</button>
         </div>
     </div>
 </div>
@@ -307,7 +209,8 @@ foreach ([11, 12] as $honorGrade) {
             </thead>
             <tbody id="student-rows" class="divide-y divide-slate-100" data-page-size="<?= $limit ?>"
                 data-total="<?= $totalStudents ?>"
-                data-section-map="<?= htmlspecialchars(json_encode($sectionMap), ENT_QUOTES) ?>"
+                data-honor-sections="<?= htmlspecialchars(json_encode($honorSectionMap), ENT_QUOTES) ?>"
+                data-section-catalog="<?= htmlspecialchars(json_encode($sectionCatalog), ENT_QUOTES) ?>"
                 <?php if (!$isArchivedView): ?>data-empty-action-url="add-student.php"
                 data-empty-title="No students have been added yet."
                 data-empty-detail="Add a student or import a class list to begin."<?php else: ?>
@@ -332,7 +235,9 @@ foreach ([11, 12] as $honorGrade) {
                 ?>
                 <tr class="hover:bg-slate-50" data-grade="<?= (int) $row['GRADE'] ?>"
                     data-section="<?= htmlspecialchars($row['SECTION'] ?? '') ?>"
-                    data-status="<?= htmlspecialchars($rowStatus) ?>">
+                    data-strand="<?= htmlspecialchars($row['STRAND'] ?? '') ?>"
+                    data-status="<?= htmlspecialchars($rowStatus) ?>"
+                    data-search="<?= htmlspecialchars($displayName . ' ' . $row['STUDENT_ID'], ENT_QUOTES) ?>">
                     <td class="student-index w-12 px-4 py-3 text-center text-sm font-semibold text-slate-400"></td>
                     <td class="px-5 py-4">
                         <div class="flex items-center gap-3"><img src="../<?= htmlspecialchars($row['IMAGE_PATH']) ?>"
@@ -384,129 +289,6 @@ foreach ([11, 12] as $honorGrade) {
         </table>
     </div>
 </div>
-<script>
-    window.studentSectionMap = <?= json_encode($sectionMap) ?>;
-</script>
 <script src="../js/capsule-control.js?v=3"></script>
-<script src="../js/student-pagination.js?v=13"></script>
-<script>
-    // student-pagination.js follows a "conditional Section filter" rule: it hides
-    // the Section control until a grade is chosen. This roster keeps the control
-    // available at all times (it can filter by any section), so re-show it after
-    // the shared controller runs and after every grade change. Kept here rather
-    // than in the shared file so teacher/students.php is unaffected.
-    (() => {
-        const sectionField = document.getElementById('section-filter-container');
-        const gradeSelect = document.getElementById('grade-filter');
-        if (!sectionField) return;
-        const keepSectionVisible = () => {
-            sectionField.hidden = false;
-            sectionField.classList.remove('hidden');
-        };
-        keepSectionVisible();
-        gradeSelect?.addEventListener('change', keepSectionVisible);
-    })();
-</script>
-<script>
-    (() => {
-        document.getElementById('clear-student-filters').onclick = () => {
-            const search = document.getElementById('student-search'),
-                grade = document.getElementById('grade-filter'),
-                section = document.getElementById('section-filter'),
-                status = document.getElementById('status-filter');
-            search.value = '';
-            // Reset the visible pills without firing duplicate capsule events;
-            // the mirrored selects below are the source of truth for filtering.
-            window.CapsuleControl?.setValue('grade_filter', '', { silent: true });
-            window.CapsuleControl?.setValue('status_filter', '', { silent: true });
-            window.CapsuleControl?.setValue('honor_section_filter', '', { silent: true });
-            grade.value = '';
-            grade.dispatchEvent(new Event('change'));
-            status.value = '';
-            status.dispatchEvent(new Event('change'));
-            section.value = '';
-            section.dispatchEvent(new Event('change'));
-            search.dispatchEvent(new Event('input'));
-        };
-    })();
-</script>
-<script>
-    (() => {
-        const gradeSelect = document.getElementById('grade-filter');
-        const sectionSelect = document.getElementById('section-filter');
-        const honorBlock = document.getElementById('honor-section-filter');
-        const honorGroup = document.querySelector('[data-capsule-group="honor_section_filter"]');
-        const honorPills = document.querySelector('[data-honor-section-pills]');
-        const honorNote = document.getElementById('honor-section-note');
-        if (!gradeSelect || !sectionSelect || !honorGroup) return;
-
-        const sectionMap = window.studentSectionMap || {};
-        let honorSectionMap = {};
-        try {
-            honorSectionMap = JSON.parse(honorBlock?.dataset.honorSections || '{}');
-        } catch (_) {
-            honorSectionMap = {};
-        }
-        let honorSections = [];
-
-        const syncHonorSelection = () => {
-            const selected = sectionSelect.value || '';
-            const activeValue = honorSections.includes(selected) ? selected : '';
-            window.CapsuleControl?.setValue('honor_section_filter', activeValue, { silent: true });
-        };
-
-        // Section 1 has a different name per grade/strand, so the shortcut is
-        // grade-scoped. Grade Level = "All" shows a helper note instead of a
-        // meaningless lone "All" pill.
-        const setHonorEnabled = (enabled) => {
-            honorPills?.classList.toggle('hidden', !enabled);
-            honorNote?.classList.toggle('hidden', enabled);
-            honorBlock?.setAttribute('aria-disabled', String(!enabled));
-        };
-
-        const renderHonorSections = () => {
-            const grade = gradeSelect.value || '';
-            // Prefer the canonical Section 1 list computed in PHP; fall back to
-            // the first DB-derived section if a grade is missing from it.
-            const canonical = grade ? (honorSectionMap[grade] || []) : [];
-            const fallback = grade ? (sectionMap[grade] || []).slice(0, 1) : [];
-            honorSections = canonical.length ? canonical : fallback;
-            setHonorEnabled(Boolean(grade));
-
-            const inactiveClass = honorGroup.dataset.capsuleInactiveClass || '';
-            const items = [
-                { value: '', label: 'All' },
-                ...honorSections.map(section => ({
-                    value: section,
-                    label: `Honor · ${section}`,
-                })),
-            ];
-
-            honorGroup.replaceChildren(...items.map(item => {
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.dataset.capsuleItem = '';
-                button.dataset.value = item.value;
-                button.setAttribute('aria-pressed', 'false');
-                button.className = inactiveClass;
-                button.textContent = item.label;
-                return button;
-            }));
-
-            syncHonorSelection();
-        };
-
-        gradeSelect.addEventListener('change', renderHonorSections);
-        sectionSelect.addEventListener('change', syncHonorSelection);
-
-        document.addEventListener('capsule:change', event => {
-            if (event.detail.name !== 'honor_section_filter') return;
-            if (sectionSelect.value === event.detail.value) return;
-            sectionSelect.value = event.detail.value;
-            sectionSelect.dispatchEvent(new Event('change'));
-        });
-
-        renderHonorSections();
-    })();
-</script>
+<script src="../js/student-pagination.js?v=18"></script>
 <?php adminFoot(); ?>

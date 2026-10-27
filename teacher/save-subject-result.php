@@ -39,6 +39,20 @@ $section = trim((string) ($_POST['section'] ?? ''));
 $quarter = (int) ($_POST['quarter_period'] ?? 0);
 $bulk = isset($_POST['student_ids']) && is_array($_POST['student_ids']);
 
+// The grade sheet can save in place without discarding edits in other rows.
+// Ordinary form submissions retain the existing redirect/toast behavior.
+function finishGradeSheetSave(string $redirect, array $savedIds = []): void
+{
+    if (strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') !== false) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['message' => $_SESSION['toast']['message'], 'type' => $_SESSION['toast']['type'], 'saved_ids' => $savedIds]);
+        unset($_SESSION['toast']);
+    } else {
+        header('Location: ' . $redirect);
+    }
+    exit;
+}
+
 $redirect = $bulk
     ? 'students.php?' . http_build_query(array_filter([
         'grade' => $grade ?: null,
@@ -49,6 +63,7 @@ $redirect = $bulk
 
 if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
     $_SESSION['toast'] = ['message' => 'The academic-result request expired. Please try again.', 'type' => 'error'];
+    if ($bulk) finishGradeSheetSave($redirect);
     header('Location: ' . $redirect);
     exit;
 }
@@ -68,24 +83,21 @@ if ($bulk) {
     if ($onlyStudent > 0) {
         if (!in_array($onlyStudent, $studentIds, true)) {
             $_SESSION['toast'] = ['message' => 'That student is not part of the selected class.', 'type' => 'error'];
-            header('Location: ' . $redirect);
-            exit;
+            finishGradeSheetSave($redirect);
         }
         $studentIds = [$onlyStudent];
     }
 
     if (!$studentIds || $grade < 7 || $grade > 12 || $section === '' || $subject === '' || mb_strlen($subject) > 80) {
         $_SESSION['toast'] = ['message' => 'Choose a valid class and subject before saving grades.', 'type' => 'error'];
-        header('Location: ' . $redirect);
-        exit;
+        finishGradeSheetSave($redirect);
     }
 
     $setting = $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc();
     $schoolYear = (string) ($setting['ACTIVE_SCHOOL_YEAR'] ?? '');
     if ($schoolYear === '') {
         $_SESSION['toast'] = ['message' => 'Set the active school year before saving grades.', 'type' => 'error'];
-        header('Location: ' . $redirect);
-        exit;
+        finishGradeSheetSave($redirect);
     }
 
     $studentQuery = $conn->prepare('SELECT STUDENT_ID,GRADE,STRAND,SECTION FROM students WHERE ID=? AND ENROLLMENT_STATUS=? LIMIT 1');
@@ -103,6 +115,7 @@ if ($bulk) {
     );
 
     $saved = 0;
+    $savedIds = [];
     $skipped = 0;
     foreach ($studentIds as $studentId) {
         $studentQuery->bind_param('is', $studentId, $enrolled);
@@ -170,6 +183,7 @@ if ($bulk) {
         );
         if ($save->execute()) {
             $saved++;
+            $savedIds[] = $studentId;
         } else {
             $skipped++;
         }
@@ -180,8 +194,7 @@ if ($bulk) {
         $message .= ' ' . $skipped . ' row' . ($skipped === 1 ? '' : 's') . ' skipped (blank or invalid grade).';
     }
     $_SESSION['toast'] = ['message' => $message, 'type' => $saved > 0 ? 'success' : 'error'];
-    header('Location: ' . $redirect);
-    exit;
+    finishGradeSheetSave($redirect, $savedIds);
 }
 
 /* ---------------------------------------------------------------

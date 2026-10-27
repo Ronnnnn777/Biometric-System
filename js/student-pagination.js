@@ -7,6 +7,10 @@
   const grade = document.getElementById('grade-filter');
   const section = document.getElementById('section-filter');
   const status = document.getElementById('status-filter');
+  const strand = document.getElementById('strand-filter');
+  const catalog = JSON.parse(rowsContainer.dataset.sectionCatalog || 'null');
+  const honorSections = JSON.parse(rowsContainer.dataset.honorSections || '{}');
+  const sectionChoices = new Map();
   // Capsule pills mirror their active value into the hidden selects so the
   // existing filter/pagination logic remains the single source of truth.
   const syncCapsuleSelect = (name, select) => {
@@ -39,35 +43,60 @@
 
   // Cache searchable text before the "#" column is populated. Otherwise the
   // row number itself would match numeric searches (e.g. searching "16").
-  const searchText = new Map(rows.map(row => [row, row.textContent.toLowerCase()]));
+  const searchText = new Map(rows.map(row => [row, (row.dataset.search || row.textContent).toLowerCase()]));
   const matches = row => {
     const query = search.value.trim().toLowerCase();
+    const choice = sectionChoices.get(section?.value);
+    const sectionMatches = !section?.value || (catalog
+      ? choice && row.dataset.grade === choice.grade && row.dataset.section === choice.name
+        && (Number(choice.grade) < 11 || row.dataset.strand === choice.strand)
+      : row.dataset.section === section.value);
     return (!query || (searchText.get(row) || '').includes(query))
       && (!grade || !grade.value || row.dataset.grade === grade.value)
-      && (!section || !section.value || row.dataset.section === section.value)
-      && (!status || !status.value || row.dataset.status === status.value);
+      && sectionMatches
+      && (!status || !status.value || row.dataset.status === status.value)
+      && (!strand?.value || row.dataset.strand === strand.value);
   };
 
   function updateSectionOptions() {
     if (!section) return;
     const selectedGrade = grade?.value || '';
     const previousSection = section.value;
-    const availableSections = new Set(selectedGrade
-      ? (sectionMap[selectedGrade] || [])
-      : sectionOptions.map(option => option.value).filter(Boolean));
-    section.replaceChildren();
-    sectionOptions.forEach(({ value, label }) => {
-      if (value && !availableSections.has(value)) return;
-      section.add(new Option(label, value));
-    });
-    section.value = availableSections.has(previousSection) ? previousSection : '';
+    sectionChoices.clear();
+    // Rebuild from the complete catalog, never from student rows or the
+    // currently filtered options: empty and overflow sections must survive.
+    section.replaceChildren(new Option('All Sections', ''));
+    if (catalog) {
+      section.disabled = !selectedGrade;
+      const entry = catalog[selectedGrade];
+      const groups = Number(selectedGrade) >= 11 ? (entry || {}) : { '': entry || [] };
+      Object.entries(groups).forEach(([sectionStrand, names]) => {
+        if (strand?.value && strand.value !== sectionStrand) return;
+        names.forEach(name => {
+          // A tuple preserves placement identity even if two strands share a name.
+          const value = JSON.stringify([selectedGrade, sectionStrand, name]);
+          if (sectionChoices.has(value)) return;
+          const honorLabel = honorSections[selectedGrade]?.[sectionStrand] === name ? ' (Honor Section)' : '';
+          const strandLabel = sectionStrand && !strand?.value ? ` — ${sectionStrand}` : '';
+          section.add(new Option(`${name}${honorLabel}${strandLabel}`, value));
+          sectionChoices.set(value, { grade: selectedGrade, strand: sectionStrand, name });
+        });
+      });
+      section.value = sectionChoices.has(previousSection) ? previousSection : '';
+    } else {
+      // Preserve the shared controller's behavior for teacher rosters.
+      const names = selectedGrade ? (sectionMap[selectedGrade] || []) : sectionOptions.map(option => option.value).filter(Boolean);
+      const availableSections = new Set(names);
+      availableSections.forEach(value => section.add(new Option(value, value)));
+      section.value = availableSections.has(previousSection) ? previousSection : '';
+    }
   }
 
-  // Sections only make sense once a grade is selected. "All grades" hides the
-  // control entirely and clears any stale section selection.
+  // The admin roster opts into an always-visible catalog. Other callers keep
+  // the grade-dependent section control and clear it when all grades is chosen.
   function syncSectionVisibility() {
     if (!section) return;
-    const visible = Boolean(grade?.value);
+    const visible = section.dataset.alwaysVisible === 'true' || Boolean(grade?.value);
     if (sectionField) {
       sectionField.hidden = !visible;
       sectionField.classList.toggle('hidden', !visible);
@@ -115,10 +144,10 @@
 
   function render() {
     const matchingRows = rows.filter(matches);
-    const hasFilters = Boolean(search.value.trim() || grade?.value || section?.value || status?.value);
-    // With no filters the SQL COUNT is authoritative; filtered views report
-    // the matching record count instead of a page count.
-    const totalRecords = hasFilters || !sqlTotal ? matchingRows.length : sqlTotal;
+    const hasFilters = Boolean(search.value.trim() || grade?.value || section?.value || status?.value || strand?.value);
+    // Admin renders the complete roster, so count the same rows we paginate.
+    // Legacy callers retain their unfiltered SQL total.
+    const totalRecords = catalog || hasFilters || !sqlTotal ? matchingRows.length : sqlTotal;
     const totalPages = Math.max(1, Math.ceil(totalRecords / perPage));
     currentPage = Math.min(currentPage, totalPages);
     const first = (currentPage - 1) * perPage;
@@ -137,33 +166,63 @@
       const title = emptyState.querySelector('p:first-child');
       const detail = emptyState.querySelector('p:nth-child(2)');
       const clear = emptyState.querySelector('button');
-      title.textContent = rows.length ? 'No students match the current filters.' : (rowsContainer.dataset.emptyTitle || 'No students have been added yet.');
-      detail.textContent = rows.length ? 'Try changing the search or filter options.' : (rowsContainer.dataset.emptyDetail || 'Add a student or import a class list to begin.');
+      title.textContent = (rows.length || hasFilters) ? 'No students match the current filters.' : (rowsContainer.dataset.emptyTitle || 'No students have been added yet.');
+      detail.textContent = (rows.length || hasFilters) ? 'Try changing the search or filter options.' : (rowsContainer.dataset.emptyDetail || 'Add a student or import a class list to begin.');
       const addUrl = rowsContainer.dataset.emptyActionUrl || '';
-      clear.hidden = rows.length ? !hasFilters : !addUrl;
-      clear.textContent = rows.length ? 'Clear filters' : 'Add student';
-      clear.onclick = () => rows.length ? document.getElementById('clear-student-filters')?.click() : window.location.assign(addUrl);
+      clear.hidden = (rows.length || hasFilters) ? !hasFilters : !addUrl;
+      clear.textContent = (rows.length || hasFilters) ? 'Clear filters' : 'Add student';
+      clear.onclick = () => (rows.length || hasFilters) ? document.getElementById('clear-student-filters')?.click() : window.location.assign(addUrl);
     }
-    pagers.forEach((pager, index) => {
+    pagers.forEach(pager => {
       pager.replaceChildren();
       pager.className = 'my-5 flex flex-wrap items-center justify-between gap-3';
-      pager.hidden = !matchingRows.length;
-      if (matchingRows.length) {
-        const count = document.createElement('p');
-        count.className = 'text-sm font-semibold text-slate-500 dark:text-slate-400';
-        count.setAttribute('aria-live', 'polite');
-        count.textContent = `${first + 1}–${last} of ${totalRecords}`;
-        count.setAttribute('aria-label', `Showing ${first + 1} to ${last} of ${totalRecords} students`);
-        pager.append(count, controls(totalPages, true));
-      }
+      pager.hidden = !catalog && !matchingRows.length;
+      const count = document.createElement('p');
+      count.className = 'text-sm font-semibold text-slate-500 dark:text-slate-400';
+      count.setAttribute('aria-live', 'polite');
+      const start = totalRecords ? first + 1 : 0;
+      count.textContent = `${start}–${last} of ${totalRecords}`;
+      count.setAttribute('aria-label', `Showing ${start} to ${last} of ${totalRecords} students`);
+      pager.append(count);
+      if (matchingRows.length) pager.append(controls(totalPages, true));
     });
   }
 
   const resetPage = () => { currentPage = 1; render(); };
   search.oninput = resetPage;
-  if (grade) grade.onchange = () => { updateSectionOptions(); syncSectionVisibility(); resetPage(); };
+  const syncStrandVisibility = () => {
+    if (!strand) return;
+    const visible = Number(grade?.value) >= 11;
+    document.getElementById('strand-filter-container').hidden = !visible;
+    strand.disabled = !visible;
+    if (!visible) strand.value = '';
+  };
+  if (grade) grade.onchange = () => {
+    if (catalog) {
+      if (strand) strand.value = '';
+      if (section) section.value = '';
+    }
+    syncStrandVisibility();
+    updateSectionOptions(); syncSectionVisibility(); resetPage();
+  };
+  if (strand) strand.onchange = () => {
+    updateSectionOptions(); resetPage();
+  };
   if (section) section.onchange = resetPage;
   if (status) status.onchange = resetPage;
+  if (catalog) document.getElementById('clear-student-filters')?.addEventListener('click', () => {
+    search.value = '';
+    if (grade) grade.value = '';
+    if (strand) strand.value = '';
+    if (section) section.value = '';
+    if (status) status.value = '';
+    window.CapsuleControl?.setValue('grade_filter', '', { silent: true });
+    syncStrandVisibility();
+    updateSectionOptions();
+    syncSectionVisibility();
+    resetPage();
+  });
+  syncStrandVisibility();
   updateSectionOptions();
   syncSectionVisibility();
   render();

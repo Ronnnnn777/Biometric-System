@@ -171,6 +171,23 @@ teacherShell("Students");
     #quarterly-grades input[type="number"] {
         -moz-appearance: textfield;
     }
+
+    #quarterly-grades [data-quarter-input][readonly] {
+        background: transparent;
+        border-color: transparent;
+        color: inherit;
+        font-weight: 500;
+        cursor: default;
+    }
+
+    #quarterly-grades [data-quarter-input]:focus-visible {
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+    }
+
+    #quarterly-grades [data-grade-row][data-dirty] td:first-child {
+        box-shadow: inset 3px 0 0 #f59e0b;
+    }
 </style>
 
 <div class="mb-6 flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -295,7 +312,7 @@ teacherShell("Students");
                 data-total="<?= count($students) ?>">
                 <?php foreach ($students as $student):
                     $displayName = $displayStudentName($student); ?>
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                <tr data-roster-student-id="<?= (int) $student['ID'] ?>" class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                     <td class="px-5 py-4">
                         <div class="flex items-center gap-3"><img src="../<?= htmlspecialchars(
               $student["IMAGE_PATH"],
@@ -329,37 +346,8 @@ teacherShell("Students");
           ?>
                     <td class="px-5 py-4"><span
                             class="rounded-full px-3 py-1 text-xs font-bold <?= $todayClass ?>"><?= $todayLabel ?></span></td>
-                    <td class="px-5 py-4 text-right"><?php if (
-              !$student["attended_today"]
-          ): ?><form class="mark-present-form inline-block align-middle" action="mark-present.php" method="post"><input
-                                type="hidden" name="csrf_token" value="<?= htmlspecialchars(
-    $_SESSION["csrf_token"],
-) ?>"><input type="hidden" name="student_id" value="<?= (int) $student[
-    "ID"
-] ?>"><input type="hidden" name="grade" value="<?= $grade ?>"><input type="hidden" name="section" value="<?= htmlspecialchars(
-    $section,
-) ?>"><input type="hidden" name="student_name" value="<?= htmlspecialchars(
-    $displayName,
-) ?>"><button type="button" class="open-mark-present text-center text-xs font-bold leading-tight text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"><span
-                                    class="block">Mark</span>present</button></form><form class="mark-absent-form ml-3 inline-block align-middle" action="mark-absent.php" method="post"><input
-                                type="hidden" name="csrf_token" value="<?= htmlspecialchars(
-    $_SESSION["csrf_token"],
-) ?>"><input type="hidden" name="student_id" value="<?= (int) $student[
-    "ID"
-] ?>"><input type="hidden" name="grade" value="<?= $grade ?>"><input type="hidden" name="section" value="<?= htmlspecialchars(
-    $section,
-) ?>"><input type="hidden" name="student_name" value="<?= htmlspecialchars(
-    $displayName,
-) ?>"><button type="button" class="open-mark-absent text-center text-xs font-bold leading-tight text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"><span
-                                    class="block">Mark</span>absent</button></form><?php else: ?><span
-                            class="inline-block align-middle text-center text-xs font-semibold leading-tight text-slate-400"><span
-                                class="block"><?= $todayLabel ===
-"Absent"
-    ? "Marked"
-    : "Attendance" ?></span><?= $todayLabel === "Absent"
-    ? "absent"
-    : "recorded" ?></span><?php endif; ?><a
-                            class="ml-3 inline-flex h-8 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 text-xs font-semibold text-blue-600 transition hover:bg-blue-500/20 align-middle dark:text-blue-300"
+                    <td class="px-5 py-4 text-right"><a
+                            class="inline-flex h-8 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 text-xs font-semibold text-blue-600 transition hover:bg-blue-500/20 align-middle dark:text-blue-300"
                             href="student-profile.php?id=<?= $student[
     "ID"
 ] ?>&grade=<?= $grade ?>&section=<?= urlencode(
@@ -413,6 +401,8 @@ teacherShell("Students");
                 quarterly grades can be recorded.</p>
         </div>
         <?php else: ?>
+        <p id="grade-encoding-help" class="px-5 py-3 text-xs text-slate-500 dark:text-slate-400">Edit the selected quarter. Tab moves down; Shift + Tab moves up within this page. An amber row marker means unsaved changes. Save All Grades includes every page.</p>
+        <p data-grade-status role="status" aria-live="polite" class="px-5 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300" hidden></p>
         <div class="w-full overflow-x-auto">
             <table class="w-full min-w-[980px] text-left text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
@@ -458,6 +448,8 @@ teacherShell("Students");
                                 value="<?= htmlspecialchars($displayGradeValue($quarters[$quarterValue])) ?>"
                                 min="0" max="100" step="0.01" inputmode="decimal" placeholder="—"
                                 aria-label="<?= $quarterValue === $activeQuarter ? 'Active quarter: ' : '' ?>Q<?= $quarterValue ?> grade for <?= htmlspecialchars($displayName) ?>"
+                                aria-describedby="grade-encoding-help"
+                                <?= $quarterValue !== $activeQuarter ? 'readonly tabindex="-1"' : '' ?>
                                 data-quarter-input
                                 class="w-16 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-center text-sm font-bold focus:ring-2 focus:ring-blue-500">
                         </td>
@@ -493,30 +485,6 @@ teacherShell("Students");
 </section>
 <?php endif; ?>
 
-<div id="mark-absent-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
-    role="dialog" aria-modal="true" aria-labelledby="mark-absent-title">
-    <div class="card w-full max-w-sm p-6 shadow-2xl">
-        <h3 id="mark-absent-title" class="text-xl font-black text-slate-900 dark:text-white">Mark student absent?</h3>
-        <p id="mark-absent-message" class="mt-2 text-sm text-slate-600 dark:text-slate-400">This will create an absence record for today.
-        </p>
-        <div class="mt-6 flex gap-3"><button id="cancel-mark-absent" type="button"
-                class="btn btn-secondary flex-1">Cancel</button><button
-                id="confirm-mark-absent" type="button"
-                class="btn btn-danger flex-1">Mark
-                absent</button></div>
-    </div>
-</div>
-<div id="mark-present-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
-    role="dialog" aria-modal="true" aria-labelledby="mark-present-title">
-    <div class="card w-full max-w-sm p-6 shadow-2xl">
-        <h3 id="mark-present-title" class="text-xl font-black text-slate-900 dark:text-white">Mark student present?</h3>
-        <p id="mark-present-message" class="mt-2 text-sm text-slate-600 dark:text-slate-400">This will create a present attendance record for today.</p>
-        <div class="mt-6 flex gap-3">
-            <button id="cancel-mark-present" type="button" class="btn btn-secondary flex-1">Cancel</button>
-            <button id="confirm-mark-present" type="button" class="btn btn-success flex-1">Mark present</button>
-        </div>
-    </div>
-</div>
 <script src="../js/capsule-control.js?v=3"></script>
 <script src="../js/student-pagination.js?v=13"></script>
 <script>
@@ -553,67 +521,40 @@ teacherShell("Students");
                 : '';
         }
     });
-    document.addEventListener('DOMContentLoaded', () => {
-        const modal = document.getElementById('mark-absent-modal'),
-            message = document.getElementById('mark-absent-message'),
-            cancel = document.getElementById('cancel-mark-absent'),
-            confirm = document.getElementById('confirm-mark-absent');
-        let pendingForm = null;
-        document.querySelectorAll('.open-mark-absent').forEach(button => button.addEventListener('click',
-    () => {
-            pendingForm = button.form;
-            message.textContent =
-                `Mark ${pendingForm.querySelector('[name="student_name"]').value} absent for today?`;
-            modal.classList.replace('hidden', 'flex')
-        }));
-        cancel.onclick = () => {
-            pendingForm = null;
-            modal.classList.replace('flex', 'hidden')
-        };
-        confirm.onclick = () => {
-            if (pendingForm) pendingForm.submit()
-        };
-        modal.addEventListener('click', event => {
-            if (event.target === modal) {
-                pendingForm = null;
-                modal.classList.replace('flex', 'hidden')
-            }
-        })
-    });
 </script>
-<script>
-    (() => {
-        const modal = document.getElementById('mark-present-modal');
-        const message = document.getElementById('mark-present-message');
-        const cancel = document.getElementById('cancel-mark-present');
-        const confirm = document.getElementById('confirm-mark-present');
-        let pendingForm = null;
 
-        document.querySelectorAll('.open-mark-present').forEach(button => {
-            button.addEventListener('click', () => {
-                pendingForm = button.form;
-                const studentName = pendingForm.querySelector('[name="student_name"]').value;
-                message.textContent = `Mark ${studentName} present for today?`;
-                modal.classList.replace('hidden', 'flex');
-            });
-        });
-
-        const close = () => {
-            pendingForm = null;
-            modal.classList.replace('flex', 'hidden');
-        };
-
-        cancel.addEventListener('click', close);
-        confirm.addEventListener('click', () => pendingForm?.submit());
-        modal.addEventListener('click', event => {
-            if (event.target === modal) close();
-        });
-    })();
-</script>
 <script>
     (() => {
         const grades = document.getElementById('quarterly-grades');
         if (!grades) return;
+        const form = grades.querySelector('form');
+        const rows = Array.from(grades.querySelectorAll('[data-grade-row]'));
+        const inputs = Array.from(grades.querySelectorAll('[data-quarter-input]'));
+        const savedValues = new Map(inputs.map(input => [input, input.value]));
+        const status = grades.querySelector('[data-grade-status]');
+        let saving = false;
+
+        function markDirty(row) {
+            row.toggleAttribute('data-dirty', Array.from(row.querySelectorAll('[data-quarter-input]'))
+                .some(input => input.value !== savedValues.get(input)));
+        }
+
+        // Reuse the roster's existing search and 15-row pagination, in place.
+        const roster = document.getElementById('student-rows');
+        function syncVisibleRows() {
+            const visibleIds = new Set(Array.from(roster.querySelectorAll('[data-roster-student-id]'))
+                .filter(row => !row.hidden).map(row => row.dataset.rosterStudentId));
+            rows.forEach(row => { row.hidden = !visibleIds.has(row.dataset.studentId); });
+        }
+        if (roster) {
+            new MutationObserver(syncVisibleRows).observe(roster, {
+                subtree: true, attributes: true, attributeFilter: ['hidden'],
+            });
+            syncVisibleRows();
+        }
+
+        const visibleInputs = () => inputs.filter(input => !input.readOnly && !input.disabled
+            && !input.closest('[data-grade-row]').hidden);
 
         function renderRemark(cell, remark) {
             const tone = remark === 'Passed'
@@ -644,7 +585,14 @@ teacherShell("Students");
 
         function setActiveQuarter(quarter) {
             grades.querySelectorAll('[data-quarter]').forEach(cell => {
-                cell.classList.toggle('is-active-quarter', cell.dataset.quarter === String(quarter));
+                const active = cell.dataset.quarter === String(quarter);
+                cell.classList.toggle('is-active-quarter', active);
+                const input = cell.querySelector('[data-quarter-input]');
+                input.readOnly = !active;
+                input.tabIndex = active ? 0 : -1;
+                // Keep the student's name while updating the active-quarter label.
+                input.setAttribute('aria-label', (active ? 'Active quarter: ' : '')
+                    + input.getAttribute('aria-label').replace(/^Active quarter: /, ''));
             });
             grades.querySelectorAll('[data-quarter-head]').forEach(head => {
                 const active = head.dataset.quarterHead === String(quarter);
@@ -655,7 +603,11 @@ teacherShell("Students");
 
         grades.addEventListener('input', event => {
             const input = event.target.closest('[data-quarter-input]');
-            if (input) recalculate(input.closest('[data-grade-row]'));
+            if (input) {
+                const row = input.closest('[data-grade-row]');
+                recalculate(row);
+                markDirty(row);
+            }
         });
 
         grades.addEventListener('change', event => {
@@ -669,13 +621,75 @@ teacherShell("Students");
                 input.value = String(Math.round(value * 100) / 100);
             }
             recalculate(input.closest('[data-grade-row]'));
+            markDirty(input.closest('[data-grade-row]'));
         });
 
-        document.addEventListener('capsule:change', event => {
+        grades.addEventListener('keydown', event => {
+            const input = event.target.closest('[data-quarter-input]');
+            if (!input || input.readOnly || event.isComposing) return;
+            if (['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)) {
+                event.preventDefault();
+            } else if (event.key === 'Tab' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+                const fields = visibleInputs();
+                const next = fields[fields.indexOf(input) + (event.shiftKey ? -1 : 1)];
+                // At either edge let the browser reach normal controls (including Save).
+                if (next) {
+                    event.preventDefault();
+                    next.focus();
+                }
+            }
+        });
+
+        grades.addEventListener('wheel', event => {
+            if (event.target.matches('[data-quarter-input]') && event.target === document.activeElement) {
+                event.preventDefault();
+            }
+        }, { passive: false });
+
+        grades.addEventListener('capsule:change', event => {
             if (event.detail.name !== 'quarter_period') return;
             setActiveQuarter(event.detail.value);
-            const firstInput = grades.querySelector(`[data-quarter="${event.detail.value}"] [data-quarter-input]`);
-            firstInput?.focus({ preventScroll: true });
+            visibleInputs()[0]?.focus({ preventScroll: true });
+        });
+
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (saving) return;
+            const payload = new FormData(form);
+            if (event.submitter?.name) payload.append(event.submitter.name, event.submitter.value);
+            // Snapshot values so edits made during a request remain marked unsaved.
+            const submittedValues = new Map(inputs.map(input => [input, input.value]));
+            saving = true;
+            const buttons = Array.from(form.querySelectorAll('button[type="submit"]'));
+            buttons.forEach(button => { button.disabled = true; });
+            if (status) {
+                status.hidden = false;
+                status.textContent = 'Saving grades…';
+            }
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST', body: payload, headers: { Accept: 'application/json' },
+                });
+                if (!response.ok) throw new Error('Save request failed');
+                const result = await response.json();
+                if (!Array.isArray(result.saved_ids) || typeof result.message !== 'string') {
+                    throw new Error('Unexpected save response');
+                }
+                const savedIds = new Set(result.saved_ids.map(String));
+                rows.forEach(row => {
+                    if (!savedIds.has(row.dataset.studentId)) return;
+                    row.querySelectorAll('[data-quarter-input]').forEach(input => {
+                        savedValues.set(input, submittedValues.get(input));
+                    });
+                    markDirty(row);
+                });
+                if (status) status.textContent = result.message;
+            } catch (error) {
+                if (status) status.textContent = 'Could not confirm the save. Your entries are still here. Check your connection or session and try again.';
+            } finally {
+                saving = false;
+                buttons.forEach(button => { button.disabled = false; });
+            }
         });
 
         grades.querySelectorAll('[data-grade-row]').forEach(recalculate);
