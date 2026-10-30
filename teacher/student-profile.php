@@ -1,12 +1,12 @@
 <?php
 require "page-guard.php";
-require "../config/db_conn.php";
-require "../includes/attendance-schema.php";
+require_once "../config/db_conn.php";
+require_once "../includes/attendance-schema.php";
 require_once "../includes/teacher-profile-schema.php";
-require "../includes/teacher-assignment-schema.php";
+require_once "../includes/teacher-assignment-schema.php";
 require "../includes/csrf-token.php";
-require "../includes/school-year-schema.php";
-require "../includes/student-promotion-schema.php";
+require_once "../includes/school-year-schema.php";
+require_once "../includes/promotion-planner.php";
 ensureAttendanceTimeOutColumn($conn);
 ensureTeacherProfileColumns($conn);
 ensureTeacherAssignmentSchema($conn);
@@ -15,7 +15,7 @@ ensureStudentPromotionSchema($conn);
 require "components.php";
 $id = (int) ($_GET["id"] ?? 0);
 $teacherId = (int) ($_SESSION["teacher-id"] ?? 0);
-$assignments = teacherAssignments($conn, $teacherId);
+$assignments = teacherAdvisoryAssignments($conn, $teacherId);
 if (!$assignments) {
     http_response_code(403);
     exit("Your teacher account does not have an assigned grade and section.");
@@ -44,7 +44,7 @@ if (!$applicableAssignments) {
     exit;
 }
 $stmt = $conn->prepare(
-    "SELECT * FROM students WHERE ID=? AND SECTION=? AND GRADE=? LIMIT 1",
+    "SELECT * FROM students WHERE ID=? AND SECTION=? AND GRADE=? AND ENROLLMENT_STATUS='Enrolled' LIMIT 1",
 );
 $stmt->bind_param("isi", $id, $section, $grade);
 $stmt->execute();
@@ -61,10 +61,14 @@ if (!$matchingAssignments) {
     http_response_code(403);
     exit('That student is not in your assigned strand.');
 }
-$assignedSubject = trim((string) ($matchingAssignments[0]['SUBJECT'] ?? ''));
+$subjectAssignments = teacherAssignments($conn, $teacherId);
+$assignedSubject = '';
+foreach ($subjectAssignments as $subjectAssignment) {
+    if ((int)$subjectAssignment['GRADE'] === (int)$student['GRADE'] && $subjectAssignment['STRAND'] === $student['STRAND'] && $subjectAssignment['SECTION'] === $student['SECTION']) $assignedSubject = trim($subjectAssignment['SUBJECT']);
+}
 $setting = $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc();
 $schoolYear = (string) ($setting['ACTIVE_SCHOOL_YEAR'] ?? '');
-$resultQuery = $conn->prepare('SELECT SUBJECT,RESULT FROM student_subject_results WHERE STUDENT_ID=? AND SCHOOL_YEAR=? ORDER BY SUBJECT');
+$resultQuery = $conn->prepare('SELECT * FROM student_subject_results WHERE STUDENT_ID=? AND SCHOOL_YEAR=? ORDER BY SUBJECT');
 $resultQuery->bind_param('ss', $student['STUDENT_ID'], $schoolYear);
 $resultQuery->execute();
 $academicResults = [];
@@ -74,7 +78,11 @@ while ($resultRows && ($result = $resultRows->fetch_assoc())) {
     $academicResults[] = $result;
     if ($result['RESULT'] === 'Failed') $failedSubjects++;
 }
-$promotionDecision = studentPromotionDecision($failedSubjects);
+$requiredQuery = $conn->prepare('SELECT SUBJECT FROM promotion_required_subjects WHERE SCHOOL_YEAR=? AND GRADE=? AND STRAND=? ORDER BY SUBJECT');
+$requiredQuery->bind_param('sis', $schoolYear, $student['GRADE'], $student['STRAND']);
+$requiredQuery->execute();
+$requiredSubjects = array_column($requiredQuery->get_result()->fetch_all(MYSQLI_ASSOC), 'SUBJECT');
+$promotionDecision = promotionAcademicStanding($student, $academicResults, $requiredSubjects)['decision'];
 $log = $conn->prepare(
     "SELECT TIME_IN,LUNCH_OUT,AFTERNOON_TIME_IN,TIME_OUT,ATTENDANCE_REMARK,ATTENDANCE_NOTE FROM attendance WHERE TRIM(STUDENT_ID)=TRIM(?) AND IS_AUTO_ABSENT=0 ORDER BY TIME_IN DESC",
 );
@@ -147,7 +155,7 @@ teacherShell("Student profile");
                     <div>
                         <h2 class="text-lg font-black text-slate-900 dark:text-white">Academic results</h2>
                         <p class="mt-0.5 text-sm text-slate-500 dark:text-slate-400">School year <?= htmlspecialchars($schoolYear) ?>. Record
-                            this student's result for your subject.</p>
+                            quarterly grades in Grading to calculate this student's subject result.</p>
                     </div>
                     <span
                         class="shrink-0 max-w-[45%] text-center rounded-full px-3 py-1 text-sm font-bold <?= $promotionDecision === 'Promoted' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : ($promotionDecision === 'Summer class required' ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400') ?>"><?= htmlspecialchars($promotionDecision) ?></span>
@@ -166,34 +174,10 @@ teacherShell("Student profile");
                 <p class="text-sm text-slate-600 dark:text-slate-400 mb-4">Promotion rule: 0–1 failed subject = promoted; 2 = summer class; 3
                     or more = retained in the current grade.</p>
 
-                <form action="save-subject-result.php" method="post"
-                    class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_12rem] xl:grid-cols-[minmax(0,1fr)_12rem_auto] items-end gap-3">
-                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-                    <input type="hidden" name="student_record_id" value="<?= (int) $student['ID'] ?>">
-                    <input type="hidden" name="grade" value="<?= (int) $grade ?>">
-                    <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
-                    <?php if ($assignedSubject !== ''): ?>
-                    <input type="hidden" name="subject" value="<?= htmlspecialchars($assignedSubject) ?>">
-                    <div class="min-w-0 text-sm text-slate-700 dark:text-slate-300">
-                        <span class="block mb-1.5 font-bold">Assigned subject</span>
-                        <span class="flex min-h-11 items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-4 py-2.5 font-bold break-words text-slate-900 dark:text-white"><?= htmlspecialchars($assignedSubject) ?></span>
-                    </div>
-                    <?php else: ?>
-                    <label class="min-w-0 flex-1 text-sm font-bold text-slate-700 dark:text-slate-300">Subject
-                        <input name="subject" maxlength="80" required placeholder="Subject taught"
-                            class="field min-h-11 mt-1.5">
-                    </label>
-                    <?php endif; ?>
-                    <div class="min-w-0">
-                        <label for="subject-result" class="text-sm font-bold text-slate-700 dark:text-slate-300 block mb-1.5">Result</label>
-                        <select id="subject-result" name="result" class="field min-h-11" required>
-                            <option value="">Choose result</option>
-                            <option>Passed</option>
-                            <option>Failed</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="btn btn-primary min-h-11 sm:col-start-2 xl:col-start-auto">Save result</button>
-                </form>
+                <?php if ($assignedSubject !== ''): ?>
+                <a class="btn btn-primary" href="grading.php?<?= htmlspecialchars(http_build_query(['grade'=>$grade,'section'=>$section]),ENT_QUOTES) ?>">Open quarterly grading: <?= htmlspecialchars($assignedSubject) ?></a>
+                <p class="mt-2 text-sm text-slate-500">Subject results are calculated from entered grades. Promotion requires all required subjects and all four quarters.</p>
+                <?php else: ?><p class="text-sm text-slate-500">No subject grading permission assigned for this class.</p><?php endif; ?>
             </div>
         </section>
 

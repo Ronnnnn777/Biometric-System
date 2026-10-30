@@ -17,6 +17,7 @@ function ensureTeacherProfileColumns(mysqli $conn): void
     if(!isset($columns['TEACHER_STATUS']))$conn->query("ALTER TABLE teachers ADD COLUMN TEACHER_STATUS VARCHAR(20) NOT NULL DEFAULT 'Active' AFTER SUBJECT");
     if(!isset($columns['ARCHIVED_AT']))$conn->query("ALTER TABLE teachers ADD COLUMN ARCHIVED_AT DATETIME NULL AFTER TEACHER_STATUS");
 
+    if(!isset($columns['MUST_CHANGE_PASSWORD']))$conn->query("ALTER TABLE teachers ADD MUST_CHANGE_PASSWORD TINYINT(1) NOT NULL DEFAULT 0");
     $teachers=$conn->query("SELECT TEACHER_ID,TEACHER_NAME FROM teachers WHERE FIRST_NAME='' OR LAST_NAME=''");
     $update=$conn->prepare('UPDATE teachers SET FIRST_NAME=?,LAST_NAME=? WHERE TEACHER_ID=?');
     while($teachers&&($teacher=$teachers->fetch_assoc())){

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . "/teacher-profile-schema.php";
+require_once __DIR__ . "/teacher-access-schema.php";
 
 /** Stores every grade-and-section placement assigned to a teacher. */
 function ensureTeacherAssignmentSchema(mysqli $conn): void
@@ -14,27 +15,14 @@ function ensureTeacherAssignmentSchema(mysqli $conn): void
     $conn->query(
         "UPDATE teachers SET SUBJECT='Values Education' WHERE SUBJECT='Values'",
     );
-    $missing = $conn->query(
-        "SELECT t.TEACHER_ID,t.GRADE,t.STRAND,t.SECTION,t.SUBJECT FROM teachers t LEFT JOIN teacher_assignments ta ON ta.TEACHER_ID=t.TEACHER_ID WHERE ta.TEACHER_ID IS NULL AND t.GRADE BETWEEN 7 AND 12 AND t.SECTION IS NOT NULL AND t.SECTION<>''",
-    );
-    $add = $conn->prepare(
-        "INSERT IGNORE INTO teacher_assignments (TEACHER_ID,GRADE,STRAND,SECTION,SUBJECT) VALUES (?,?,?,?,?)",
-    );
-    while ($missing && ($row = $missing->fetch_assoc())) {
-        $id = (int) $row["TEACHER_ID"];
-        $grade = (int) $row["GRADE"];
-        $strand = $row["STRAND"] ?? "";
-        $section = $row["SECTION"];
-        $subject = $row["SUBJECT"] ?? "";
-        $add->bind_param("iisss", $id, $grade, $strand, $section, $subject);
-        $add->execute();
-    }
+    ensureTeacherAccessSchema($conn);
+
 }
 
 function teacherAssignments(mysqli $conn, int $teacherId): array
 {
     $stmt = $conn->prepare(
-        "SELECT GRADE,STRAND,SECTION,SUBJECT FROM teacher_assignments WHERE TEACHER_ID=? ORDER BY GRADE,SECTION",
+        "SELECT GRADE,STRAND,SECTION,SUBJECT FROM teacher_assignments WHERE SCHOOL_YEAR=(SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1) AND TEACHER_ID=? ORDER BY GRADE,SECTION",
     );
     $stmt->bind_param("i", $teacherId);
     $stmt->execute();
@@ -52,6 +40,7 @@ function postedTeacherAssignments(mysqli $conn): array
     $strands = $_POST["assignment_strand"] ?? [];
     $sections = $_POST["assignment_section"] ?? [];
     $subjects = $_POST["assignment_subject"] ?? [];
+    $seniorSubjects = $_POST["assignment_senior_subject"] ?? [];
     if (
         !is_array($grades) ||
         !is_array($strands) ||
@@ -72,8 +61,9 @@ function postedTeacherAssignments(mysqli $conn): array
         $section = trim($sections[$index] ?? "");
         $subject = trim($subjects[$index] ?? "");
         $senior = in_array($grade, [11, 12], true);
+        if ($senior && isset($seniorSubjects[$index])) $subject = trim((string)$seniorSubjects[$index]);
         $valid = $senior
-            ? $subject === "" &&
+            ? mb_strlen($subject) <= 80 && !preg_match('/[\x00-\x1f]/', $subject) &&
                 in_array($strand, studentStrandsForGrade($grade), true)
             : $strand === "" && in_array($subject, teacherSubjects(), true);
         $key = $grade . "|" . $strand . "|" . $section;
@@ -101,12 +91,12 @@ function replaceTeacherAssignments(
     array $assignments,
 ): void {
     $delete = $conn->prepare(
-        "DELETE FROM teacher_assignments WHERE TEACHER_ID=?",
+        "DELETE FROM teacher_assignments WHERE SCHOOL_YEAR=(SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1) AND TEACHER_ID=?",
     );
     $delete->bind_param("i", $teacherId);
     $delete->execute();
     $add = $conn->prepare(
-        "INSERT INTO teacher_assignments (TEACHER_ID,GRADE,STRAND,SECTION,SUBJECT) VALUES (?,?,?,?,?)",
+        "INSERT INTO teacher_assignments (TEACHER_ID,GRADE,STRAND,SECTION,SUBJECT,SCHOOL_YEAR) VALUES (?,?,?,?,?,(SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1))",
     );
     foreach ($assignments as $assignment) {
         $grade = (int) $assignment["grade"];

@@ -1,10 +1,10 @@
 <?php
 require 'page-guard.php';
-require '../config/db_conn.php';
+require_once '../config/db_conn.php';
 require '../includes/csrf-token.php';
-require '../includes/student-profile-schema.php';
-require '../includes/teacher-assignment-schema.php';
-require '../includes/school-year-schema.php';
+require_once '../includes/student-profile-schema.php';
+require_once '../includes/teacher-assignment-schema.php';
+require_once '../includes/school-year-schema.php';
 require '../includes/student-promotion-schema.php';
 
 ensureStudentProfileColumns($conn);
@@ -54,7 +54,7 @@ function finishGradeSheetSave(string $redirect, array $savedIds = []): void
 }
 
 $redirect = $bulk
-    ? 'students.php?' . http_build_query(array_filter([
+    ? 'grading.php?' . http_build_query(array_filter([
         'grade' => $grade ?: null,
         'section' => $section !== '' ? $section : null,
         'quarter' => $quarter >= 1 && $quarter <= 4 ? $quarter : null,
@@ -72,7 +72,7 @@ $subject = trim((string) ($_POST['subject'] ?? ''));
 $teacherId = (int) ($_SESSION['teacher-id'] ?? 0);
 
 /* ---------------------------------------------------------------
- * Quarterly grade sheet (teacher/students.php).
+ * Quarterly grade sheet (teacher/grading.php).
  * --------------------------------------------------------------- */
 if ($bulk) {
     $studentIds = array_values(array_unique(array_filter(
@@ -102,7 +102,7 @@ if ($bulk) {
 
     $studentQuery = $conn->prepare('SELECT STUDENT_ID,GRADE,STRAND,SECTION FROM students WHERE ID=? AND ENROLLMENT_STATUS=? LIMIT 1');
     $enrolled = 'Enrolled';
-    $assignmentQuery = $conn->prepare('SELECT SUBJECT FROM teacher_assignments WHERE TEACHER_ID=? AND GRADE=? AND STRAND=? AND SECTION=? LIMIT 1');
+    $assignmentQuery = $conn->prepare('SELECT SUBJECT FROM current_teacher_subject_assignments WHERE TEACHER_ID=? AND GRADE=? AND STRAND=? AND SECTION=? LIMIT 1');
     $save = $conn->prepare(
         'INSERT INTO student_subject_results
             (STUDENT_ID,SCHOOL_YEAR,SUBJECT,RESULT,TEACHER_ID,GRADE,STRAND,SECTION,Q1_GRADE,Q2_GRADE,Q3_GRADE,Q4_GRADE,FINAL_GRADE)
@@ -134,7 +134,7 @@ if ($bulk) {
             continue;
         }
         $assignedSubject = trim((string) ($assignment['SUBJECT'] ?? ''));
-        if ($assignedSubject !== '' && $subject !== $assignedSubject) {
+        if ($assignedSubject === '' || $subject !== $assignedSubject) {
             $skipped++;
             continue;
         }
@@ -197,49 +197,7 @@ if ($bulk) {
     finishGradeSheetSave($redirect, $savedIds);
 }
 
-/* ---------------------------------------------------------------
- * Single subject result (teacher/student-profile.php).
- * --------------------------------------------------------------- */
-$result = trim((string) ($_POST['result'] ?? ''));
-if ($studentRecordId < 1 || $subject === '' || mb_strlen($subject) > 80 || !in_array($result, ['Passed', 'Failed'], true)) {
-    $_SESSION['toast'] = ['message' => 'Choose a subject and a valid Passed or Failed result.', 'type' => 'error'];
-    header('Location: ' . $redirect);
-    exit;
-}
-
-$studentQuery = $conn->prepare("SELECT STUDENT_ID,GRADE,STRAND,SECTION FROM students WHERE ID=? AND ENROLLMENT_STATUS='Enrolled' LIMIT 1");
-$studentQuery->bind_param('i', $studentRecordId);
-$studentQuery->execute();
-$student = $studentQuery->get_result()->fetch_assoc();
-if (!$student) {
-    $_SESSION['toast'] = ['message' => 'Only currently enrolled students can receive subject results.', 'type' => 'error'];
-    header('Location: students.php');
-    exit;
-}
-
-$assignmentQuery = $conn->prepare('SELECT SUBJECT FROM teacher_assignments WHERE TEACHER_ID=? AND GRADE=? AND STRAND=? AND SECTION=? LIMIT 1');
-$assignmentQuery->bind_param('iiss', $teacherId, $student['GRADE'], $student['STRAND'], $student['SECTION']);
-$assignmentQuery->execute();
-$assignment = $assignmentQuery->get_result()->fetch_assoc();
-if (!$assignment) {
-    $_SESSION['toast'] = ['message' => 'You can record results only for students in your assigned class.', 'type' => 'error'];
-    header('Location: students.php');
-    exit;
-}
-
-$assignedSubject = trim((string) ($assignment['SUBJECT'] ?? ''));
-if ($assignedSubject !== '' && $subject !== $assignedSubject) {
-    $_SESSION['toast'] = ['message' => 'Use the subject assigned to your class.', 'type' => 'error'];
-    header('Location: ' . $redirect);
-    exit;
-}
-
-$setting = $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc();
-$schoolYear = (string) ($setting['ACTIVE_SCHOOL_YEAR'] ?? '');
-$save = $conn->prepare('INSERT INTO student_subject_results (STUDENT_ID,SCHOOL_YEAR,SUBJECT,RESULT,TEACHER_ID,GRADE,STRAND,SECTION) VALUES (?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE RESULT=VALUES(RESULT),TEACHER_ID=VALUES(TEACHER_ID),GRADE=VALUES(GRADE),STRAND=VALUES(STRAND),SECTION=VALUES(SECTION)');
-$save->bind_param('ssssiiss', $student['STUDENT_ID'], $schoolYear, $subject, $result, $teacherId, $student['GRADE'], $student['STRAND'], $student['SECTION']);
-$save->execute();
-
-$_SESSION['toast'] = ['message' => $subject . ' result saved as ' . $result . '.', 'type' => 'success'];
+// Result-only submissions must not overwrite a quarterly grade's calculated result.
+$_SESSION['toast'] = ['message' => 'Enter quarterly grades in Grading. Subject results are calculated from those grades.', 'type' => 'error'];
 header('Location: ' . $redirect);
 exit;

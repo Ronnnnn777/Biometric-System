@@ -133,7 +133,7 @@ if ($schoolFormAdviser !== '' && $schoolFormGrade >= 7 && $schoolFormGrade <= 12
     rememberImportedAdviserAssignment($conn, $schoolFormAdviser, $schoolFormGrade, '', $schoolFormSection);
     $adviserKey = studentImportPersonNameKey($schoolFormAdviser);
     $matches = [];
-    $teachers = $conn->query('SELECT TEACHER_ID, TEACHER_NAME FROM teachers');
+    $teachers = $conn->query("SELECT TEACHER_ID, TEACHER_NAME FROM teachers WHERE TEACHER_STATUS='Active'");
     $adviserTokens = explode(' ', $adviserKey);
     $adviserFirst = $adviserTokens[0] ?? '';
     $adviserLast = $adviserTokens[count($adviserTokens) - 1] ?? '';
@@ -146,13 +146,15 @@ if ($schoolFormAdviser !== '' && $schoolFormGrade >= 7 && $schoolFormGrade <= 12
     }
     if (count($matches) === 1) {
         $teacherId = (int) $matches[0]['TEACHER_ID'];
-        $strand = '';
-        $subject = '';
-        $assign = $conn->prepare('INSERT IGNORE INTO teacher_assignments (TEACHER_ID, GRADE, STRAND, SECTION, SUBJECT) VALUES (?, ?, ?, ?, ?)');
-        $assign->bind_param('iisss', $teacherId, $schoolFormGrade, $strand, $schoolFormSection, $subject);
-        $assign->execute();
-        syncTeacherPrimaryAssignment($conn, $teacherId);
-        $_SESSION['toast'] = ['message' => 'Adviser ' . $matches[0]['TEACHER_NAME'] . ' was assigned to Grade ' . $schoolFormGrade . ' | ' . $schoolFormSection . '.', 'type' => 'success'];
+        $conn->begin_transaction();
+        try {
+            $added = assignRememberedAdviserClasses($conn, $teacherId, $matches[0]['TEACHER_NAME']);
+            $conn->commit();
+            $_SESSION['toast'] = ['message' => $added ? 'Advisory class assigned.' : 'Students imported. Existing advisory assignment retained.', 'type' => 'success'];
+        } catch (Throwable $error) {
+            $conn->rollback();
+            $_SESSION['toast'] = ['message' => 'Students imported. The advisory section is already assigned; review advisers in Teachers.', 'type' => 'error'];
+        }
     } elseif (count($matches) === 0) {
         $_SESSION['toast'] = ['message' => 'Students were imported, but adviser ' . $schoolFormAdviser . ' has no matching Teacher account yet.', 'type' => 'error'];
     } else {

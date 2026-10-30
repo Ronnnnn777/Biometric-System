@@ -1,5 +1,6 @@
 <?php
 require "page-guard.php";
+require_once "../includes/csrf-token.php";
 require "../config/db_conn.php";
 require "../includes/teacher-profile-schema.php";
 require "../includes/teacher-assignment-schema.php";
@@ -37,7 +38,7 @@ adminSidebar(
         <h2 class="text-2xl font-black text-slate-900"><?= htmlspecialchars(
     $teacher["TEACHER_NAME"],
 ) ?></h2>
-        <form action="update-teacher.php" method="post" class="mt-7 space-y-5"><input type="hidden" name="id" value="<?= $teacher[
+        <form action="update-teacher.php" method="post" class="mt-7 space-y-5"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>"><input type="hidden" name="id" value="<?= $teacher[
     "TEACHER_ID"
 ] ?>">
             <div class="grid gap-4 sm:grid-cols-2"><label class="block text-sm font-bold text-slate-700">First
@@ -50,24 +51,25 @@ adminSidebar(
                     class="mt-2 w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3" value="<?= htmlspecialchars(
     $teacher["TEACHER_USER"],
 ) ?>" disabled></label>
+            <?php if ($teacher['TEACHER_STATUS']==='Active'): ?><div class="rounded-2xl border border-slate-200 p-5"><?php teacherAdvisorySelect($conn, $id); ?></div><?php endif; ?>
             <div class="rounded-2xl border border-slate-200 p-5">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                        <h3 class="font-black text-slate-900">Grade and section assignments</h3>
-                        <p class="mt-1 text-sm text-slate-500">The teacher can access only the placements listed here.
+                        <h3 class="font-black text-slate-900">Subject teaching assignments</h3>
+                        <p class="mt-1 text-sm text-slate-500">These placements permit subject grading. Student rosters and attendance use the advisory section.
                         </p>
                     </div><button id="add-assignment" type="button"
                         class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100">+
                         Add assignment</button>
                 </div>
-                <div id="assignment-list" class="mt-4 space-y-4"></div>
+            <div id="assignment-list" class="mt-4 space-y-4"></div>
             </div><button class="btn btn-primary w-full">Save
                 profile</button>
         </form>
     </section>
     <aside class="space-y-5">
         <form action="update-teacher.php" method="post"
-            class="card card-body"><input type="hidden" name="id" value="<?= $teacher[
+            class="card card-body"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>"><input type="hidden" name="id" value="<?= $teacher[
     "TEACHER_ID"
 ] ?>"><input type="hidden" name="password_only" value="1">
             <h3 class="text-lg font-black text-slate-900">Change password</h3>
@@ -83,7 +85,7 @@ adminSidebar(
                 class="btn btn-primary mt-5 w-full">Update
                 password</button>
         </form>
-        <form action="delete-teacher.php" method="post" class="rounded-2xl bg-blue-950 p-6" id="delete-teacher-form">
+        <form action="delete-teacher.php" method="post" class="rounded-2xl bg-blue-950 p-6" id="delete-teacher-form"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
             <input type="hidden" name="id" value="<?= $teacher[
     "TEACHER_ID"
 ] ?>">
@@ -171,6 +173,7 @@ adminSidebar(
                     <select class="assignment-section mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="assignment_section[]" required></select>
                 </label>
             </div>
+            <label class="senior-subject-label mt-3 block text-sm font-bold text-slate-700" hidden>Subject taught (optional)<input class="senior-subject mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="assignment_senior_subject[]" maxlength="80" placeholder="Exact subject name"></label>
             <select class="assignment-strand" name="assignment_strand[]" hidden></select>
             <select class="assignment-subject" name="assignment_subject[]" hidden></select>`;
         assignmentList.appendChild(row);
@@ -180,10 +183,13 @@ adminSidebar(
             section = row.querySelector('.assignment-section'),
             strand = row.querySelector('.assignment-strand'),
             subject = row.querySelector('.assignment-subject');
+        const seniorSubject = row.querySelector('.senior-subject');
+        seniorSubject.value = saved.subject || '';
         grade.value = saved.grade || '';
 
         function update(restore = false) {
             const senior = grade.value === '11' || grade.value === '12';
+            row.querySelector('.senior-subject-label').hidden = !senior;
             label.textContent = senior ? 'Strand assigned' : 'Subject assigned';
             setOptions(value, grade.value ? (senior ? 'Choose a strand' : 'Choose a subject') : 'Choose a grade first',
                 senior ? ['Techpro', 'Academic'] : subjectOptions, restore ? (senior ? (saved.strand || '') : (saved
@@ -218,7 +224,7 @@ adminSidebar(
         };
         update(true);
         row.querySelector('.remove-assignment').onclick = () => {
-            if (assignmentList.children.length > 1) row.remove()
+            row.remove()
         };
     }
     document.getElementById('add-assignment').onclick = () => addAssignment();

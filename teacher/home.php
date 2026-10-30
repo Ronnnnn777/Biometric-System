@@ -1,11 +1,11 @@
 <?php
 require "page-guard.php";
-require "../config/db_conn.php";
-require "../includes/attendance-schema.php";
+require_once "../config/db_conn.php";
+require_once "../includes/attendance-schema.php";
 require "../includes/csrf-token.php";
-require "../includes/student-profile-schema.php";
+require_once "../includes/student-profile-schema.php";
 require_once "../includes/teacher-profile-schema.php";
-require "../includes/teacher-assignment-schema.php";
+require_once "../includes/teacher-assignment-schema.php";
 ensureAttendanceTimeOutColumn($conn);
 ensureStudentProfileColumns($conn);
 ensureTeacherProfileColumns($conn);
@@ -13,14 +13,15 @@ ensureTeacherAssignmentSchema($conn);
 require "components.php";
 
 $teacherId = (int) ($_SESSION["teacher-id"] ?? 0);
-$assignments = teacherAssignments($conn, $teacherId);
+$assignments = teacherAdvisoryAssignments($conn, $teacherId);
 if (!$assignments) {
-    http_response_code(403);
-    exit("Your teacher account does not have an assigned grade and section.");
+    teacherHead('Students'); teacherShell('Students');
+    echo '<div class="mb-6 flex flex-wrap justify-between gap-3"><h2 class="text-2xl font-black">Assigned classes</h2><a href="grading.php" class="btn btn-secondary">Grading</a></div><section class="card p-5"><p class="font-bold">No advisory section assigned for this school year.</p><p class="mt-2 text-sm text-slate-500">Ask the administrator to assign your advisory section for the active school year.</p></section>';
+    teacherFoot(); exit;
 }
 
 $sectionResult = $conn->prepare(
-    "SELECT DISTINCT s.GRADE, s.SECTION FROM students s INNER JOIN teacher_assignments ta ON ta.TEACHER_ID = ? AND ta.GRADE = s.GRADE AND (ta.SUBJECT <> '' OR ta.SECTION = s.SECTION) WHERE s.SECTION IS NOT NULL AND s.SECTION <> '' AND s.ENROLLMENT_STATUS='Enrolled' ORDER BY s.GRADE, s.SECTION",
+    "SELECT DISTINCT s.GRADE, s.SECTION FROM students s INNER JOIN current_teacher_advisory_assignments ta ON ta.TEACHER_ID = ? AND ta.GRADE = s.GRADE AND (ta.SECTION=s.SECTION AND ta.STRAND=s.STRAND) WHERE s.SECTION IS NOT NULL AND s.SECTION <> '' AND s.ENROLLMENT_STATUS='Enrolled' ORDER BY s.GRADE, s.SECTION",
 );
 $sectionResult->bind_param("i", $teacherId);
 $sectionResult->execute();

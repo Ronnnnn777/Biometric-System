@@ -1,9 +1,9 @@
 <?php
 require "page-guard.php";
-require "../config/db_conn.php";
-require "../includes/attendance-schema.php";
+require_once "../config/db_conn.php";
+require_once "../includes/attendance-schema.php";
 require_once "../includes/teacher-profile-schema.php";
-require "../includes/teacher-assignment-schema.php";
+require_once "../includes/teacher-assignment-schema.php";
 ensureAttendanceTimeOutColumn($conn);
 ensureTeacherProfileColumns($conn);
 ensureTeacherAssignmentSchema($conn);
@@ -27,10 +27,10 @@ $stmt = $conn->prepare(
       WHERE COALESCE(s.ENROLLMENT_STATUS, 'Enrolled')='Enrolled'
         AND EXISTS (
             SELECT 1
-              FROM teacher_assignments ta
+              FROM current_teacher_advisory_assignments ta
              WHERE ta.TEACHER_ID=?
                AND ta.GRADE=s.GRADE
-               AND (ta.SUBJECT<>'' OR ta.SECTION=s.SECTION)
+               AND (ta.SECTION=s.SECTION AND ta.STRAND=s.STRAND)
         )
         AND (?='all' OR s.SECTION=?)
         AND (?=0 OR s.GRADE=?)

@@ -1,9 +1,9 @@
 <?php
 require "page-guard.php";
-require "../config/db_conn.php";
-require "../includes/attendance-schema.php";
+require_once "../config/db_conn.php";
+require_once "../includes/attendance-schema.php";
 require_once "../includes/teacher-profile-schema.php";
-require "../includes/teacher-assignment-schema.php";
+require_once "../includes/teacher-assignment-schema.php";
 require "../includes/xlsx-export.php";
 ensureAttendanceTimeOutColumn($conn);
 ensureTeacherProfileColumns($conn);
@@ -29,10 +29,10 @@ if ($allDates) {
                 a.ATTENDANCE_REMARK, a.ATTENDANCE_NOTE
            FROM attendance a
            INNER JOIN students s ON TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID)
-           INNER JOIN teacher_assignments ta ON ta.TEACHER_ID=?
+           INNER JOIN current_teacher_advisory_assignments ta ON ta.TEACHER_ID=?
                 AND ta.GRADE=s.GRADE
-                AND (ta.SUBJECT<>'' OR ta.SECTION=s.SECTION)
-          WHERE a.STUDENT_ID=?
+                AND (ta.SECTION=s.SECTION AND ta.STRAND=s.STRAND)
+          WHERE s.ENROLLMENT_STATUS='Enrolled' AND a.STUDENT_ID=?
           ORDER BY a.TIME_IN DESC",
     );
     $stmt->bind_param("is", $teacherId, $student);
@@ -43,10 +43,10 @@ if ($allDates) {
                 a.ATTENDANCE_REMARK, a.ATTENDANCE_NOTE
            FROM attendance a
            INNER JOIN students s ON TRIM(a.STUDENT_ID)=TRIM(s.STUDENT_ID)
-           INNER JOIN teacher_assignments ta ON ta.TEACHER_ID=?
+           INNER JOIN current_teacher_advisory_assignments ta ON ta.TEACHER_ID=?
                 AND ta.GRADE=s.GRADE
-                AND (ta.SUBJECT<>'' OR ta.SECTION=s.SECTION)
-          WHERE DATE(a.TIME_IN)=?
+                AND (ta.SECTION=s.SECTION AND ta.STRAND=s.STRAND)
+          WHERE s.ENROLLMENT_STATUS='Enrolled' AND DATE(a.TIME_IN)=?
             AND (?='all' OR s.SECTION=?)
             AND (?=0 OR s.GRADE=?)
             AND (?='' OR a.STUDENT_ID=?)

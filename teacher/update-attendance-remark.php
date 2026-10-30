@@ -1,8 +1,8 @@
 <?php
 require 'page-guard.php';
-require '../config/db_conn.php';
-require '../includes/attendance-schema.php';
-require '../includes/teacher-assignment-schema.php';
+require_once '../config/db_conn.php';
+require_once '../includes/attendance-schema.php';
+require_once '../includes/teacher-assignment-schema.php';
 ensureAttendanceTimeOutColumn($conn);ensureTeacherAssignmentSchema($conn);ensureAttendanceSnapshotColumns($conn);
 
 if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
@@ -19,7 +19,7 @@ if ($remark !== '' && !in_array($remark, attendanceRemarkOptions(), true)) {
     if ($studentId === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $attendanceDate) || $remark !== 'Excused absence') {
         $_SESSION['toast'] = ['message' => 'Choose Excused absence to record an unscanned student.', 'type' => 'error'];
     } else {
-        $student=$conn->prepare("SELECT s.STUDENT_ID,s.STUDENT_NAME,s.GRADE,s.STRAND,s.SECTION FROM students s WHERE TRIM(s.STUDENT_ID)=TRIM(?) AND COALESCE(s.ENROLLMENT_STATUS,'Enrolled')='Enrolled' AND EXISTS (SELECT 1 FROM teacher_assignments ta WHERE ta.TEACHER_ID=? AND ta.GRADE=s.GRADE AND (ta.SUBJECT<>'' OR ta.SECTION=s.SECTION)) LIMIT 1");
+        $student=$conn->prepare("SELECT s.STUDENT_ID,s.STUDENT_NAME,s.GRADE,s.STRAND,s.SECTION FROM students s WHERE TRIM(s.STUDENT_ID)=TRIM(?) AND COALESCE(s.ENROLLMENT_STATUS,'Enrolled')='Enrolled' AND EXISTS (SELECT 1 FROM current_teacher_advisory_assignments ta WHERE ta.TEACHER_ID=? AND ta.GRADE=s.GRADE AND (ta.SECTION=s.SECTION AND ta.STRAND=s.STRAND)) LIMIT 1");
         $student->bind_param('si',$studentId,$teacherId);$student->execute();$studentRow=$student->get_result()->fetch_assoc();
         $existing=$conn->prepare('SELECT ID FROM attendance WHERE TRIM(STUDENT_ID)=TRIM(?) AND DATE(TIME_IN)=? LIMIT 1');
         $existing->bind_param('ss',$studentId,$attendanceDate);$existing->execute();
@@ -32,7 +32,7 @@ if ($remark !== '' && !in_array($remark, attendanceRemarkOptions(), true)) {
         }
     }
 } else {
-    $allowed=$conn->prepare("SELECT a.ID FROM attendance a INNER JOIN students s ON TRIM(s.STUDENT_ID)=TRIM(a.STUDENT_ID) INNER JOIN teacher_assignments ta ON ta.TEACHER_ID=? AND ta.GRADE=s.GRADE AND (ta.SUBJECT<>'' OR ta.SECTION=s.SECTION) WHERE a.ID=? LIMIT 1");
+    $allowed=$conn->prepare("SELECT a.ID FROM attendance a INNER JOIN students s ON TRIM(s.STUDENT_ID)=TRIM(a.STUDENT_ID) INNER JOIN current_teacher_advisory_assignments ta ON ta.TEACHER_ID=? AND ta.GRADE=s.GRADE AND (ta.SECTION=s.SECTION AND ta.STRAND=s.STRAND) WHERE a.ID=? AND s.ENROLLMENT_STATUS='Enrolled' LIMIT 1");
     $allowed->bind_param('ii',$teacherId,$id);$allowed->execute();
     if (!$allowed->get_result()->fetch_assoc()) {
         $_SESSION['toast'] = ['message' => 'You can update attendance only for your assigned students.', 'type' => 'error'];
