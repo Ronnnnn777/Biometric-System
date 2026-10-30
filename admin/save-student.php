@@ -5,7 +5,8 @@ require "page-guard.php";
 require '../includes/student-profile-schema.php';
 require '../includes/student-placement-options.php';
 require '../includes/section-catalog-schema.php';
-require '../includes/biometric-image.php';
+require '../includes/student-face-references.php';
+ensureStudentFaceReferences($conn);
 ensureStudentProfileColumns($conn);
 ensureSectionCatalogColumns($conn);
 seedDefaultTeacherSections($conn);
@@ -48,78 +49,32 @@ if (!studentSectionHasCapacity($conn, $grade, $strand, $section)) {
     exit;
 }
 
-// 2. IMAGE CONFIGURATION
-$targetDir = "../uploads/students/";
-$pythonDir = "C:/Biometric_Capstone/known_faces/"; 
-$filename = "";
-
-function refreshStudentRecognitionService(): void {
-    $context=stream_context_create(['http'=>['method'=>'POST','timeout'=>2,'ignore_errors'=>true]]);
-    @file_get_contents('http://127.0.0.1:8772/refresh',false,$context);
+// Photos and student details commit together; old photos are never removed.
+$prepared = [];
+$createdFiles = [];
+try {
+    $prepared = prepareStudentFaceUploads(true);
+    $conn->begin_transaction();
+    $db_path = '';
+    $sql = "INSERT INTO students (STUDENT_ID, STUDENT_NAME, FIRST_NAME, MIDDLE_NAME, LAST_NAME, GRADE, AGE, STRAND, ADDRESS, SECTION, IMAGE_PATH) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $insert = $conn->prepare($sql);
+    $insert->bind_param('sssssiissss', $student_id, $student_name, $first_name, $middle_name, $last_name, $grade, $age, $strand, $address, $section, $db_path);
+    $insert->execute();
+    saveStudentFaceUploads($conn, (int)$conn->insert_id, $prepared, $createdFiles);
+    $conn->commit();
+    $_SESSION['toast'] = ['message'=>'Registered successfully', 'type'=>'success'];
+    $redirect = 'student-list.php';
+} catch (Throwable $error) {
+    $conn->rollback();
+    foreach ($createdFiles as $file) @unlink($file);
+    error_log('Student enrollment: ' . $error->getMessage());
+    $_SESSION['toast'] = ['message'=>$error instanceof RuntimeException && !($error instanceof mysqli_sql_exception) ? $error->getMessage() : 'The student could not be saved. Please try again.', 'type'=>'error'];
+    $redirect = 'add-student.php';
 }
-
-if (!empty($_POST['captured_image'])) {
-    $data = $_POST['captured_image'];
-    $data = str_replace('data:image/jpeg;base64,', '', $data);
-    $data = str_replace(' ', '+', $data);
-    $filename = $student_id . "_" . str_replace(' ', '_', $student_name) . ".jpg";
-    file_put_contents($targetDir . $filename, base64_decode($data));
-} 
-elseif (isset($_FILES["student_image"]) && $_FILES["student_image"]["error"] === UPLOAD_ERR_OK) {
-    $file = $_FILES["student_image"];
-    $validationError=validateBiometricImage($file['tmp_name']);
-    $ext = biometricImageExtension($file['tmp_name']);
-    if($validationError || !$ext) {
-        $_SESSION["toast"] = ["message" => $validationError ?: "Only JPEG and PNG images are accepted for biometric registration.", "type" => "error"];
-        header("Location: add-student.php");
-        exit;
-    }
-    $filename = $student_id . "_" . str_replace(' ', '_', $student_name) . "." . $ext;
-    move_uploaded_file($file["tmp_name"], $targetDir . $filename);
-} 
-else {
-    $_SESSION["toast"] = ["message" => "Please provide a student image.", "type" => "error"];
-    header("Location: add-student.php");
-    exit;
+cleanupPreparedStudentFaces($prepared);
+if ($prepared && ($_SESSION['toast']['type'] ?? '') === 'success') {
+    try { $warmed = warmStudentFaceCache($conn); } catch (Throwable $error) { $warmed = false; }
+    if (!$warmed) $_SESSION['toast']['message'] .= ' Photos saved; the recognition cache will refresh on the next scan.';
 }
-
-// 3. DATABASE INSERT & SYNC
-if($filename) {
-    $targetPath = $targetDir . $filename;
-    $pythonPath = $pythonDir . $filename;
-
-    if(file_exists($targetPath)) {
-        $validationError=validateBiometricImage($targetPath);
-        if($validationError) {
-            @unlink($targetPath);
-            $_SESSION["toast"] = ["message" => $validationError, "type" => "error"];
-            header("Location: add-student.php");
-            exit;
-        }
-        if(!is_dir($pythonDir) || !copy($targetPath, $pythonPath)) {
-            @unlink($targetPath);
-            $_SESSION["toast"] = ["message" => "The student photo could not be added to face recognition. Please register the student again.", "type" => "error"];
-            header("Location: add-student.php");
-            exit;
-        }
-        $db_path = "uploads/students/" . $filename;
-
-        $sql = "INSERT INTO students (STUDENT_ID, STUDENT_NAME, FIRST_NAME, MIDDLE_NAME, LAST_NAME, GRADE, AGE, STRAND, ADDRESS, SECTION, IMAGE_PATH) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        $insert = $conn->prepare($sql);
-        $insert->bind_param("sssssiissss", $student_id, $student_name, $first_name, $middle_name, $last_name, $grade, $age, $strand, $address, $section, $db_path);
-
-        if($insert->execute()){
-            refreshStudentRecognitionService();
-            $_SESSION["toast"] = [
-                "message" => "Registered successfully",
-                "type" => "success",
-                "position" => "top-center",
-            ];
-            header("Location: student-list.php");
-            exit;
-        } else {
-            die("Database error: " . $insert->error);
-        }
-    }
-}
-?>
+header('Location: ' . $redirect);
+exit;

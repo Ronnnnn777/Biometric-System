@@ -22,6 +22,9 @@ uploads/students/*
 # Generated face-recognition runtime cache
 admin/face_encoding_cache.pkl
 admin/__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pkl
 
 # Runtime-only biometric files and generated document previews
 storage/
@@ -34,3 +37,6 @@ tools/*
 # Local planning documents
 docs/
 /Update.md
+
+# Local temporary teacher credentials
+/Teachers.md

@@ -5,7 +5,8 @@ require "page-guard.php";
 require '../includes/student-profile-schema.php';
 require '../includes/student-placement-options.php';
 require '../includes/section-catalog-schema.php';
-require '../includes/biometric-image.php';
+require '../includes/student-face-references.php';
+ensureStudentFaceReferences($conn);
 ensureStudentProfileColumns($conn);
 ensureSectionCatalogColumns($conn);
 seedDefaultTeacherSections($conn);
@@ -53,56 +54,17 @@ if ($enrollmentStatus === 'Enrolled' && !studentSectionHasCapacity($conn, $grade
     exit;
 }
 
-// 1. Get current path for cleanup
-$stmt_old = $conn->prepare("SELECT IMAGE_PATH FROM students WHERE ID = ?");
-$stmt_old->bind_param("i", $id);
-$stmt_old->execute();
-$old_res = $stmt_old->get_result()->fetch_assoc();
-$old_db_path = $old_res['IMAGE_PATH'] ?? '';
-
-$db_path = $old_db_path; 
-$pythonDir = "C:/Biometric_Capstone/known_faces/";
-$biometricFilesChanged=false;
-
-function refreshStudentRecognitionService(): void {
-    $context=stream_context_create(['http'=>['method'=>'POST','timeout'=>2,'ignore_errors'=>true]]);
-    @file_get_contents('http://127.0.0.1:8772/refresh',false,$context);
-}
-
-// 2. Process Image Update
-if(isset($_FILES['student_image']) && $_FILES['student_image']['error'] == 0) {
-    $file = $_FILES['student_image'];
-    $validationError=validateBiometricImage($file['tmp_name']);
-    if($validationError) {
-        $_SESSION['toast']=['message'=>$validationError,'type'=>'error'];
-        header("Location: edit-student.php?id=$id");
-        exit;
-    }
-    $ext = biometricImageExtension($file['tmp_name']);
-    $clean_name = str_replace(' ', '_', $student_name);
-    $new_filename = $student_id . "_" . $clean_name . "." . $ext;
-    
-    $targetPath = "../uploads/students/" . $new_filename;
-    $pythonPath = $pythonDir . $new_filename;
-
-    if (!empty($old_db_path) && file_exists("../" . $old_db_path)) {
-        unlink("../" . $old_db_path);
-    }
-    
-    $old_ai_files = glob($pythonDir . $student_id . "_*");
-    foreach($old_ai_files as $f) { if(is_file($f)) unlink($f); }
-
-    if(move_uploaded_file($file['tmp_name'], $targetPath)) {
-        if(!is_dir($pythonDir) || !copy($targetPath, $pythonPath)) {
-            $_SESSION['toast']=['message'=>'The replacement photo could not be added to face recognition.','type'=>'error'];
-            header("Location: edit-student.php?id=$id");
-            exit;
-        }
-        $db_path = "uploads/students/" . $new_filename;
-        $biometricFilesChanged=true;
-    }
-}
-
+$prepared = [];
+$createdFiles = [];
+try {
+    $conn->begin_transaction();
+    $current = $conn->prepare('SELECT IMAGE_PATH FROM students WHERE ID=? FOR UPDATE');
+    $current->bind_param('i', $id);
+    $current->execute();
+    $existing = $current->get_result()->fetch_assoc();
+    if (!$existing) throw new RuntimeException('Student profile was not found.');
+    $db_path = $existing['IMAGE_PATH'];
+    $prepared = prepareStudentFaceUploads(false, recognitionReferencePath($db_path), studentFaceReferences($conn, (int)$id));
 // 3. Database Update
 if ($enrollmentStatus === 'Archived') {
     $stmt = $conn->prepare("UPDATE students SET STUDENT_ID = ?, STUDENT_NAME = ?, FIRST_NAME = ?, MIDDLE_NAME = ?, LAST_NAME = ?, GRADE = ?, AGE = ?, STRAND = ?, ADDRESS = ?, SECTION = ?, ENROLLMENT_STATUS = ?, IMAGE_PATH = ?, ARCHIVE_REASON='Manual archive', ARCHIVED_AT=NOW() WHERE ID = ?");
@@ -111,12 +73,22 @@ if ($enrollmentStatus === 'Archived') {
 }
 $stmt->bind_param("sssssiisssssi", $student_id, $student_name, $first_name, $middle_name, $last_name, $grade, $age, $strand, $address, $section, $enrollmentStatus, $db_path, $id);
 
-if($stmt->execute()){
-    if($biometricFilesChanged) refreshStudentRecognitionService();
-    $_SESSION["toast"] = ["message" => "Student profile updated successfully!", "type" => "success"];
-    header("Location: student-list.php");
-    exit;
-} else {
-    echo "Update Failed: " . $conn->error;
+    $stmt->execute();
+    saveStudentFaceUploads($conn, (int)$id, $prepared, $createdFiles);
+    $conn->commit();
+    $_SESSION['toast'] = ['message'=>'Student profile updated successfully!', 'type'=>'success'];
+    $redirect = 'student-list.php';
+} catch (Throwable $error) {
+    $conn->rollback();
+    foreach ($createdFiles as $file) @unlink($file);
+    error_log('Student update: ' . $error->getMessage());
+    $_SESSION['toast'] = ['message'=>$error instanceof RuntimeException && !($error instanceof mysqli_sql_exception) ? $error->getMessage() : 'The student could not be saved. Please try again.', 'type'=>'error'];
+    $redirect = 'edit-student.php?id=' . (int)$id;
 }
-?>
+cleanupPreparedStudentFaces($prepared);
+if ($prepared && ($_SESSION['toast']['type'] ?? '') === 'success') {
+    try { $warmed = warmStudentFaceCache($conn); } catch (Throwable $error) { $warmed = false; }
+    if (!$warmed) $_SESSION['toast']['message'] .= ' Photos saved; the recognition cache will refresh on the next scan.';
+}
+header('Location: ' . $redirect);
+exit;
