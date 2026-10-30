@@ -1,0 +1,42 @@
+-- Read-only diagnostics. No schema changes, inserts, or fabricated grades.
+SELECT @@port AS database_port, ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1;
+
+SELECT t.TEACHER_ID,t.TEACHER_NAME,a.GRADE,a.STRAND,a.SECTION,
+       (SELECT COUNT(*) FROM current_teacher_subject_assignments x WHERE x.TEACHER_ID=t.TEACHER_ID) AS SUBJECT_ASSIGNMENTS
+FROM teachers t LEFT JOIN current_teacher_advisory_assignments a ON a.TEACHER_ID=t.TEACHER_ID
+WHERE t.TEACHER_STATUS='Active' ORDER BY t.TEACHER_ID;
+
+SELECT SCHOOL_YEAR,SECTION_ID,COUNT(*) AS OWNERS
+FROM teacher_advisory_assignments WHERE RELEASED_AT IS NULL
+GROUP BY SCHOOL_YEAR,SECTION_ID HAVING COUNT(*)>1;
+SELECT SCHOOL_YEAR,TEACHER_ID,COUNT(*) AS CLASSES
+FROM teacher_advisory_assignments WHERE RELEASED_AT IS NULL
+GROUP BY SCHOOL_YEAR,TEACHER_ID HAVING COUNT(*)>1;
+
+-- This anti-join identifies actual absent required records, not partial quarters.
+SELECT s.STUDENT_ID,s.STUDENT_NAME,s.GRADE,s.STRAND,s.SECTION,r.SUBJECT
+FROM students s JOIN promotion_required_subjects r
+  ON r.SCHOOL_YEAR=(SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1)
+ AND r.GRADE=s.GRADE AND r.STRAND=s.STRAND
+LEFT JOIN student_subject_results g ON TRIM(g.STUDENT_ID)=TRIM(s.STUDENT_ID)
+ AND g.SCHOOL_YEAR=r.SCHOOL_YEAR AND LOWER(TRIM(g.SUBJECT))=LOWER(TRIM(r.SUBJECT))
+WHERE s.ENROLLMENT_STATUS='Enrolled' AND s.IS_ARCHIVED=0 AND g.STUDENT_ID IS NULL
+ORDER BY s.GRADE,s.SECTION,s.STUDENT_NAME,r.SUBJECT;
+
+-- A missing curriculum must not be mistaken for a complete empty subject list.
+SELECT s.GRADE,s.STRAND,COUNT(*) AS AFFECTED_STUDENTS
+FROM students s WHERE s.ENROLLMENT_STATUS='Enrolled' AND s.IS_ARCHIVED=0
+AND NOT EXISTS (SELECT 1 FROM promotion_required_subjects r
+  WHERE r.SCHOOL_YEAR=(SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1)
+    AND r.GRADE=s.GRADE AND r.STRAND=s.STRAND)
+GROUP BY s.GRADE,s.STRAND;
+
+SELECT SCHOOL_YEAR,COUNT(*) AS SUBJECT_RECORDS,COUNT(DISTINCT STUDENT_ID) AS STUDENTS,
+       SUM(Q1_GRADE IS NULL OR Q2_GRADE IS NULL OR Q3_GRADE IS NULL OR Q4_GRADE IS NULL OR FINAL_GRADE IS NULL) AS PARTIAL_RECORDS
+FROM student_subject_results GROUP BY SCHOOL_YEAR;
+
+-- Invalid references/placements would indicate a relationship problem.
+SELECT g.STUDENT_ID,g.SCHOOL_YEAR,g.SUBJECT,g.GRADE,g.STRAND
+FROM student_subject_results g LEFT JOIN students s ON TRIM(s.STUDENT_ID)=TRIM(g.STUDENT_ID)
+WHERE g.SCHOOL_YEAR=(SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1)
+ AND (s.ID IS NULL OR g.GRADE<>s.GRADE OR g.STRAND<>s.STRAND);

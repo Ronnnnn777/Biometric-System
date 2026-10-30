@@ -8,7 +8,7 @@ require "../includes/section-catalog-schema.php";
 require "../includes/sectioning.php";
 require "../includes/teacher-assignment-schema.php";
 require "../includes/staff-biometric.php";
-require "../includes/attendance-schema.php";
+require_once "../includes/attendance-schema.php";
 require "../includes/mobile-scanner-settings.php";
 require "components.php";
 ensureSectionCatalogColumns($conn);
