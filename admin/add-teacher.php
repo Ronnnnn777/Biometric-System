@@ -1,5 +1,6 @@
 <?php
 require "page-guard.php";
+require_once "../includes/csrf-token.php";
 if ($_SESSION["user-role"] !== "administrator") {
     http_response_code(403);
     exit("Administrators only.");
@@ -33,7 +34,7 @@ adminSidebar(
     <h2 class="mt-2 text-2xl font-black text-slate-900">Create teacher account</h2>
     <p class="mt-2 text-slate-500">Create the account first. Grade and section access is optional and can be added later
         or assigned automatically from a School Form import.</p>
-    <form action="save-teacher.php" method="post" class="mt-7 space-y-5">
+    <form action="save-teacher.php" method="post" class="mt-7 space-y-5"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
         <div class="grid gap-4 sm:grid-cols-2"><label class="block text-sm font-bold text-slate-700">First name<input
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="first_name" maxlength="80"
                     autocomplete="given-name" required></label><label
@@ -53,10 +54,11 @@ adminSidebar(
                         class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password"
                         name="teacher_confirm" minlength="8" required></label></div>
         </div>
+        <div class="rounded-2xl border border-slate-200 p-5"><?php teacherAdvisorySelect($conn, 0); ?></div>
         <div class="rounded-2xl border border-slate-200 p-5">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h3 class="font-black text-slate-900">Grade and section assignments</h3>
+                    <h3 class="font-black text-slate-900">Subject teaching assignments</h3>
                     <p class="mt-1 text-sm text-slate-500">Optional. Add a subject assignment only when needed.</p>
                 </div><button id="add-assignment" type="button"
                     class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100">+
@@ -110,6 +112,7 @@ adminSidebar(
                     <select class="assignment-section mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3" name="assignment_section[]" required></select>
                 </label>
             </div>
+            <label class="senior-subject-label mt-3 block text-sm font-bold text-slate-700" hidden>Subject taught (optional)<input class="senior-subject mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" name="assignment_senior_subject[]" maxlength="80" placeholder="Exact subject name"></label>
             <select class="assignment-strand" name="assignment_strand[]" hidden></select>
             <select class="assignment-subject" name="assignment_subject[]" hidden></select>`;
         assignmentList.appendChild(row);
@@ -119,10 +122,13 @@ adminSidebar(
             section = row.querySelector('.assignment-section'),
             strand = row.querySelector('.assignment-strand'),
             subject = row.querySelector('.assignment-subject');
+        const seniorSubject = row.querySelector('.senior-subject');
+        seniorSubject.value = saved.subject || '';
         grade.value = saved.grade || '';
 
         function update(restore = false) {
             const senior = grade.value === '11' || grade.value === '12';
+            row.querySelector('.senior-subject-label').hidden = !senior;
             label.textContent = senior ? 'Strand assigned' : 'Subject assigned';
             setOptions(value, grade.value ? (senior ? 'Choose a strand' : 'Choose a subject') : 'Choose a grade first',
                 senior ? ['Techpro', 'Academic'] : subjectOptions, restore ? (senior ? (saved.strand || '') : (saved

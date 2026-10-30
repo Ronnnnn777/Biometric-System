@@ -12,15 +12,15 @@ function ensureSectionCatalogColumns(mysqli $conn): void
     if (!isset($columns['STRAND'])) $conn->query("ALTER TABLE sections ADD COLUMN STRAND VARCHAR(20) NOT NULL DEFAULT '' AFTER GRADE");
     if (!isset($columns['BASE_SECTION'])) $conn->query("ALTER TABLE sections ADD COLUMN BASE_SECTION VARCHAR(80) NOT NULL DEFAULT '' AFTER STRAND");
     if (!isset($columns['IS_ACTIVE'])) $conn->query('ALTER TABLE sections ADD COLUMN IS_ACTIVE TINYINT(1) NOT NULL DEFAULT 1 AFTER BASE_SECTION');
-    if (!isset($columns['CAPACITY'])) $conn->query('ALTER TABLE sections ADD COLUMN CAPACITY SMALLINT UNSIGNED NOT NULL DEFAULT 50 AFTER IS_ACTIVE');
+    if (!isset($columns['CAPACITY'])) $conn->query('ALTER TABLE sections ADD COLUMN CAPACITY SMALLINT UNSIGNED NOT NULL DEFAULT 40 AFTER IS_ACTIVE');
     if (!isset($columns['SORT_ORDER'])) {
         $conn->query('ALTER TABLE sections ADD COLUMN SORT_ORDER INT NOT NULL DEFAULT 0 AFTER CAPACITY');
         // Give legacy catalog rows a stable order instead of relying on insertion order.
         $conn->query('UPDATE sections SET SORT_ORDER=SECTION_ID WHERE SORT_ORDER=0');
     }
     // Configurable fallback used by the auto-sectioning chunker.
-    $conn->query('CREATE TABLE IF NOT EXISTS section_settings (ID TINYINT UNSIGNED NOT NULL PRIMARY KEY, DEFAULT_CAPACITY SMALLINT UNSIGNED NOT NULL DEFAULT 50)');
-    $conn->query('INSERT IGNORE INTO section_settings (ID, DEFAULT_CAPACITY) VALUES (1, 50)');
+    $conn->query('CREATE TABLE IF NOT EXISTS section_settings (ID TINYINT UNSIGNED NOT NULL PRIMARY KEY, DEFAULT_CAPACITY SMALLINT UNSIGNED NOT NULL DEFAULT 40)');
+    $conn->query('INSERT IGNORE INTO section_settings (ID, DEFAULT_CAPACITY) VALUES (1, 40)');
     ensureSectionColumnWidths($conn);
     reconcileBaseSectionOrder($conn);
 }
@@ -80,7 +80,7 @@ function seedDefaultTeacherSections(mysqli $conn): void
     $hasBase = $conn->prepare('SELECT 1 FROM sections WHERE BASE_SECTION=? LIMIT 1');
     $upsert = $conn->prepare("INSERT INTO sections (SECTION,GRADE,STRAND,BASE_SECTION,IS_ACTIVE,CAPACITY,SORT_ORDER) VALUES (?,?,?,?,1,?,?) ON DUPLICATE KEY UPDATE GRADE=COALESCE(GRADE,VALUES(GRADE)), STRAND=IF(STRAND='',VALUES(STRAND),STRAND), BASE_SECTION=IF(BASE_SECTION='',VALUES(BASE_SECTION),BASE_SECTION)");
     $capacitySetting = $conn->query('SELECT DEFAULT_CAPACITY FROM section_settings WHERE ID=1 LIMIT 1');
-    $capacity = min(50, max(1, (int) (($capacitySetting ? $capacitySetting->fetch_assoc() : [])['DEFAULT_CAPACITY'] ?? 50)));
+    $capacity = min(50, max(1, (int) (($capacitySetting ? $capacitySetting->fetch_assoc() : [])['DEFAULT_CAPACITY'] ?? 40)));
     $order = 0;
     foreach ($defaults as $grade => $strands) foreach ($strands as $strand => $sections) foreach ($sections as $section) {
         $order++;

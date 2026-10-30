@@ -1,98 +1,36 @@
 <?php
 require 'page-guard.php';
-require '../config/db_conn.php';
-require '../includes/school-year-schema.php';
-require '../includes/student-profile-schema.php';
-
-ensureSchoolYearRolloverSchema($conn);
-ensureStudentProfileColumns($conn);
-
-function undoRolloverRedirect(string $message, string $type = 'error'): void
-{
-    $_SESSION['toast'] = ['message' => $message, 'type' => $type];
-    header('Location: school-year-rollover.php');
-    exit;
+require_once '../config/db_conn.php';
+require_once '../includes/promotion-runner.php';
+function undoRolloverRedirect(string $message,string $type='error'): void {
+    $_SESSION['toast']=['message'=>$message,'type'=>$type]; header('Location: school-year-rollover.php'); exit;
 }
-
-if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
-    undoRolloverRedirect('The undo request expired.');
-}
-
-$admin = $conn->prepare('SELECT ADMIN_PASS FROM admins WHERE ADMIN_USER=? LIMIT 1');
-$admin->bind_param('s', $_SESSION['admin-user']);
-$admin->execute();
-$account = $admin->get_result()->fetch_assoc();
-if (!$account || !password_verify($_POST['current_password'] ?? '', $account['ADMIN_PASS'])) {
-    undoRolloverRedirect('Administrator password is incorrect. No records were changed.');
-}
-
-$setting = $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc();
-$currentSchoolYear = (string) ($setting['ACTIVE_SCHOOL_YEAR'] ?? '');
-if (!preg_match('/^(\d{4})-(\d{4})$/', $currentSchoolYear, $years)) {
-    undoRolloverRedirect('The active school year is invalid.');
-}
-$targetSchoolYear = trim((string) ($_POST['target_school_year'] ?? ''));
-if ($targetSchoolYear === '' && preg_match('/^(\d{4})-(\d{4})$/', $currentSchoolYear, $currentParts)) {
-    // The undo form only carries a password; derive the immediately previous year.
-    $targetSchoolYear = ((int) $currentParts[1] - 1) . '-' . ((int) $currentParts[2] - 1);
-}
-if (!preg_match('/^(\d{4})-(\d{4})$/', $targetSchoolYear) || $targetSchoolYear >= $currentSchoolYear) {
-    undoRolloverRedirect('Choose a valid past school year to restore.');
-}
-$count = $conn->prepare('SELECT COUNT(*) total FROM student_school_history WHERE SCHOOL_YEAR=?');
-$count->bind_param('s', $targetSchoolYear);
-$count->execute();
-$studentCount = (int) ($count->get_result()->fetch_assoc()['total'] ?? 0);
-if ($studentCount === 0) {
-    undoRolloverRedirect('No saved student snapshot is available for ' . $targetSchoolYear . '.');
-}
-
+if ($_SERVER['REQUEST_METHOD']!=='POST' || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'],(string)($_POST['csrf_token'] ?? ''))) undoRolloverRedirect('The undo request expired.');
+$admin=$conn->prepare('SELECT ADMIN_PASS FROM admins WHERE ADMIN_USER=?'); $admin->bind_param('s',$_SESSION['admin-user']); $admin->execute(); $account=$admin->get_result()->fetch_assoc();
+if (!$account || !password_verify((string)($_POST['current_password'] ?? ''),$account['ADMIN_PASS'])) undoRolloverRedirect('Administrator password is incorrect.');
+$conn->begin_transaction();
 try {
-    $conn->begin_transaction();
-    $restore = $conn->prepare(
-        "UPDATE students s INNER JOIN student_school_history h ON TRIM(h.STUDENT_ID)=TRIM(s.STUDENT_ID) SET s.GRADE=h.GRADE,s.STRAND=h.STRAND,s.SECTION=h.SECTION,s.ENROLLMENT_STATUS=h.ENROLLMENT_STATUS,s.ARCHIVE_REASON=CASE WHEN h.ENROLLMENT_STATUS='Enrolled' THEN '' ELSE s.ARCHIVE_REASON END,s.ARCHIVED_AT=CASE WHEN h.ENROLLMENT_STATUS='Enrolled' THEN NULL ELSE s.ARCHIVED_AT END WHERE h.SCHOOL_YEAR=?",
-    );
-    $restore->bind_param('s', $targetSchoolYear);
-    $restore->execute();
-    $restored = $restore->affected_rows;
-
-    // Remove overflow sections that this rollover created, once they are empty again.
-    $tracked = $conn->prepare('SELECT SECTION FROM school_year_rollover_sections WHERE SCHOOL_YEAR=?');
-    $tracked->bind_param('s', $targetSchoolYear);
-    $tracked->execute();
-    $trackedRows = $tracked->get_result();
-    $usage = $conn->prepare(
-        'SELECT (SELECT COUNT(*) FROM students WHERE SECTION=?) + (SELECT COUNT(*) FROM teachers WHERE SECTION=?) + (SELECT COUNT(*) FROM teacher_assignments WHERE SECTION=?) count',
-    );
-    $deleteGenerated = $conn->prepare("DELETE FROM sections WHERE SECTION=? AND BASE_SECTION=''");
-    $deactivateSection = $conn->prepare('UPDATE sections SET IS_ACTIVE=0 WHERE SECTION=?');
-    while ($trackedRows && ($trackedRow = $trackedRows->fetch_assoc())) {
-        $trackedSection = (string) $trackedRow['SECTION'];
-        $usage->bind_param('sss', $trackedSection, $trackedSection, $trackedSection);
-        $usage->execute();
-        if ((int) ($usage->get_result()->fetch_assoc()['count'] ?? 1) !== 0) {
-            continue;
-        }
-        $deleteGenerated->bind_param('s', $trackedSection);
-        $deleteGenerated->execute();
-        if ($deleteGenerated->affected_rows === 0) {
-            $deactivateSection->bind_param('s', $trackedSection);
-            $deactivateSection->execute();
-        }
+    $year=$conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1 FOR UPDATE')->fetch_assoc()['ACTIVE_SCHOOL_YEAR'];
+    if (!validPromotionSchoolYear($year)) throw new RuntimeException('The active school year is invalid.');
+    if (isset($_POST['expected_school_year']) && $_POST['expected_school_year']!==$year) throw new RuntimeException('The school year changed. Refresh before undoing.');
+    $parts=explode('-',$year); $previous=((int)$parts[0]-1).'-'.((int)$parts[1]-1);
+    $target=(string)($_POST['target_school_year'] ?? $previous);
+    if ($target!==$previous) throw new RuntimeException('Undo the latest rollover first.');
+    $find=$conn->prepare('SELECT * FROM school_year_rollover_runs WHERE SOURCE_YEAR=? AND TARGET_YEAR=? AND UNDONE_AT IS NULL ORDER BY ID DESC LIMIT 1 FOR UPDATE');
+    $find->bind_param('ss',$target,$year); $find->execute(); $run=$find->get_result()->fetch_assoc();
+    if ($run) $count=undoPromotionRun($conn,$run);
+    else {
+        // Compatibility with snapshots created before run-specific audit records existed.
+        $has=$conn->prepare('SELECT COUNT(*) n FROM student_school_history WHERE SCHOOL_YEAR=?');
+        $has->bind_param('s',$target); $has->execute();
+        if (!(int)$has->get_result()->fetch_assoc()['n']) throw new RuntimeException('No saved student snapshot is available for the previous school year.');
+        $restore=$conn->prepare("UPDATE students s JOIN student_school_history h ON TRIM(h.STUDENT_ID)=TRIM(s.STUDENT_ID)
+            SET s.GRADE=h.GRADE,s.STRAND=h.STRAND,s.SECTION=h.SECTION,s.ENROLLMENT_STATUS=h.ENROLLMENT_STATUS,
+                s.IS_ARCHIVED=IF(h.ENROLLMENT_STATUS='Archived',1,0),s.ARCHIVE_REASON=IF(h.ENROLLMENT_STATUS='Enrolled','',s.ARCHIVE_REASON),s.ARCHIVED_AT=IF(h.ENROLLMENT_STATUS='Enrolled',NULL,s.ARCHIVED_AT)
+            WHERE h.SCHOOL_YEAR=?");
+        $restore->bind_param('s',$target); $restore->execute(); $count=$restore->affected_rows;
     }
-    $clearTracked = $conn->prepare('DELETE FROM school_year_rollover_sections WHERE SCHOOL_YEAR=?');
-    $clearTracked->bind_param('s', $targetSchoolYear);
-    $clearTracked->execute();
-
-    $updateYear = $conn->prepare('UPDATE school_year_settings SET ACTIVE_SCHOOL_YEAR=? WHERE ID=1');
-    $updateYear->bind_param('s', $targetSchoolYear);
-    $updateYear->execute();
+    $activate=$conn->prepare('UPDATE school_year_settings SET ACTIVE_SCHOOL_YEAR=? WHERE ID=1'); $activate->bind_param('s',$target); $activate->execute();
     $conn->commit();
-    undoRolloverRedirect(
-        'Rollover undone. ' . $restored . ' student record' . ($restored === 1 ? ' was' : 's were') . ' restored and the active school year is now ' . $targetSchoolYear . '.',
-        'success',
-    );
-} catch (Throwable $error) {
-    $conn->rollback();
-    undoRolloverRedirect('The rollover could not be undone. No student records were changed.');
-}
+} catch (Throwable $exception) { $conn->rollback(); undoRolloverRedirect($exception instanceof mysqli_sql_exception ? 'Undo failed. No student records were changed.' : $exception->getMessage()); }
+undoRolloverRedirect("Rollover undone. $count student placements restored. Grades and rollover history were preserved; active school year is $target.",'success');

@@ -57,27 +57,25 @@ function teacherShell(string $title, string $actions = ''): void {
     unset($_SESSION['toast']);
     global $conn;
 
-    if (isset($conn) && $conn instanceof mysqli && function_exists('teacherAssignments')) {
-        foreach (teacherAssignments($conn, (int) ($_SESSION['teacher-id'] ?? 0)) as $assignment) {
-            $detail = in_array((int) $assignment['GRADE'], [11, 12], true) ? $assignment['STRAND'] : $assignment['SUBJECT'];
+    if (isset($conn) && $conn instanceof mysqli && function_exists('teacherAdvisoryAssignments')) {
+        foreach (teacherAdvisoryAssignments($conn, (int) ($_SESSION['teacher-id'] ?? 0)) as $assignment) {
+            $detail = $assignment['STRAND'];
             $assignmentLabels[] = 'Grade ' . $assignment['GRADE'] . ' | ' . $assignment['SECTION'] . ($detail ? ' · ' . $detail : '');
         }
     }
 
-    if (!$assignmentLabels && ($_SESSION['teacher-section'] ?? '') !== '') {
-        $assignmentLabels[] = $_SESSION['teacher-section'];
-    }
-
-    $pageDescription = $page === 'home.php'
+    $pageDescription = $page === 'grading.php' ? 'Encode quarterly grades for your assigned subjects.' : ($page === 'home.php'
         ? 'Review recorded attendance and approved attendance exceptions.'
         : ($page === 'students.php'
-            ? 'View students in your assigned grades, sections, and subjects.'
+            ? 'View students in your advisory section.'
             : ($page === 'settings.php'
                 ? 'Manage your password and biometric sign-in.'
-                : 'Review the selected student profile and attendance history.'));
+                : 'Review the selected student profile and attendance history.')));
 
     if ($page === 'home.php') {
         $crumbs = [['label' => 'Students', 'href' => 'students.php'], ['label' => 'Attendance logs']];
+    } elseif ($page === 'grading.php') {
+        $crumbs = [['label' => 'Students', 'href' => 'students.php'], ['label' => 'Grading']];
     } elseif ($page === 'settings.php') {
         $crumbs = [['label' => 'Students', 'href' => 'students.php'], ['label' => 'Settings']];
     } elseif ($page === 'student-profile.php') {
@@ -94,7 +92,7 @@ function teacherShell(string $title, string $actions = ''): void {
         </a>
 
         <nav class="flex w-full flex-col gap-1" aria-label="Teacher navigation">
-            <a href="students.php" <?= in_array($page, ['students.php', 'student-profile.php'], true) ? 'aria-current="page"' : '' ?> class="flex w-full items-center gap-4 rounded-lg px-6 py-4 text-base transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 <?= in_array($page, ['students.php', 'student-profile.php'], true) ? 'bg-blue-600 font-black text-white shadow-md' : 'font-bold text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
+            <a href="students.php" <?= in_array($page, ['students.php', 'student-profile.php', 'grading.php'], true) ? 'aria-current="page"' : '' ?> class="flex w-full items-center gap-4 rounded-lg px-6 py-4 text-base transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 <?= in_array($page, ['students.php', 'student-profile.php', 'grading.php'], true) ? 'bg-blue-600 font-black text-white shadow-md' : 'font-bold text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
                 <span class="grid h-6 w-6 shrink-0 place-items-center"><?= icon('users', 'w-6 h-6 shrink-0') ?></span>
                 <span class="min-w-0 truncate">Students</span>
             </a>
@@ -113,7 +111,7 @@ function teacherShell(string $title, string $actions = ''): void {
                 <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Teacher profile</p>
                 <p class="mt-2 truncate text-sm font-bold text-white"><?= htmlspecialchars($_SESSION['teacher-name']) ?></p>
                 <div class="mt-3 border-t border-slate-800 pt-3">
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Assigned sections</p>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Advisory section</p>
                     <ul class="mt-2 space-y-1.5">
                         <?php foreach ($assignmentLabels as $assignmentLabel): ?>
                         <li class="truncate text-xs text-slate-300"><?= htmlspecialchars($assignmentLabel) ?></li>

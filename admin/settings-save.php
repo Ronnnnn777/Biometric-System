@@ -309,9 +309,9 @@ if ($action === "password") {
 } elseif ($action === "delete_section") {
     $section = trim($_POST["delete_target"] ?? ($_POST["section"] ?? ""));
     $check = $conn->prepare(
-        "SELECT (SELECT COUNT(*) FROM students WHERE SECTION=?) + (SELECT COUNT(*) FROM teachers WHERE SECTION=?) + (SELECT COUNT(*) FROM teacher_assignments WHERE SECTION=?) count",
+        "SELECT (SELECT COUNT(*) FROM students WHERE SECTION=?) + (SELECT COUNT(*) FROM teachers WHERE SECTION=?) + (SELECT COUNT(*) FROM teacher_assignments WHERE SECTION=?) + (SELECT COUNT(*) FROM teacher_advisory_assignments aa JOIN sections ss ON ss.SECTION_ID=aa.SECTION_ID WHERE ss.SECTION=?) count",
     );
-    $check->bind_param("sss", $section, $section, $section);
+    $check->bind_param("ssss", $section, $section, $section, $section);
     $check->execute();
     if (($check->get_result()->fetch_assoc()["count"] ?? 1) == 0) {
         $base = $conn->prepare(

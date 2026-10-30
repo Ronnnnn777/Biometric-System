@@ -6,6 +6,8 @@ require_once __DIR__ . "/../config/db_conn.php";
 require_once __DIR__ . "/../includes/student-profile-schema.php";
 require_once __DIR__ . "/../includes/attendance-schema.php";
 ensureStudentProfileColumns($conn);
+require_once __DIR__ . '/../includes/student-face-references.php';
+$studentFaceReferences = recognitionStudentReferences($conn);
 ensureAttendanceTimeOutColumn($conn);
 ensureAttendanceSnapshotColumns($conn);
 header("Content-Type: application/json");
@@ -75,7 +77,8 @@ if ($imagePath === "") {
 }
 function recognizeWithService(string $imagePath): ?array
 {
-    $payload = json_encode(["image_path" => $imagePath]);
+    global $studentFaceReferences;
+    $payload = json_encode(['image_path' => $imagePath, 'references' => $studentFaceReferences]);
     $context = stream_context_create([
         "http" => [
             "method" => "POST",
@@ -86,19 +89,17 @@ function recognizeWithService(string $imagePath): ?array
         ],
     ]);
     $raw = @file_get_contents(
-        "http://127.0.0.1:8772/recognize",
+        "http://127.0.0.1:8774/recognize",
         false,
         $context,
     );
     $result = json_decode($raw ?: "", true);
-    if (!is_array($result) || !empty($result['service_error']) || ($result['message'] ?? '') === 'Recognition service error.') {
+    if (!is_array($result) || ($result['reference_protocol'] ?? 0) !== 1 || !empty($result['service_error']) || ($result['message'] ?? '') === 'Recognition service error.') {
         return null;
     }
     return $result;
 }
-$pythonPath =
-    "C:\\Users\\jaxim\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe";
-$pythonCommand = is_file($pythonPath) ? escapeshellarg($pythonPath) : "py -3";
+$pythonCommand = biometricPythonCommand();
 $result = recognizeWithService($imagePath);
 // Keep recognition in one long-running Python process.  Re-loading every
 // enrolled face for every camera frame is the main source of scan latency.
@@ -127,14 +128,19 @@ if ($result === null) {
     $script = escapeshellarg(
         __DIR__ . DIRECTORY_SEPARATOR . "recognize_face.py",
     );
+    $referenceFile = tempnam(sys_get_temp_dir(), 'face-references-');
+    if ($referenceFile === false || file_put_contents($referenceFile, json_encode($studentFaceReferences)) === false) {
+        throw new RuntimeException('Could not prepare recognition references.');
+    }
     $raw = shell_exec(
         $pythonCommand .
             " " .
             $script .
             " " .
-            escapeshellarg($imagePath) .
+            escapeshellarg($imagePath) . ' ' . escapeshellarg($referenceFile) .
             " 2>NUL",
     );
+    @unlink($referenceFile);
     $result = json_decode($raw ?? "", true);
 }
 if ($removeImage) {

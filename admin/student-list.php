@@ -2,6 +2,7 @@
 require '../config/db_conn.php';
 require '../includes/student-profile-schema.php';
 require '../includes/section-catalog-schema.php';
+require_once '../includes/promotion-policy-schema.php';
 ensureStudentProfileColumns($conn);
 ensureSectionCatalogColumns($conn);
 require 'page-guard.php';
@@ -51,15 +52,8 @@ $result = $stmt->get_result();
 
 // One active, ordered catalog supplies PHP options and browser filters.
 $sectionCatalog = studentSectionPlacementOptions($conn);
-// The sectioning helper designates the first DB-ordered section in each
-// grade/strand as Section 1 (honor). This is a section label, not a student award.
-$honorSectionMap = [];
-foreach ($sectionCatalog as $catalogGrade => $placements) {
-    $groups = $catalogGrade >= 11 ? $placements : ['' => $placements];
-    foreach ($groups as $catalogStrand => $names) {
-        $honorSectionMap[$catalogGrade][$catalogStrand] = $names[0] ?? '';
-    }
-}
+// Labels come from explicit school policy; section order never implies honor status.
+$honorSectionMap = promotionHonorSectionMap($conn);
 
 // Archived status remains available only in the archived roster.
 $statusItems = [['value' => '', 'label' => 'All Statuses']];

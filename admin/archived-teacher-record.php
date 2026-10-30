@@ -3,7 +3,7 @@ require "page-guard.php";
 require "../config/db_conn.php";
 require "../includes/teacher-profile-schema.php";
 require "../includes/teacher-assignment-schema.php";
-require "../includes/attendance-schema.php";
+require_once "../includes/attendance-schema.php";
 ensureTeacherProfileColumns($conn);
 ensureTeacherAssignmentSchema($conn);
 ensureAttendanceTimeOutColumn($conn);

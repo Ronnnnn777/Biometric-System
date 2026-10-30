@@ -3,6 +3,9 @@ Options -Indexes
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    # Preserve historical IMAGE_PATH URLs while requiring roster authorization.
+    RewriteRule ^uploads/students/([^/]+\.(?:jpe?g|png))$ admin/student-face-image.php?legacy=$1 [B,END,NC]
+    RewriteRule ^uploads/students(?:/|$) - [F,L,NC]
     # Deny application code and private data before any clean-URL mapping.
     RewriteRule ^(?:config|database|includes|storage|tools|tmp|output|\.git)(?:/|$) - [F,L,NC]
     # Preserve bearer credentials for the native scanner API under Apache/FastCGI.

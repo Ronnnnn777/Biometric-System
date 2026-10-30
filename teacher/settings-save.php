@@ -1,6 +1,6 @@
 <?php
 require 'page-guard.php';
-require '../config/db_conn.php';
+require_once '../config/db_conn.php';
 require '../includes/staff-biometric.php';
 if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) { http_response_code(400); exit('Invalid request.'); }
 
@@ -16,11 +16,11 @@ if (!$teacher || !password_verify($currentPassword, $teacher['TEACHER_PASS'])) {
 } elseif ($action === 'password') {
     $newPassword = $_POST['new_password'] ?? '';
     $confirmPassword = $_POST['confirm_password'] ?? '';
-    if (strlen($newPassword) < 8 || $newPassword !== $confirmPassword) {
-        $_SESSION['toast'] = ['message' => 'Use matching new passwords with at least 8 characters.', 'type' => 'error'];
+    if (strlen($newPassword) < 12 || $newPassword !== $confirmPassword || password_verify($newPassword, $teacher['TEACHER_PASS'])) {
+        $_SESSION['toast'] = ['message' => 'Use matching new passwords with at least 12 characters, different from your current password.', 'type' => 'error'];
     } else {
         $hash = password_hash($newPassword, PASSWORD_DEFAULT);
-        $update = $conn->prepare('UPDATE teachers SET TEACHER_PASS=? WHERE TEACHER_ID=?');
+        $update = $conn->prepare('UPDATE teachers SET TEACHER_PASS=?, MUST_CHANGE_PASSWORD=0 WHERE TEACHER_ID=?');
         $update->bind_param('si', $hash, $teacherId);
         $update->execute();
         $_SESSION['toast'] = ['message' => 'Your teacher password was updated successfully.', 'type' => 'success'];

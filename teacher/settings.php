@@ -1,6 +1,6 @@
 <?php
 require "page-guard.php";
-require "../config/db_conn.php";
+require_once "../config/db_conn.php";
 require "../includes/csrf-token.php";
 require "../includes/staff-biometric.php";
 ensureStaffBiometricSchema($conn);
@@ -66,6 +66,7 @@ teacherShell("Settings");
         color: #2563eb
     }
 </style>
+<?php if (!empty($portalTeacher['MUST_CHANGE_PASSWORD'])): ?><p class="mb-4 font-bold text-amber-600">Change your temporary password to continue. Use at least 12 characters.</p><?php endif; ?>
 <details class="teacher-settings-group" open>
     <summary><span><span class="block text-base font-black text-slate-900">Appearance</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Choose a light or dark dashboard, or follow this
@@ -96,7 +97,7 @@ teacherShell("Settings");
             camera</button>
     </section>
 </details>
-<details class="teacher-settings-group">
+<details class="teacher-settings-group" <?= !empty($portalTeacher['MUST_CHANGE_PASSWORD']) ? 'open' : '' ?>>
     <summary><span><span class="block text-base font-black text-slate-900">Change password</span><span
                 class="mt-1 block text-sm font-medium text-slate-500">Update your own teacher account
                 password.</span></span><span class="teacher-settings-chevron text-slate-500"><?= icon('chevron-down') ?></span></summary>
@@ -108,10 +109,10 @@ teacherShell("Settings");
                     name="current_password" autocomplete="current-password" required></label><label
                 class="block text-sm font-bold text-slate-700">New password<input
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password" name="new_password"
-                    minlength="8" autocomplete="new-password" required></label><label
+                    minlength="12" autocomplete="new-password" required></label><label
                 class="block text-sm font-bold text-slate-700">Confirm new password<input
                     class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" type="password"
-                    name="confirm_password" minlength="8" autocomplete="new-password" required></label><button
+                    name="confirm_password" minlength="12" autocomplete="new-password" required></label><button
                 class="btn btn-primary w-full">Update
                 password</button></form>
     </section>

@@ -78,6 +78,7 @@ adminSidebar(
                 <?php while ($teacher = $teachers->fetch_assoc()): ?>
                 <?php
                     $assignments = teacherAssignments($conn, (int) $teacher['TEACHER_ID']);
+                    $advisory = teacherAdvisoryAssignments($conn, (int) $teacher['TEACHER_ID']);
                     $dateValue = $isArchivedView ? ($teacher['ARCHIVED_AT'] ?? '') : ($teacher['CREATED_AT'] ?? '');
                 ?>
                 <tr class="hover:bg-slate-50">
@@ -85,15 +86,16 @@ adminSidebar(
                     <td class="px-5 py-4 text-slate-600"><?= htmlspecialchars($teacher['TEACHER_USER']) ?></td>
                     <td class="px-5 py-4">
                         <div class="flex flex-wrap gap-2">
+                            <?php foreach ($advisory as $adviserClass): ?><span class="rounded-full bg-blue-50 px-3 py-1 font-bold text-blue-700"><?= htmlspecialchars('Adviser: Grade '.$adviserClass['GRADE'].' | '.$adviserClass['SECTION'].($adviserClass['STRAND'] ? ' | '.$adviserClass['STRAND'] : '')) ?></span><?php endforeach; ?>
                             <?php foreach ($assignments as $assignment): ?>
                             <?php
                                 $detail = in_array((int) $assignment['GRADE'], [11, 12], true) ? $assignment['STRAND'] : $assignment['SUBJECT'];
-                                $label = 'Grade ' . $assignment['GRADE'] . ' | ' . $assignment['SECTION'];
+                                $label = 'Teaches: Grade ' . $assignment['GRADE'] . ' | ' . $assignment['SECTION'];
                             ?>
                             <span
                                 class="rounded-full bg-violet-50 px-3 py-1 font-bold text-violet-700"><?= htmlspecialchars($label) . ($detail ? ' · ' . htmlspecialchars($detail) : '') ?></span>
                             <?php endforeach; ?>
-                            <?php if (!$assignments): ?>
+                            <?php if (!$assignments && !$advisory): ?>
                             <span class="text-slate-500"><?= $isArchivedView ? 'No assignments retained' : 'Not assigned' ?></span>
                             <?php endif; ?>
                         </div>
@@ -115,6 +117,7 @@ adminSidebar(
                                 <input type="hidden" name="csrf_token"
                                     value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                                 <input type="hidden" name="id" value="<?= (int) $teacher['TEACHER_ID'] ?>">
+                                <?php teacherAdvisorySelect($conn,(int)$teacher['TEACHER_ID']); ?>
                                 <button
                                     class="btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 px-3 text-xs font-medium text-emerald-700 transition hover:bg-emerald-500/20">Restore</button>
                             </form>

@@ -14,6 +14,8 @@ seedDefaultTeacherSections($conn);
 require "page-guard.php";
 require "../includes/csrf-token.php";
 require "components.php";
+require_once "../includes/student-face-references.php";
+ensureStudentFaceReferences($conn);
 $id = (int) ($_GET["id"] ?? 0);
 $stmt = $conn->prepare("SELECT * FROM students WHERE ID=?");
 $stmt->bind_param("i", $id);
@@ -117,7 +119,7 @@ adminSidebar(
 
 <div id="student-profile-panel" data-student-panel="profile" role="tabpanel"
     class="<?= $activeTab === 'profile' ? '' : 'hidden' ?>">
-    <div class="grid w-full gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <div class="w-full">
     <section class="card card-body">
         <h2 class="text-2xl font-black text-slate-900">Student details</h2>
         <form action="update-student.php" method="post" enctype="multipart/form-data" class="mt-7 space-y-5">
@@ -185,19 +187,7 @@ $status
                         autocomplete="street-address" maxlength="255" value="<?= htmlspecialchars(
     $row["ADDRESS"] ?? "",
 ) ?>" required></label></div>
-            <div class="rounded-xl border border-slate-200 p-4">
-                <div>
-                    <p class="text-sm font-bold text-slate-700">Replace biometric image <span
-                            class="font-normal text-slate-500">(optional)</span></p>
-                    <p class="mt-1 text-sm text-slate-500">JPEG or PNG, max 5 MB: one clear, upright, uncropped face
-                        with space around the head.</p>
-                </div>
-                <div class="mt-4 flex flex-wrap items-center gap-3"><input class="sr-only" type="file"
-                        name="student_image" id="student_image" accept="image/jpeg,image/png"><label for="student_image"
-                        class="cursor-pointer rounded-lg bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100">Choose
-                        photo</label><span id="student-image-file-name"
-                        class="min-w-0 max-w-full truncate text-sm text-slate-500">No file chosen</span></div>
-            </div>
+            <?php require "../includes/student-face-fields.php"; ?>
             <button class="btn btn-primary">Save
                 changes</button>
         </form>
@@ -206,17 +196,6 @@ $status
     ] ?>"><input name="csrf_token" value="<?= htmlspecialchars(
     $_SESSION["csrf_token"],
 ) ?>"></form>
-    </section>
-    <aside class="card card-body h-fit">
-        <p class="text-sm font-bold uppercase tracking-widest text-blue-600">Current image</p><img id="main-preview"
-            src="../<?= htmlspecialchars(
-      $row["IMAGE_PATH"],
-  ) ?>" alt="<?= htmlspecialchars(
-    $row["STUDENT_NAME"],
-) ?>" class="mt-4 aspect-square w-full rounded-xl object-cover">
-        <p class="mt-4 text-sm text-slate-500"><?= htmlspecialchars(
-    $row["STUDENT_NAME"],
-) ?></p>
         <section class="mt-5 rounded-2xl bg-blue-950 p-6">
             <h3 class="font-bold text-white">Archive profile</h3>
             <p class="mt-2 text-sm text-blue-200">Keep this student and all attendance records, but prevent future
@@ -224,7 +203,7 @@ $status
                 class="mt-5 w-full rounded-xl border border-red-500/40 px-4 py-3 font-bold text-red-400 transition-colors hover:bg-red-600 hover:text-white">Archive
                 student</button>
         </section>
-    </aside>
+    </section>
     </div>
 </div>
 
@@ -366,15 +345,6 @@ $status
     gradeSelect.onchange = () => updatePlacement();
     strandSelect.onchange = () => updateSeniorSections();
     updatePlacement(true);
-    document.getElementById('student_image').onchange = e => {
-        if (e.target.files[0]) document.getElementById('main-preview').src = URL.createObjectURL(e.target.files[0])
-    };
-</script>
-<script>
-    document.getElementById('student_image').addEventListener('change', event => {
-        const file = event.target.files[0];
-        document.getElementById('student-image-file-name').textContent = file ? file.name : 'No file chosen'
-    });
 </script>
 <script>
     (() => {

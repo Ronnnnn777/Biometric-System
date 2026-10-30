@@ -50,7 +50,7 @@ if ($admin && password_verify($inputPassword, $admin["ADMIN_PASS"])) {
     exit();
 }
 $stmt = $conn->prepare(
-    "SELECT TEACHER_ID,TEACHER_USER,TEACHER_PASS,TEACHER_NAME,SECTION FROM teachers WHERE TEACHER_USER=? AND COALESCE(TEACHER_STATUS,'Active')='Active' LIMIT 1",
+    "SELECT TEACHER_ID,TEACHER_USER,TEACHER_PASS,TEACHER_NAME,SECTION,MUST_CHANGE_PASSWORD FROM teachers WHERE TEACHER_USER=? AND COALESCE(TEACHER_STATUS,'Active')='Active' LIMIT 1",
 );
 $stmt->bind_param("s", $email);
 $stmt->execute();
@@ -62,7 +62,7 @@ if ($teacher && password_verify($inputPassword, $teacher["TEACHER_PASS"])) {
     $_SESSION["teacher-id"] = $teacher["TEACHER_ID"];
     $_SESSION["teacher-name"] = $teacher["TEACHER_NAME"];
     $_SESSION["teacher-section"] = $teacher["SECTION"];
-    header("Location: ../teacher/students.php");
+    header("Location: ../teacher/" . ($teacher["MUST_CHANGE_PASSWORD"] ? "settings.php" : "students.php"));
     exit();
 }
 $_SESSION["login-error"] = "Invalid email address or password.";

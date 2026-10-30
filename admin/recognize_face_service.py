@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import threading
-from recognize_face import recognize, refresh_known_faces
+from recognize_face import recognize, refresh_known_faces, known_faces
 
 # The shared MediaPipe/dlib recognizer is not safe to run concurrently. Camera
 # frames can arrive while the prior one is still being processed, so serialize
@@ -12,8 +12,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/refresh":
             try:
-                encodings, _ = refresh_known_faces()
-                body=json.dumps({"ok":True,"encoding_count":len(encodings)}).encode()
+                length = int(self.headers.get('Content-Length', '0'))
+                payload = json.loads(self.rfile.read(length)) if length else {}
+                with recognition_lock:
+                    refresh_known_faces()
+                    encodings, _ = known_faces(payload.get('references', []))
+                body=json.dumps({"ok":True,"encoding_count":len(encodings),"reference_protocol":1}).encode()
                 self.send_response(200); self.send_header("Content-Type","application/json"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
             except Exception:
                 body=json.dumps({"ok":False}).encode()
@@ -23,7 +27,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length=int(self.headers.get("Content-Length","0")); payload=json.loads(self.rfile.read(length))
             with recognition_lock:
-                result=recognize(payload.get("image_path", ""))
+                result=recognize(payload.get("image_path", ""), payload.get('references'))
+                result['reference_protocol'] = 1
             body=json.dumps(result).encode()
             self.send_response(200); self.send_header("Content-Type","application/json"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
         except Exception as error:
@@ -37,4 +42,4 @@ class Handler(BaseHTTPRequestHandler):
 # The face/landmark libraries run reliably on one server worker. The mobile
 # scanner already waits for each frame response, so serial processing avoids
 # concurrent native-model failures without reducing actual scan throughput.
-HTTPServer(("127.0.0.1",8772),Handler).serve_forever()
+HTTPServer(("127.0.0.1",8774),Handler).serve_forever()

@@ -2,25 +2,22 @@
 /** Shared capacity-aware sectioning helpers used by promotion, preview, and reporting. */
 require_once __DIR__ . '/student-placement-options.php';
 
-const DEFAULT_SECTION_CAPACITY = 50;
+const DEFAULT_SECTION_CAPACITY = 40;
 const MAX_SECTION_CAPACITY = 50;
 
 /** Administrator-configured fallback capacity (section_settings.ID=1). */
 function defaultSectionCapacity(mysqli $conn): int
 {
-    static $cached = null;
-    if ($cached !== null) return $cached;
     $result = $conn->query('SELECT DEFAULT_CAPACITY FROM section_settings WHERE ID=1 LIMIT 1');
     $row = $result ? $result->fetch_assoc() : null;
-    $cached = min(MAX_SECTION_CAPACITY, max(1, (int) ($row['DEFAULT_CAPACITY'] ?? DEFAULT_SECTION_CAPACITY)));
-    return $cached;
+    return max(1, (int) ($row['DEFAULT_CAPACITY'] ?? DEFAULT_SECTION_CAPACITY));
 }
 
 /** A section's configured capacity, falling back to the configured default. */
 function sectionCapacity(array $section, ?int $default = null): int
 {
     $capacity = (int) ($section['CAPACITY'] ?? 0);
-    return min(MAX_SECTION_CAPACITY, $capacity > 0 ? $capacity : ($default ?? DEFAULT_SECTION_CAPACITY));
+    return max(1, $capacity > 0 ? $capacity : ($default ?? DEFAULT_SECTION_CAPACITY));
 }
 
 /** Active catalog sections for a target grade/strand, in deterministic fill order. */
@@ -72,36 +69,26 @@ function chunkEvenly(array $items, int $numChunks): array
     return $result;
 }
 
-/**
- * Chunk ordered student IDs into sections.
- *
- * Section 1 is the designated honor section. It is filled first and may end
- * up with a different population size than the regular sections. The
- * remaining students are divided evenly across Sections 2 onwards instead of
- * filling each section to capacity one at a time.
- *
- * @param array<int,string|int> $studentIds Already ordered.
- * @param array<int,array>      $sections   Ordered catalog rows; the first row
- *                                          is the honor section.
- * @return array<int,array{section:array,students:array}>
+/** Balance regular students by total occupancy, respecting every section's capacity.
+ * Honor qualification is handled explicitly by the promotion planner.
  */
 function assignStudentsToSections(array $studentIds, array $sections, ?int $default = null): array
 {
-    if (!$sections || !$studentIds) return [];
-
-    $honorSection = array_shift($sections);
-    $honorStudents = array_slice($studentIds, 0, sectionCapacity($honorSection, $default));
     $groups = [];
-    if ($honorStudents) {
-        $groups[] = ['section' => $honorSection, 'students' => $honorStudents];
+    foreach ($sections as $section) {
+        if (!empty($section['IS_HONOR'])) throw new InvalidArgumentException('Honor students must be qualified before sectioning.');
+        $groups[] = ['section'=>$section, 'students'=>[]];
     }
-
-    $remaining = array_slice($studentIds, count($honorStudents));
-    if (!$remaining || !$sections) return $groups;
-
-    foreach (chunkEvenly($remaining, count($sections)) as $index => $chunk) {
-        if (!$chunk) continue;
-        $groups[] = ['section' => $sections[$index], 'students' => $chunk];
+    foreach ($studentIds as $studentId) {
+        $selected = null; $smallest = PHP_INT_MAX;
+        foreach ($groups as $index=>$group) {
+            $population = (int)($group['section']['EXISTING_COUNT'] ?? 0) + count($group['students']);
+            if ($population < sectionCapacity($group['section'], $default) && $population < $smallest) {
+                $selected = $index; $smallest = $population;
+            }
+        }
+        if ($selected === null) throw new RuntimeException('Insufficient regular-section capacity.');
+        $groups[$selected]['students'][] = $studentId;
     }
     return $groups;
 }
@@ -250,6 +237,7 @@ function normalisePromotionPlans(array $postedPlans, callable $fail): array
     $rows = [];
     $seenSources = [];
     foreach ($postedPlans as $posted) {
+        if (!is_array($posted)) $fail('Choose valid promotion targets.');
         $fromGrade = (int) ($posted['from_grade'] ?? 0);
         $fromStrand = trim((string) ($posted['from_strand'] ?? ''));
         if ($fromGrade < 7 || $fromGrade > 11) {
@@ -281,8 +269,10 @@ function normalisePromotionPlans(array $postedPlans, callable $fail): array
         $percentTotal = 0;
         $usedStrands = [];
         foreach ($targets as $target) {
+            if (!is_array($target)) $fail('Choose valid strand targets.');
             $toStrand = trim((string) ($target['strand'] ?? ''));
             $percent = (int) ($target['percent'] ?? 100);
+            if ($fromGrade === 11 && $toStrand !== $fromStrand) $fail('Grade 11 students must keep their strand in Grade 12.');
             if ($targetStrands) {
                 if (!in_array($toStrand, $targetStrands, true)) {
                     $fail('Choose a valid target strand for Grade ' . $toGrade . '.');
