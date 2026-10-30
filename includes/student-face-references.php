@@ -159,7 +159,13 @@ function warmStudentFaceCache(mysqli $conn): bool
     $payload = json_encode(['references' => $references]);
     $context = stream_context_create(['http' => ['method'=>'POST', 'header'=>"Content-Type: application/json\r\n", 'content'=>$payload, 'timeout'=>15, 'ignore_errors'=>true]]);
     $result = json_decode(@file_get_contents('http://127.0.0.1:8774/refresh', false, $context) ?: '', true);
-    if (!empty($result['ok']) && ($result['reference_protocol'] ?? 0) === 1) return true;
+    if (!empty($result['ok']) && ($result['reference_protocol'] ?? 0) === 1) {
+        // ONNX is optional and runs beside the reference-protocol engine.
+        // Its refresh failure never prevents a student profile from saving.
+        $onnxContext = stream_context_create(['http' => ['method'=>'POST', 'header'=>"Content-Type: application/json\r\n", 'content'=>$payload, 'timeout'=>15, 'ignore_errors'=>true]]);
+        @file_get_contents('http://127.0.0.1:8775/refresh', false, $onnxContext);
+        return true;
+    }
     $file = tempnam(sys_get_temp_dir(), 'face-warm-');
     if (!$file) return false;
     try {

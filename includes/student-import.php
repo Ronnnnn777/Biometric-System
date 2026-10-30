@@ -70,7 +70,7 @@ function studentImportReadXlsx(string $path): array
     if ($sharedXml !== false) {
         $shared = simplexml_load_string($sharedXml);
         $ns = $shared?->getNamespaces(true)[''] ?? 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
-        if ($shared) {
+        if ($shared !== false) {
             $shared->registerXPathNamespace('sheet', $ns);
             foreach ($shared->xpath('//sheet:si') ?: [] as $item) {
                 $item->registerXPathNamespace('sheet', $ns);
@@ -83,14 +83,15 @@ function studentImportReadXlsx(string $path): array
     $zip->close();
     if ($sheetXml === false) throw new RuntimeException('The Excel workbook does not contain a first worksheet.');
     $sheet = simplexml_load_string($sheetXml);
-    if (!$sheet) throw new RuntimeException('The Excel worksheet could not be read.');
+    if ($sheet === false) throw new RuntimeException('The Excel worksheet could not be read.');
     $ns = $sheet->getNamespaces(true)[''] ?? 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
     $sheet->registerXPathNamespace('sheet', $ns);
 
     $rows = [];
     foreach ($sheet->xpath('//sheet:sheetData/sheet:row') ?: [] as $xmlRow) {
         $row = [];
-        foreach ($xmlRow->children($ns)->c as $cell) {
+        $xmlRow->registerXPathNamespace('sheet', $ns);
+        foreach ($xmlRow->xpath('./sheet:c') ?: [] as $cell) {
             $attributes = $cell->attributes();
             $column = studentImportXlsxColumn((string) ($attributes['r'] ?? 'A1'));
             $type = (string) ($attributes['t'] ?? '');
@@ -128,7 +129,7 @@ function studentImportReadXlsxSheet(string $path, int $sheetNumber): array
     if ($sharedXml !== false) {
         $shared = simplexml_load_string($sharedXml);
         $ns = $shared?->getNamespaces(true)[''] ?? 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
-        if ($shared) {
+        if ($shared !== false) {
             $shared->registerXPathNamespace('sheet', $ns);
             foreach ($shared->xpath('//sheet:si') ?: [] as $item) {
                 $item->registerXPathNamespace('sheet', $ns);
@@ -141,14 +142,15 @@ function studentImportReadXlsxSheet(string $path, int $sheetNumber): array
     $zip->close();
     if ($sheetXml === false) return [];
     $sheet = simplexml_load_string($sheetXml);
-    if (!$sheet) return [];
+    if ($sheet === false) return [];
     $ns = $sheet->getNamespaces(true)[''] ?? 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
     $sheet->registerXPathNamespace('sheet', $ns);
 
     $rows = [];
     foreach ($sheet->xpath('//sheet:sheetData/sheet:row') ?: [] as $xmlRow) {
         $row = [];
-        foreach ($xmlRow->children($ns)->c as $cell) {
+        $xmlRow->registerXPathNamespace('sheet', $ns);
+        foreach ($xmlRow->xpath('./sheet:c') ?: [] as $cell) {
             $attributes = $cell->attributes();
             $column = studentImportXlsxColumn((string) ($attributes['r'] ?? 'A1'));
             $type = (string) ($attributes['t'] ?? '');
@@ -209,8 +211,78 @@ function studentImportSchoolFormName(string $name): array
     return [$parts[1], implode(' ', array_slice($parts, 2)), $parts[0]];
 }
 
+/** Read the school-form-style teacher template used by this system. */
+function studentImportReadTeacherFormRows(string $path): ?array
+{
+    for ($sheetNumber = 1; $sheetNumber <= 20; $sheetNumber++) {
+        $rows = studentImportReadXlsxSheet($path, $sheetNumber);
+        if (!$rows) continue;
+
+        $headerColumns = null;
+        $headerRow = null;
+        foreach ($rows as $index => $row) {
+            $columns = [];
+            foreach ($row as $column => $value) {
+                $columns[studentImportHeader((string) $value)] = $column;
+            }
+            if (
+                isset($columns['lrn'], $columns['name'], $columns['birthdate'], $columns['address'], $columns['strand'])
+            ) {
+                $headerColumns = $columns;
+                $headerRow = $index;
+                break;
+            }
+        }
+        if ($headerColumns === null || $headerRow === null) continue;
+
+        $grade = (int) (studentImportSchoolFormMeta($rows, 'GRADE') ?: studentImportSchoolFormMeta($rows, 'GRADE LEVEL'));
+        $section = ucwords(strtolower(studentImportSchoolFormMeta($rows, 'SECTION')));
+        if ($grade < 1 || $section === '') continue;
+
+        $importRows = [["LRN", "First Name", "Middle Name", "Last Name", "Grade", "Age", "Strand", "Address", "Section", "Status"]];
+        $emptyRows = 0;
+        for ($index = $headerRow + 1; $index < count($rows); $index++) {
+            $row = $rows[$index];
+            $studentId = trim((string) ($row[$headerColumns['lrn']] ?? ''));
+            $name = trim((string) ($row[$headerColumns['name']] ?? ''));
+            $birthdate = trim((string) ($row[$headerColumns['birthdate']] ?? ''));
+            $address = trim((string) ($row[$headerColumns['address']] ?? ''));
+            $strand = trim((string) ($row[$headerColumns['strand']] ?? ''));
+            if ($studentId === '' && $name === '' && $birthdate === '' && $address === '' && $strand === '') {
+                $emptyRows++;
+                if ($emptyRows >= 10) break;
+                continue;
+            }
+            $emptyRows = 0;
+            [$firstName, $middleName, $lastName] = studentImportSchoolFormName($name);
+            if ($firstName === '' || $lastName === '') {
+                $parts = preg_split('/\s+/', $name, 2);
+                $firstName = trim((string) ($parts[0] ?? ''));
+                $lastName = trim((string) ($parts[1] ?? $firstName));
+                $middleName = '';
+            }
+            $importRows[] = [
+                $studentId,
+                $firstName,
+                $middleName,
+                $lastName,
+                $grade,
+                studentImportSchoolFormAge($birthdate),
+                $strand,
+                $address,
+                $section,
+                'Enrolled',
+            ];
+        }
+        if (count($importRows) > 1) return $importRows;
+    }
+    return null;
+}
+
 function studentImportReadSchoolFormRows(string $path): ?array
 {
+    $teacherFormRows = studentImportReadTeacherFormRows($path);
+    if ($teacherFormRows !== null) return $teacherFormRows;
     for ($sheetNumber = 1; $sheetNumber <= 20; $sheetNumber++) {
         $rows = studentImportReadXlsxSheet($path, $sheetNumber);
         if (!$rows) continue;
@@ -260,8 +332,18 @@ function studentImportSchoolFormAdviser(string $path): string
         $rows = studentImportReadXlsxSheet($path, $sheetNumber);
         if (!$rows) continue;
         $lrnHeaders = 0;
-        foreach ($rows as $row) foreach ($row as $value) if (studentImportHeader((string) $value) === 'lrn') $lrnHeaders++;
-        if ($lrnHeaders >= 2) return studentImportSchoolFormMeta($rows, 'ADVISER');
+        $teacherHeaders = [];
+        foreach ($rows as $row) {
+            foreach ($row as $value) {
+                $header = studentImportHeader((string) $value);
+                if ($header === 'lrn') $lrnHeaders++;
+                $teacherHeaders[$header] = true;
+            }
+        }
+        if (
+            $lrnHeaders >= 2 ||
+            ($lrnHeaders >= 1 && isset($teacherHeaders['name'], $teacherHeaders['birthdate'], $teacherHeaders['address'], $teacherHeaders['strand']))
+        ) return studentImportSchoolFormMeta($rows, 'ADVISER');
     }
     return '';
 }

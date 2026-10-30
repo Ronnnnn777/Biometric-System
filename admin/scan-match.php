@@ -99,8 +99,31 @@ function recognizeWithService(string $imagePath): ?array
     }
     return $result;
 }
+function recognizeWithOnnxService(string $imagePath): ?array
+{
+    global $studentFaceReferences;
+    $payload = json_encode(['image_path' => $imagePath, 'references' => $studentFaceReferences]);
+    $context = stream_context_create(['http' => [
+        'method' => 'POST',
+        'header' => "Content-Type: application/json\r\n",
+        'content' => $payload,
+        'timeout' => 4,
+        'ignore_errors' => true,
+    ]]);
+    $raw = @file_get_contents('http://127.0.0.1:8775/recognize', false, $context);
+    $result = json_decode($raw ?: '', true);
+    return is_array($result) && empty($result['service_error']) ? $result : null;
+}
 $pythonCommand = biometricPythonCommand();
-$result = recognizeWithService($imagePath);
+$onnxPythonPath = __DIR__ . DIRECTORY_SEPARATOR . '.insightface-venv' . DIRECTORY_SEPARATOR . 'Scripts' . DIRECTORY_SEPARATOR . 'python.exe';
+$onnxResult = recognizeWithOnnxService($imagePath);
+if ($onnxResult === null && is_file($onnxPythonPath) && microtime(true) - (float)($_SESSION['onnx_face_service_attempted_at'] ?? 0) > 5) {
+    $_SESSION['onnx_face_service_attempted_at'] = microtime(true);
+    $onnxService = escapeshellarg(__DIR__ . DIRECTORY_SEPARATOR . 'recognize_face_onnx_service.py');
+    if (PHP_OS_FAMILY === 'Windows') @pclose(@popen('start "" /B ' . escapeshellarg($onnxPythonPath) . ' ' . $onnxService . ' >NUL 2>&1', 'r'));
+}
+$legacyResult = recognizeWithService($imagePath);
+$result = is_array($onnxResult) && !empty($onnxResult['matches']) ? $onnxResult : $legacyResult;
 // Keep recognition in one long-running Python process.  Re-loading every
 // enrolled face for every camera frame is the main source of scan latency.
 if (

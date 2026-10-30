@@ -388,6 +388,78 @@ function adminFoot(): void { ?>
             }, 4000);
         });
 
+        // A successful mobile scan is relevant on every admin page, not only
+        // on the Dashboard. The first response establishes the baseline, then
+        // each newly saved attendance event shows one top-center success toast.
+        if (!window.__adminScanNotificationsStarted) {
+            window.__adminScanNotificationsStarted = true;
+            let latestScanEventKey = null;
+            let scanNotificationsReady = false;
+
+            const showAttendanceSuccessToast = scan => {
+                document.querySelector('[data-attendance-success-toast]')?.remove();
+                const toast = document.createElement('div');
+                toast.dataset.attendanceSuccessToast = 'true';
+                toast.className = 'fixed left-1/2 top-5 z-[60] flex max-w-[calc(100vw-2.5rem)] -translate-x-1/2 items-center gap-3 rounded-2xl bg-emerald-600 px-4 py-3 text-white shadow-2xl ring-1 ring-emerald-200/70 transition-all duration-300';
+                // Use inline placement too: this remains centered even when a
+                // browser has an older cached Tailwind stylesheet.
+                toast.style.left = '50%';
+                toast.style.top = '1.25rem';
+                toast.style.transform = 'translateX(-50%)';
+                toast.style.zIndex = '60';
+                toast.setAttribute('role', 'status');
+                toast.setAttribute('aria-live', 'polite');
+
+                const photo = document.createElement('img');
+                photo.className = 'h-14 w-14 shrink-0 rounded-xl border-2 border-white/60 bg-emerald-800 object-cover';
+                photo.alt = '';
+                const fallbackPhoto = '../image/logo.png';
+                const imagePath = String(scan.imagePath || '');
+                photo.src = /^https?:\/\//i.test(imagePath)
+                    ? imagePath
+                    : (imagePath ? '../' + imagePath.replace(/^\/+/, '') : fallbackPhoto);
+                photo.onerror = () => { photo.onerror = null; photo.src = fallbackPhoto; };
+
+                const copy = document.createElement('div');
+                copy.className = 'min-w-0 pr-1';
+                const title = document.createElement('p');
+                title.className = 'text-xs font-bold uppercase tracking-wide text-emerald-100';
+                title.textContent = (scan.actionLabel || 'Attendance') + ' recorded';
+                const name = document.createElement('p');
+                name.className = 'mt-0.5 truncate text-base font-black text-white';
+                name.textContent = scan.studentName || 'Student';
+                const success = document.createElement('p');
+                success.className = 'mt-0.5 text-xs font-medium text-emerald-100';
+                success.textContent = 'Attendance recorded successfully';
+                copy.append(title, name, success);
+                toast.append(photo, copy);
+                document.body.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.classList.add('translate-y-3', 'opacity-0');
+                    setTimeout(() => toast.remove(), 300);
+                }, 4500);
+            };
+
+            const pollAttendanceNotification = () => {
+                fetch('get-scan-notification.php', { cache: 'no-store' })
+                    .then(response => response.ok ? response.json() : null)
+                    .then(data => {
+                        const scan = data?.latestScan;
+                        const nextKey = scan?.eventKey || null;
+                        if (scanNotificationsReady && scan && nextKey && nextKey !== latestScanEventKey) {
+                            showAttendanceSuccessToast(scan);
+                        }
+                        latestScanEventKey = nextKey;
+                        scanNotificationsReady = true;
+                    })
+                    .catch(() => {});
+            };
+
+            pollAttendanceNotification();
+            window.setInterval(pollAttendanceNotification, 3000);
+        }
+
         const studentArchiveButton = document.getElementById('archive-button');
         const studentArchiveForm = document.getElementById('archive-form');
         if (studentArchiveButton && studentArchiveForm) {

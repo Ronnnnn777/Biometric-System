@@ -18,8 +18,30 @@ function ensureAttendanceTimeOutColumn(mysqli $conn): void
     // Automatic absences were retired in favor of teacher-confirmed records.
     // Remove only the old system-generated rows; teacher-marked absences use 0.
     $conn->query('DELETE FROM attendance WHERE IS_AUTO_ABSENT=1');
+    ensureAttendanceDailyUniqueness($conn);
     $conn->query("CREATE TABLE IF NOT EXISTS attendance_day_settings (ID TINYINT UNSIGNED NOT NULL PRIMARY KEY, WHOLE_DAY_ENABLED TINYINT(1) NOT NULL DEFAULT 0, UPDATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
     $conn->query("INSERT IGNORE INTO attendance_day_settings (ID, WHOLE_DAY_ENABLED) VALUES (1, 0)");
+}
+
+/** Keep exactly one attendance row for each student on each school day. */
+function ensureAttendanceDailyUniqueness(mysqli $conn): void
+{
+    $columns=[];$result=$conn->query('SHOW COLUMNS FROM attendance');
+    while($result&&($column=$result->fetch_assoc()))$columns[strtoupper($column['Field'])]=true;
+    if(!isset($columns['ATTENDANCE_DATE'])){
+        $conn->query('ALTER TABLE attendance ADD COLUMN ATTENDANCE_DATE DATE GENERATED ALWAYS AS (DATE(TIME_IN)) STORED AFTER TIME_IN');
+    }
+    $hasDailyUniqueIndex=false;$indexes=$conn->query('SHOW INDEX FROM attendance');$indexColumns=[];
+    while($indexes&&($index=$indexes->fetch_assoc())){
+        if((int)$index['Non_unique']===0)$indexColumns[$index['Key_name']][]=$index['Column_name'];
+    }
+    foreach($indexColumns as $columnsInIndex){
+        if($columnsInIndex===['STUDENT_ID','ATTENDANCE_DATE']){$hasDailyUniqueIndex=true;break;}
+    }
+    if(!$hasDailyUniqueIndex){
+        $duplicates=$conn->query('SELECT STUDENT_ID,ATTENDANCE_DATE FROM attendance GROUP BY STUDENT_ID,ATTENDANCE_DATE HAVING COUNT(*)>1 LIMIT 1');
+        if(!$duplicates||$duplicates->num_rows===0)$conn->query('ALTER TABLE attendance ADD UNIQUE INDEX UX_ATTENDANCE_STUDENT_DAY (STUDENT_ID,ATTENDANCE_DATE)');
+    }
 }
 
 /** Adds the section snapshot columns written when attendance is recorded. */

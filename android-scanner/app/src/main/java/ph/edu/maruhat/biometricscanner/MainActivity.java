@@ -131,7 +131,8 @@ public class MainActivity extends AppCompatActivity {
   private EditText serverInput;
   private TextView loginStatus, scannerStatus, serverDetectionStatus;
   private TextView scanResultAction, scanResultName;
-  private Button loginButton, startButton, detectServerButton;
+  private Button loginButton, startButton;
+  private Button detectServerButton;
   private Button updateButton;
   private LinearLayout bottomControls;
   private LinearLayout scanResultCard;
@@ -151,17 +152,18 @@ public class MainActivity extends AppCompatActivity {
   private String baseUrl;
   private String scannerName = "Mobile scanner",
     scannerId = "";
-  private volatile long matchMessageUntil = 0;
   private volatile long recognitionGraceUntil = 0;
   private volatile long unrecognizedMessageUntil = 0;
   private String guideStatusText = "";
   private int unrecognizedStreak = 0;
-  private String lastRecognitionKey = "";
   // The camera can send another frame immediately after recording a time in.
   // Keep that automatic repeat from replacing the success card with the
   // cooldown warning; a later deliberate scan still shows the protection.
-  private String recentlyLoggedStudentId = "";
-  private volatile long recentlyLoggedUntil = 0;
+  // A saved scan needs one clear "no face" moment before the phone accepts
+  // another event. This prevents a student who stays in view from becoming an
+  // automatic time-out when the protection period ends.
+  private volatile boolean waitingForFaceExit = false;
+  private volatile long faceAbsentSince = 0;
   private boolean returnToScannerHomeOnResume = false;
   private final Handler interfaceHandler = new Handler(Looper.getMainLooper());
   private ToneGenerator recognitionTone;
@@ -250,8 +252,10 @@ public class MainActivity extends AppCompatActivity {
 
     showLogin();
     loginButton.setEnabled(false);
-    loginButton.setText("Restoring scanner...");
-    showLoginError("Restoring this authorized phone...");
+    // A saved server address lets this phone reconnect on launch. Keep this
+    // quiet: it is not a new registration and should not look like an error.
+    loginButton.setText("Connecting...");
+    showLoginError("");
     networkExecutor.execute(() -> {
       RequestBody loginBody = new FormBody.Builder()
         .add("scanner_name", savedName)
@@ -279,9 +283,8 @@ public class MainActivity extends AppCompatActivity {
           loginButton.setEnabled(true);
           loginButton.setText("Start scanner");
           showLoginError(
-            "Could not restore scanner. Checking the current Wi-Fi for MNHS Attendance..."
+            "Saved server is unavailable. Check the school IP address or use Detect IP Address."
           );
-          detectServerAddress();
         });
       }
     });
@@ -369,7 +372,7 @@ public class MainActivity extends AppCompatActivity {
     cardTitle.setTypeface(null, 1);
     card.addView(cardTitle);
     TextView cardCopy = text(
-      "Enter the school IP address. This phone is identified and added to the Admin Dashboard automatically.",
+      "Enter the school IP address, or detect it on the current school Wi-Fi.",
       13,
       Color.rgb(203, 213, 225)
     );
@@ -383,20 +386,28 @@ public class MainActivity extends AppCompatActivity {
     serverInput.setHintTextColor(Color.rgb(148, 163, 184));
     serverInput.setBackground(round(Color.argb(210, 2, 6, 23), 12));
     card.addView(serverInput);
-    detectServerButton = button("Retry IP address detection", Color.rgb(30, 64, 175));
+    detectServerButton = new Button(this);
+    detectServerButton.setText("Detect IP Address");
+    detectServerButton.setAllCaps(false);
+    detectServerButton.setTypeface(null, 1);
+    detectServerButton.setTextSize(14);
+    detectServerButton.setTextColor(Color.rgb(29, 78, 216));
+    GradientDrawable detectButtonBackground = round(Color.rgb(239, 246, 255), 12);
+    detectButtonBackground.setStroke(dp(1), Color.rgb(191, 219, 254));
+    detectServerButton.setBackground(detectButtonBackground);
+    detectServerButton.setPadding(dp(14), 0, dp(14), 0);
     LinearLayout.LayoutParams detectParams = new LinearLayout.LayoutParams(
-      -1,
-      dp(48)
+      -2,
+      dp(44)
     );
     detectParams.topMargin = dp(2);
     card.addView(detectServerButton, detectParams);
-    detectServerButton.setVisibility(View.GONE);
     detectServerButton.setOnClickListener(v -> detectServerAddress());
     serverDetectionStatus = text("", 13, Color.rgb(191, 219, 254));
     serverDetectionStatus.setVisibility(View.GONE);
     card.addView(serverDetectionStatus);
     TextView hint = text(
-      "The app automatically detects the MNHS Attendance address on the current Wi-Fi. You can also enter it manually.",
+      "Use Detect IP address while connected to the same school Wi-Fi, or enter the address manually.",
       12,
       Color.rgb(191, 219, 254)
     );
@@ -423,15 +434,12 @@ public class MainActivity extends AppCompatActivity {
     scroll.addView(page);
     shell.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
     setContentView(shell);
-    if (normaliseUrl(serverInput.getText().toString()) == null) {
-      interfaceHandler.postDelayed(this::detectServerAddress, 250);
-    }
   }
 
   private void detectServerAddress() {
     if (detectServerButton == null || serverInput == null) return;
     detectServerButton.setEnabled(false);
-    detectServerButton.setText("Detecting IP address...");
+    detectServerButton.setText("Detecting IP address…");
     if (loginButton != null) loginButton.setEnabled(false);
     showLoginError("");
     setServerDetectionStatus(
@@ -448,7 +456,6 @@ public class MainActivity extends AppCompatActivity {
         }
         runOnUiThread(() -> {
           serverInput.setText(detectedUrl);
-          detectServerButton.setVisibility(View.GONE);
           setServerDetectionStatus(
             "Detected " + detectedUrl + ". Tap Start scanner.",
             Color.rgb(134, 239, 172)
@@ -456,7 +463,6 @@ public class MainActivity extends AppCompatActivity {
         });
       } catch (Exception error) {
         runOnUiThread(() -> {
-          detectServerButton.setVisibility(View.VISIBLE);
           setServerDetectionStatus(
             readableError(error),
             Color.rgb(253, 164, 175)
@@ -466,7 +472,7 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(() -> {
           if (detectServerButton != null) {
             detectServerButton.setEnabled(true);
-            detectServerButton.setText("Retry IP address detection");
+            detectServerButton.setText("Detect IP Address");
           }
           if (loginButton != null) loginButton.setEnabled(true);
         });
@@ -1013,6 +1019,8 @@ public class MainActivity extends AppCompatActivity {
           imageAnalysis
         );
         scanning = true;
+        waitingForFaceExit = false;
+        faceAbsentSince = 0;
         faceVisible.set(false);
         faceGuide.setDetected(false);
         setGuideStatus("Detecting face...", Color.rgb(191, 219, 254));
@@ -1023,7 +1031,7 @@ public class MainActivity extends AppCompatActivity {
         scanTask = scanScheduler.scheduleAtFixedRate(
           () -> {
             if (
-              scanning && faceVisible.get() && !captureInFlight.get()
+              scanning && faceVisible.get() && !waitingForFaceExit && !captureInFlight.get()
             ) captureFrame();
           },
           150,
@@ -1058,11 +1066,20 @@ public class MainActivity extends AppCompatActivity {
           if (faceGuide == null) return;
           if (!detected) {
             faceGuide.setDetected(false);
+            if (waitingForFaceExit) {
+              long now = System.currentTimeMillis();
+              if (faceAbsentSince == 0) faceAbsentSince = now;
+              if (now - faceAbsentSince >= 700) {
+                waitingForFaceExit = false;
+                faceAbsentSince = 0;
+              }
+            }
             if (!captureInFlight.get()) {
               setGuideStatus("Detecting face...", Color.rgb(191, 219, 254));
             }
             return;
           }
+          faceAbsentSince = 0;
           try {
             OutputTransform previewTransform =
               previewView == null ? null : previewView.getOutputTransform();
@@ -1080,7 +1097,7 @@ public class MainActivity extends AppCompatActivity {
               previewTransform
             ).mapRect(mappedBounds);
             faceGuide.setMappedBounds(mappedBounds);
-            if (!captureInFlight.get()) {
+            if (!captureInFlight.get() && !waitingForFaceExit) {
               setGuideStatus(
                 "Face detected - hold still",
                 Color.rgb(134, 239, 172)
@@ -1184,6 +1201,9 @@ public class MainActivity extends AppCompatActivity {
         return;
       }
       JSONArray matches = json.optJSONArray("matches");
+      // Another scanner is currently using the single safe recognition worker.
+      // It will retry on the next camera tick, without a false error toast.
+      if (json.optBoolean("retry", false)) return;
       if (matches != null && matches.length() > 0) {
         unrecognizedStreak = 0;
         unrecognizedMessageUntil = 0;
@@ -1222,7 +1242,9 @@ public class MainActivity extends AppCompatActivity {
       if (scanning) runOnUiThread(() -> {
         if (!scanning) return;
         setGuideStatus(
-          faceVisible.get() ? "Face detected - hold still" : "Detecting face...",
+          waitingForFaceExit && faceVisible.get()
+            ? "Step away before the next scan"
+            : (faceVisible.get() ? "Face detected - hold still" : "Detecting face..."),
           faceVisible.get() ? Color.rgb(134, 239, 172) : Color.rgb(191, 219, 254)
         );
       });
@@ -1262,16 +1284,18 @@ public class MainActivity extends AppCompatActivity {
 
   private void showAttendanceResult(JSONObject match) {
     JSONObject student = match.optJSONObject("student");
-    String studentId = student == null
-      ? ""
-      : student.optString("STUDENT_ID", "");
     String action = match.optString("action", "");
-    long now = System.currentTimeMillis();
-    if (
-      "cooldown".equals(action) &&
-      studentId.equals(recentlyLoggedStudentId) &&
-      now < recentlyLoggedUntil
-    ) return;
+    boolean logged = match.optBoolean("logged", false);
+    String message = match.optString("message", "Attendance recorded");
+    // A face can remain in view after a scan. Do not turn an already-saved,
+    // protected, or completed record into another attendance notification.
+    // Only a freshly saved step is allowed to show the result card and sound.
+    if (!logged) {
+      if (!"cooldown".equals(action) && !"complete".equals(action)) {
+        setGuideStatus(message, Color.rgb(253, 230, 138));
+      }
+      return;
+    }
     // A prior frame may have shown an error while this next frame was
     // still being recognized. A real match always wins visually.
     clearFaceToast();
@@ -1280,12 +1304,8 @@ public class MainActivity extends AppCompatActivity {
       student == null
         ? "Student"
         : student.optString("STUDENT_NAME", "Student");
-    boolean logged = match.optBoolean("logged", false);
-    String message = match.optString("message", "Attendance recorded");
     String label;
-    if (!logged) {
-      label = "complete".equals(action) ? "Attendance completed" : message;
-    } else switch (action) {
+    switch (action) {
       case "lunch_out":
         label = "Lunch out recorded";
         break;
@@ -1309,29 +1329,11 @@ public class MainActivity extends AppCompatActivity {
     loadResultPhoto(path);
     scanResultCard.setAlpha(1f);
     scanResultCard.setVisibility(View.VISIBLE);
-    String recognitionKey =
-      (student == null ? name : student.optString("STUDENT_ID", name)) +
-      "|" +
-      action;
-    boolean completed = "complete".equals(action);
-    if (logged) {
-      // A saved attendance step happens only once, so it should always
-      // provide immediate audible confirmation.
-      lastRecognitionKey = recognitionKey;
-      matchMessageUntil = now + 4000;
-      recentlyLoggedStudentId = studentId;
-      recentlyLoggedUntil = now + 8000;
-      playRecognitionSound();
-    } else if (
-      completed &&
-      (!recognitionKey.equals(lastRecognitionKey) || now >= matchMessageUntil)
-    ) {
-      // A completed record can be rediscovered by the live camera; keep
-      // this reminder audible without replaying it every camera frame.
-      lastRecognitionKey = recognitionKey;
-      matchMessageUntil = now + 4000;
-      playRecognitionSound();
-    }
+    // A saved attendance step happens only once, so it provides the one
+    // success notification and then requires the face to leave the camera.
+    waitingForFaceExit = true;
+    faceAbsentSince = 0;
+    playRecognitionSound();
     interfaceHandler.postDelayed(hideScanResult, 3500);
   }
 

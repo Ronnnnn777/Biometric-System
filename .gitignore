@@ -3,6 +3,7 @@
 android/AttendanceScanner/.gradle/
 android/AttendanceScanner/local.properties
 android/AttendanceScanner/**/build/
+android-scanner/.gradle-user-home/
 .codex/
 .agents/
 node_modules/
@@ -21,6 +22,9 @@ uploads/students/*
 
 # Generated face-recognition runtime cache
 admin/face_encoding_cache.pkl
+admin/face_embedding_cache_onnx.pkl
+admin/.insightface-venv/
+admin/insightface-models/
 admin/__pycache__/
 **/__pycache__/
 *.py[cod]
