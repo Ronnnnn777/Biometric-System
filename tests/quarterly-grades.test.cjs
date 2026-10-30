@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const source = fs.readFileSync(require('node:path').join(__dirname, '../teacher/students.php'), 'utf8');
+const source = fs.readFileSync(require('node:path').join(__dirname, '../teacher/grading.php'), 'utf8');
 const controller = source.slice(source.lastIndexOf('<script>') + 8, source.lastIndexOf('</script>'));
 new vm.Script(controller); // Syntax check the real JavaScript, independently of PHP.
 
@@ -17,7 +17,7 @@ function setup() {
     const buttons = [{ disabled: false }, { disabled: false }];
     const rows = Array.from({ length: 17 }, (_, index) => {
         const row = {
-            dataset: { studentId: String(index + 1) }, hidden: false, dirty: false,
+            dataset: { studentId: String(index + 1) }, hidden: index >= 15, dirty: false,
             final: {}, remark: {},
             toggleAttribute(name, value) { this.dirty = value; },
             querySelectorAll() { return this.inputs; },
@@ -60,6 +60,7 @@ function setup() {
         },
     };
     document.getElementById = id => id === 'quarterly-grades' ? grades : roster;
+    document.querySelectorAll = () => [];
     document.querySelector = () => ({ dataset: { capsuleValue: '1' } });
     class FormData {
         constructor() { this.values = new Map(inputs.map(input => [input.name, input.value])); }
@@ -67,6 +68,7 @@ function setup() {
     }
     vm.runInNewContext(controller, {
         document, FormData,
+        window: { addEventListener() {} }, location: { href: "http://localhost/teacher/grading.php" }, history: { replaceState() {} }, URL,
         MutationObserver: class { constructor(callback) { observer = callback; } observe() {} },
         fetch(url, options) { return new Promise(resolve => requests.push({ url, options, resolve })); },
     });
@@ -77,7 +79,7 @@ function setup() {
     };
     return {
         rows, inputs, rosterRows, requests, status, buttons, document, dispatch,
-        page(indices) { rosterRows.forEach((row, index) => { row.hidden = !indices.includes(index); }); observer(); },
+        page(indices) { rosterRows.forEach((row, index) => { row.hidden = !indices.includes(index); }); rows.forEach((row, index) => { row.hidden = !indices.includes(index); }); },
         quarter(value) { dispatch('capsule:change', null, { detail: { name: 'quarter_period', value: String(value) } }); },
         edit(row, quarter, value) { rows[row].inputs[quarter - 1].value = value; dispatch('input', rows[row].inputs[quarter - 1]); },
     };
