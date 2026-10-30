@@ -5,6 +5,8 @@ import pickle
 import sys
 import threading
 import time
+import tempfile
+from importlib import metadata
 
 import face_recognition
 import numpy as np
@@ -24,15 +26,37 @@ except ImportError:
 
 KNOWN_FACES_DIR = r"C:\Biometric_Capstone\known_faces"
 CACHE_PATH = os.path.join(os.path.dirname(__file__), "face_encoding_cache.pkl")
-CACHE_VERSION = 4
+CACHE_VERSION = 5
+
+
+def model_signature():
+    signature = []
+    for package in ('face_recognition', 'face_recognition_models', 'dlib'):
+        try:
+            signature.append([package, metadata.version(package)])
+        except metadata.PackageNotFoundError:
+            signature.append([package, 'unknown'])
+    try:
+        import face_recognition_models
+        for locator in (face_recognition_models.face_recognition_model_location,
+                        face_recognition_models.pose_predictor_model_location,
+                        face_recognition_models.pose_predictor_five_point_model_location):
+            path = locator()
+            stat = os.stat(path)
+            signature.append([path, stat.st_size, stat.st_mtime_ns])
+    except (ImportError, OSError, AttributeError):
+        pass
+    return signature
+
+
+MODEL_SIGNATURE = model_signature()
 _cached_key = None
 _cached_encodings = []
 _cached_ids = []
 _next_fingerprint_check = 0.0
+_reference_cache = {}
 
-# This remains substantially stricter than face_recognition's default 0.60.
-# The margin prevents a brighter/darker image from being attributed to a
-# similarly-looking enrolled student.
+# Preserve the deployed distance ceiling and separate-student ambiguity margin.
 # Phone-camera frames can vary from the enrollment portrait because of the
 # front camera's exposure, lens distortion, and a slightly different angle.
 # Use face_recognition's standard 0.60 cutoff for live phone-camera frames.
@@ -177,13 +201,26 @@ def resize_for_scan(frame, max_width=MAX_SCAN_WIDTH):
     resized = cv2.resize(frame, (MAX_SCAN_WIDTH, round(frame.shape[0] * ratio)), interpolation=cv2.INTER_AREA)
     return resized, 1.0 / ratio
 
-def fingerprint():
+def reference_entries(references=None):
+    """PHP supplies database-selected poses and LRNs, independent of filenames."""
+    if references is not None:
+        return [(str(item['student_id']), item['path']) for item in references]
+    # Compatibility for standalone maintenance callers; production always supplies references.
+    if not os.path.isdir(KNOWN_FACES_DIR):
+        return []
+    return [(os.path.splitext(name)[0].split('_')[0], os.path.join(KNOWN_FACES_DIR, name))
+            for name in sorted(os.listdir(KNOWN_FACES_DIR)) if name.lower().endswith(('.jpg', '.jpeg', '.png'))]
+
+
+def fingerprint(references=None):
     entries = []
-    for name in sorted(os.listdir(KNOWN_FACES_DIR)):
-        if name.lower().endswith((".jpg", ".jpeg", ".png")):
-            path = os.path.join(KNOWN_FACES_DIR, name)
-            entries.append(f"{name}:{os.path.getmtime(path)}:{os.path.getsize(path)}")
-    return hashlib.sha256((str(CACHE_VERSION) + "|" + "|".join(entries)).encode()).hexdigest()
+    for student_id, path in reference_entries(references):
+        try:
+            stat = os.stat(path)
+            entries.append([student_id, path, stat.st_mtime_ns, stat.st_size])
+        except OSError:
+            entries.append([student_id, path, 'missing'])
+    return hashlib.sha256(json.dumps([CACHE_VERSION, MODEL_SIGNATURE, entries]).encode()).hexdigest()
 
 def face_variants(image, locations):
     variants = []
@@ -194,56 +231,80 @@ def face_variants(image, locations):
         variants.extend(face_recognition.face_encodings(normalized, locations))
     return variants
 
-def known_faces():
-    global _cached_key, _cached_encodings, _cached_ids, _next_fingerprint_check
+def known_faces(references=None):
+    global _cached_key, _cached_encodings, _cached_ids, _next_fingerprint_check, _reference_cache
     # Directory metadata does not need to be checked for every camera frame.
     # New/changed enrollments are picked up within a few seconds instead.
-    if _cached_encodings and time.monotonic() < _next_fingerprint_check:
+    if references is None and _cached_encodings and time.monotonic() < _next_fingerprint_check:
         return _cached_encodings, _cached_ids
-    key = fingerprint()
+    key = fingerprint(references)
     _next_fingerprint_check = time.monotonic() + 8.0
     if key == _cached_key:
         return _cached_encodings, _cached_ids
     try:
         with open(CACHE_PATH, "rb") as file:
             cache = pickle.load(file)
-        if cache["fingerprint"] == key:
+        if cache.get('version') == CACHE_VERSION and cache.get('model') == MODEL_SIGNATURE:
+            _reference_cache.update(cache.get('references', {}))
+        if cache.get('version') == CACHE_VERSION and cache.get('model') == MODEL_SIGNATURE and cache["fingerprint"] == key:
             _cached_key, _cached_encodings, _cached_ids = key, cache["encodings"], cache["ids"]
             return _cached_encodings, _cached_ids
     except Exception:
         pass
 
-    encodings, ids = [], []
-    for filename in os.listdir(KNOWN_FACES_DIR):
-        if not filename.lower().endswith((".jpg", ".jpeg", ".png")):
-            continue
-        image = face_recognition.load_image_file(os.path.join(KNOWN_FACES_DIR, filename))
-        locations = face_recognition.face_locations(image, number_of_times_to_upsample=0, model="hog")
-        # Alternate eMeet-angle photos can be tighter or slightly blurred.
-        # Spend the extra detection pass only while enrolling a new reference.
-        if not locations:
-            locations = face_recognition.face_locations(image, number_of_times_to_upsample=1, model="hog")
-        # Tight camera-angle crops can be hard for HOG to locate even though
-        # they are valid reference images. Use the same lightweight fallback
-        # used by the live scanner so the reference is not silently skipped.
-        if not locations:
-            locations = far_face_locations(image)
-        if not locations:
-            continue
-        student_id = os.path.splitext(filename)[0].split("_")[0]
-        for encoding in face_variants(image, [locations[0]]):
-            encodings.append(encoding)
-            ids.append(student_id)
-    with open(CACHE_PATH, "wb") as file:
-        pickle.dump({"fingerprint": key, "encodings": encodings, "ids": ids}, file)
+    encodings, ids, current_references = [], [], {}
+    for student_id, path in reference_entries(references):
+        try:
+            stat = os.stat(path)
+            file_key = json.dumps([MODEL_SIGNATURE, path, stat.st_mtime_ns, stat.st_size])
+            variants = _reference_cache.get(file_key)
+            if variants is None:
+                variants = encode_reference(path)
+            current_references[file_key] = variants
+            encodings.extend(variants)
+            ids.extend([student_id] * len(variants))
+        except Exception as error:
+            # One missing/corrupt enrollment must not disable every student's scanner.
+            print(f'Skipping face reference {path}: {error}', file=sys.stderr)
+    _reference_cache = current_references
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=os.path.dirname(CACHE_PATH), delete=False) as file:
+            temporary = file.name
+            pickle.dump({'version': CACHE_VERSION, 'model': MODEL_SIGNATURE, 'fingerprint': key, 'encodings': encodings,
+                         'ids': ids, 'references': current_references}, file)
+        os.replace(temporary, CACHE_PATH)
+    except OSError:
+        # Recognition still works if the optional disk cache is unavailable.
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)
     _cached_key, _cached_encodings, _cached_ids = key, encodings, ids
     return encodings, ids
 
+
+def encode_reference(path):
+    with Image.open(path) as source:
+        image = np.asarray(ImageOps.exif_transpose(source).convert('RGB'))
+    locations = face_recognition.face_locations(image, number_of_times_to_upsample=0, model="hog")
+    # Alternate eMeet-angle photos can be tighter or slightly blurred.
+    # Spend the extra detection pass only while enrolling a new reference.
+    if not locations:
+        locations = face_recognition.face_locations(image, number_of_times_to_upsample=1, model="hog")
+    # Tight camera-angle crops can be hard for HOG to locate even though
+    # they are valid reference images. Use the same lightweight fallback
+    # used by the live scanner so the reference is not silently skipped.
+    if not locations:
+        locations = far_face_locations(image)
+    if len(locations) != 1:
+        return []
+    return face_variants(image, locations)
+
 def refresh_known_faces():
     """Make a newly enrolled face available to the live scanner immediately."""
-    global _next_fingerprint_check
+    global _next_fingerprint_check, _cached_key
     _next_fingerprint_check = 0.0
-    return known_faces()
+    _cached_key = None
+    return _cached_encodings, _cached_ids
 
 def best_match(known, ids, candidates, max_distance=MAX_MATCH_DISTANCE, min_margin=MIN_RUNNER_UP_MARGIN):
     per_student = {}
@@ -264,9 +325,12 @@ def batch_best_matches(known, ids, candidates, max_distance=MAX_MATCH_DISTANCE, 
     """Match every face in a frame with one vectorized distance calculation."""
     if not known or not candidates:
         return [None] * len(candidates)
-    distances = np.linalg.norm(
-        np.asarray(candidates)[:, None, :] - np.asarray(known)[None, :, :], axis=2
-    )
+    candidate_matrix, known_matrix = np.asarray(candidates), np.asarray(known)
+    # Avoid an F x R x 128 temporary for crowded frames / thousands of references.
+    squared = (np.sum(candidate_matrix ** 2, axis=1)[:, None]
+               + np.sum(known_matrix ** 2, axis=1)[None, :]
+               - 2 * candidate_matrix @ known_matrix.T)
+    distances = np.sqrt(np.maximum(squared, 0))
     matches = []
     for candidate_distances in distances:
         per_student = {}
@@ -311,7 +375,7 @@ def is_frontal_unknown_face(image, location):
     # the center between the eyes. Keep that out of visitor notifications.
     return 0.30 <= nose_position <= 0.70
 
-def recognize(image_path):
+def recognize(image_path, references=None):
     if not image_path or not os.path.isfile(image_path):
         return {"match": False, "faces": [], "matches": [], "message": "No camera frame received."}
     # Phone cameras write portrait orientation in EXIF.  Face-recognition
@@ -354,7 +418,7 @@ def recognize(image_path):
     if not locations:
         return {"match": False, "faces": [], "matches": [], "message": "No face detected."}
 
-    known, ids = known_faces()
+    known, ids = known_faces(references)
     eligible_faces = []
     for location in locations:
         top, right, bottom, left = location
@@ -430,4 +494,14 @@ def recognize(image_path):
     return {"match": bool(matches), "faces": faces, "detected_faces": detected_faces, "unregistered_faces": unregistered_faces, "matches": matches, "message": message}
 
 if __name__ == "__main__":
-    print(json.dumps(recognize(sys.argv[1] if len(sys.argv) > 1 else "")))
+    if len(sys.argv) > 2 and sys.argv[1] == '--warm':
+        with open(sys.argv[2], encoding='utf-8') as source:
+            payload = json.load(source)
+        encodings, _ = known_faces(payload['references'])
+        print(json.dumps({'ok': True, 'encoding_count': len(encodings)}))
+        sys.exit(0)
+    references = None
+    if len(sys.argv) > 2:
+        with open(sys.argv[2], encoding='utf-8') as source:
+            references = json.load(source)
+    print(json.dumps(recognize(sys.argv[1] if len(sys.argv) > 1 else "", references)))
