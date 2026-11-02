@@ -26,11 +26,14 @@ try {
         if (!(int)$has->get_result()->fetch_assoc()['n']) throw new RuntimeException('No saved student snapshot is available for the previous school year.');
         $restore=$conn->prepare("UPDATE students s JOIN student_school_history h ON TRIM(h.STUDENT_ID)=TRIM(s.STUDENT_ID)
             SET s.GRADE=h.GRADE,s.STRAND=h.STRAND,s.SECTION=h.SECTION,s.ENROLLMENT_STATUS=h.ENROLLMENT_STATUS,
-                s.IS_ARCHIVED=IF(h.ENROLLMENT_STATUS='Archived',1,0),s.ARCHIVE_REASON=IF(h.ENROLLMENT_STATUS='Enrolled','',s.ARCHIVE_REASON),s.ARCHIVED_AT=IF(h.ENROLLMENT_STATUS='Enrolled',NULL,s.ARCHIVED_AT)
+                s.STUDENT_STATUS=IF(h.ENROLLMENT_STATUS IN ('Archived','Graduated'),'Archived','Active'),
+                s.IS_ARCHIVED=IF(h.ENROLLMENT_STATUS IN ('Archived','Graduated'),1,0),s.ARCHIVE_REASON=IF(h.ENROLLMENT_STATUS='Enrolled','',s.ARCHIVE_REASON),s.ARCHIVED_AT=IF(h.ENROLLMENT_STATUS='Enrolled',NULL,s.ARCHIVED_AT)
             WHERE h.SCHOOL_YEAR=?");
         $restore->bind_param('s',$target); $restore->execute(); $count=$restore->affected_rows;
     }
+    $cleanup=cleanupUndoneRolloverSections($conn,$run ? (int)$run['ID'] : null,$target);
     $activate=$conn->prepare('UPDATE school_year_settings SET ACTIVE_SCHOOL_YEAR=? WHERE ID=1'); $activate->bind_param('s',$target); $activate->execute();
     $conn->commit();
 } catch (Throwable $exception) { $conn->rollback(); undoRolloverRedirect($exception instanceof mysqli_sql_exception ? 'Undo failed. No student records were changed.' : $exception->getMessage()); }
-undoRolloverRedirect("Rollover undone. $count student placements restored. Grades and rollover history were preserved; active school year is $target.",'success');
+$sectionCleanup=$cleanup['deleted']+$cleanup['deactivated'];
+undoRolloverRedirect("Rollover undone. $count student placements restored. $sectionCleanup auto-created section".($sectionCleanup===1?' was':'s were')." cleaned up; active school year is $target.",'success');

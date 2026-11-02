@@ -2,6 +2,7 @@
 session_start();
 require "page-guard.php";
 require "../config/db_conn.php";
+require "../includes/csrf-token.php";
 require "../includes/attendance-schema.php";
 require "../includes/mobile-scanner-settings.php";
 ensureAttendanceTimeOutColumn($conn);
@@ -14,7 +15,10 @@ require "../includes/staff-biometric.php";
 ensureSectionCatalogColumns($conn);
 seedDefaultTeacherSections($conn);
 ensureTeacherAssignmentSchema($conn);
-if (!hash_equals($_SESSION["csrf_token"] ?? "", $_POST["csrf_token"] ?? "")) {
+if (
+    $_SERVER["REQUEST_METHOD"] !== "POST" ||
+    !hash_equals($_SESSION["csrf_token"] ?? "", (string) ($_POST["csrf_token"] ?? ""))
+) {
     http_response_code(400);
     exit("Invalid request.");
 }
@@ -250,6 +254,61 @@ if ($action === "password") {
             "message" => "Default section capacity saved.",
             "type" => "success",
         ];
+    }
+} elseif ($action === "save_section_capacities") {
+    $capacities = $_POST["capacities"] ?? null;
+    if (!is_array($capacities) || !$capacities) {
+        $_SESSION["toast"] = [
+            "message" => "No classroom capacities were submitted.",
+            "type" => "error",
+        ];
+    } else {
+        try {
+            $updates = [];
+            foreach ($capacities as $sectionId => $postedCapacity) {
+                if (
+                    !ctype_digit((string) $sectionId) ||
+                    (int) $sectionId < 1 ||
+                    !is_scalar($postedCapacity)
+                ) {
+                    throw new InvalidArgumentException("Choose valid classroom capacities.");
+                }
+
+                $capacity = filter_var(
+                    $postedCapacity,
+                    FILTER_VALIDATE_INT,
+                    ["options" => ["min_range" => 15, "max_range" => 100]],
+                );
+                if ($capacity === false) {
+                    throw new InvalidArgumentException(
+                        "Each classroom capacity must be between 15 and 100.",
+                    );
+                }
+                $updates[(int) $sectionId] = $capacity;
+            }
+
+            $conn->begin_transaction();
+            $update = $conn->prepare(
+                "UPDATE sections SET CAPACITY=? WHERE SECTION_ID=? AND IS_ACTIVE=1",
+            );
+            foreach ($updates as $sectionId => $capacity) {
+                $update->bind_param("ii", $capacity, $sectionId);
+                $update->execute();
+            }
+            $conn->commit();
+            $_SESSION["toast"] = [
+                "message" => "Classroom capacities updated successfully.",
+                "type" => "success",
+            ];
+        } catch (Throwable $exception) {
+            $conn->rollback();
+            $_SESSION["toast"] = [
+                "message" => $exception instanceof InvalidArgumentException
+                    ? $exception->getMessage()
+                    : "Classroom capacities could not be updated. Please try again.",
+                "type" => "error",
+            ];
+        }
     }
 } elseif ($action === "add_section") {
     $section = trim($_POST["section"] ?? "");

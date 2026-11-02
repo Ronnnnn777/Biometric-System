@@ -26,7 +26,7 @@ if (!studentSectionHasCapacity($conn, (int) $placement['GRADE'], (string) $place
     header('Location: archived-students.php');
     exit;
 }
-$restore = $conn->prepare("UPDATE students SET ENROLLMENT_STATUS='Enrolled', ARCHIVE_REASON='', ARCHIVED_AT=NULL WHERE ID=? AND ENROLLMENT_STATUS='Archived'");
+$restore = $conn->prepare("UPDATE students SET ENROLLMENT_STATUS='Enrolled', STUDENT_STATUS='Active', ARCHIVE_REASON='', ARCHIVED_AT=NULL WHERE ID=? AND ENROLLMENT_STATUS='Archived'");
 $restore->bind_param("i", $id);
 $restore->execute();
 

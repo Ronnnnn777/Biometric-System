@@ -8,6 +8,25 @@ ensureTeacherProfileColumns($conn);
 ensureTeacherAssignmentSchema($conn);
 require 'components.php';
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_advisories') {
+    if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($_POST['csrf_token'] ?? ''))) {
+        $_SESSION['toast']=['message'=>'The advisory request expired. Refresh and try again.','type'=>'error'];
+    } else {
+        try {
+            $submitted = $_POST['adviser'] ?? [];
+            if (!is_array($submitted)) throw new RuntimeException('Invalid advisory assignments.');
+            $conn->begin_transaction();
+            replaceTeacherAdvisories($conn, $submitted);
+            $conn->commit();
+            $_SESSION['toast']=['message'=>'Current-year advisory assignments saved.','type'=>'success'];
+        } catch (Throwable $error) {
+            $conn->rollback();
+            $_SESSION['toast']=['message'=>$error instanceof RuntimeException ? $error->getMessage() : 'Advisory assignments could not be saved.','type'=>'error'];
+        }
+    }
+    header('Location: teacher-list.php'); exit;
+}
+
 $limit = 15;
 $view = strtolower(trim((string) ($_GET['view'] ?? 'active')));
 if (!in_array($view, ['active', 'archived'], true)) {
@@ -27,6 +46,14 @@ $teachers = $conn->query(
      WHERE $teacherWhere
      ORDER BY $teacherOrder",
 );
+$activeSections = !$isArchivedView ? $conn->query(
+    "SELECT s.SECTION_ID,s.GRADE,s.STRAND,s.SECTION,a.TEACHER_ID
+       FROM sections s LEFT JOIN current_teacher_advisory_assignments a ON a.SECTION_ID=s.SECTION_ID
+      WHERE s.IS_ACTIVE=1 ORDER BY s.GRADE,s.STRAND,s.SORT_ORDER,s.SECTION_ID",
+)->fetch_all(MYSQLI_ASSOC) : [];
+$adviserOptions = !$isArchivedView ? $conn->query(
+    "SELECT TEACHER_ID,TEACHER_NAME FROM teachers WHERE TEACHER_STATUS='Active' ORDER BY TEACHER_NAME",
+)->fetch_all(MYSQLI_ASSOC) : [];
 
 $viewPillActive = 'rounded-full bg-blue-600 text-white font-black text-sm px-4 py-2 shadow-md transition-all';
 $viewPillInactive = 'rounded-full text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-bold text-sm px-4 py-2 transition-all';
@@ -56,6 +83,24 @@ adminSidebar(
     <a href="add-teacher.php" class="btn btn-primary">+ Add teacher</a>
     <?php endif; ?>
 </div>
+
+<?php if (!$isArchivedView): ?>
+<section class="card card-body mb-6">
+    <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div><h2 class="text-lg font-black text-slate-900">Post-rollover advisory assignments</h2><p class="text-sm text-slate-500">Assign one active teacher per active section. Blank sections remain unassigned; a teacher can appear only once.</p></div>
+        <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700"><?= count($activeSections) ?> active sections</span>
+    </div>
+    <form method="post" class="mt-4 overflow-x-auto">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>"><input type="hidden" name="action" value="save_advisories">
+        <table class="w-full min-w-[34rem] text-left text-sm"><thead class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500"><tr><th class="p-3">Section</th><th class="p-3">Adviser</th></tr></thead><tbody>
+        <?php foreach ($activeSections as $section): ?>
+        <tr class="border-b border-slate-100"><td class="p-3 font-bold">Grade <?= (int)$section['GRADE'] ?> · <?= htmlspecialchars($section['SECTION']) ?><?= $section['STRAND'] ? ' · '.htmlspecialchars($section['STRAND']) : '' ?></td><td class="p-3"><select name="adviser[<?= (int)$section['SECTION_ID'] ?>]" class="field max-w-sm"><option value="">Unassigned</option><?php foreach ($adviserOptions as $teacher): ?><option value="<?= (int)$teacher['TEACHER_ID'] ?>" <?= (int)$section['TEACHER_ID']===(int)$teacher['TEACHER_ID'] ? 'selected' : '' ?>><?= htmlspecialchars($teacher['TEACHER_NAME']) ?></option><?php endforeach; ?></select></td></tr>
+        <?php endforeach; ?>
+        </tbody></table>
+        <button class="btn btn-primary mt-4">Save advisory roster</button>
+    </form>
+</section>
+<?php endif; ?>
 
 <div class="card overflow-hidden">
     <div class="w-full overflow-x-auto">

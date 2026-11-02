@@ -48,6 +48,10 @@ function generatedSectionName(int $grade, string $strand, int $index): string
  * Divides an array into a specific number of balanced chunks.
  * When the split is uneven, the earlier chunks receive one extra item.
  *
+ * This is the canonical distribution used by regular sectioning. It never
+ * fills one section to capacity before touching the next: 70 students across
+ * two sections become 35/35, not 40/30.
+ *
  * @param array<int,mixed> $items
  * @return array<int,array<int,mixed>>
  */
@@ -69,28 +73,167 @@ function chunkEvenly(array $items, int $numChunks): array
     return $result;
 }
 
-/** Balance regular students by total occupancy, respecting every section's capacity.
- * Honor qualification is handled explicitly by the promotion planner.
+/**
+ * Balanced regular-section distribution.
+ *
+ * Students are split with chunkEvenly() across every available regular
+ * section. A section whose configured capacity is smaller than its even share
+ * is filled to its capacity and its surplus is redistributed evenly among the
+ * remaining sections. This preserves the equal-load policy while still
+ * respecting administrator-configured capacities.
+ *
+ * Existing occupants only reduce the free seats; they never cause the next
+ * incoming student to be dumped into a single section.
+ *
+ * @param array<int,string|int> $studentIds Already ordered.
+ * @param array<int,array>      $sections   Regular sections only.
+ * @return array<int,array{section:array,students:array}>
  */
 function assignStudentsToSections(array $studentIds, array $sections, ?int $default = null): array
 {
+    $default ??= DEFAULT_SECTION_CAPACITY;
     $groups = [];
+    $available = [];
     foreach ($sections as $section) {
         if (!empty($section['IS_HONOR'])) throw new InvalidArgumentException('Honor students must be qualified before sectioning.');
-        $groups[] = ['section'=>$section, 'students'=>[]];
+        $groups[] = ['section' => $section, 'students' => []];
+        $existing = (int) ($section['EXISTING_COUNT'] ?? 0);
+        $available[] = max(0, sectionCapacity($section, $default) - $existing);
     }
-    foreach ($studentIds as $studentId) {
-        $selected = null; $smallest = PHP_INT_MAX;
-        foreach ($groups as $index=>$group) {
-            $population = (int)($group['section']['EXISTING_COUNT'] ?? 0) + count($group['students']);
-            if ($population < sectionCapacity($group['section'], $default) && $population < $smallest) {
-                $selected = $index; $smallest = $population;
+
+    $studentIds = array_values($studentIds);
+    $total = count($studentIds);
+    if ($total === 0) return $groups;
+    if (!$groups) throw new RuntimeException('No regular section is available for the remaining students.');
+    if ($total > array_sum($available)) throw new RuntimeException('Insufficient regular-section capacity.');
+
+    // Start from an even split, cap sections that cannot hold their share, and
+    // redistribute the surplus evenly until every student has a seat.
+    $sizes = array_fill(0, count($groups), 0);
+    $open = array_keys($groups);
+    $remaining = $total;
+    while ($remaining > 0 && $open) {
+        $chunks = chunkEvenly(range(1, $remaining), count($open));
+        $surplus = 0;
+        $stillOpen = [];
+        foreach ($open as $position => $index) {
+            $share = count($chunks[$position]);
+            $free = $available[$index] - $sizes[$index];
+            if ($share > $free) {
+                $sizes[$index] += $free;
+                $surplus += $share - $free;
+            } else {
+                $sizes[$index] += $share;
+                if ($sizes[$index] < $available[$index]) $stillOpen[] = $index;
             }
         }
-        if ($selected === null) throw new RuntimeException('Insufficient regular-section capacity.');
-        $groups[$selected]['students'][] = $studentId;
+        if ($surplus === 0) { $remaining = 0; break; }
+        $remaining = $surplus;
+        $open = $stillOpen;
     }
+    if ($remaining > 0) throw new RuntimeException('Insufficient regular-section capacity.');
+
+    $offset = 0;
+    foreach ($groups as $index => &$group) {
+        $group['students'] = array_slice($studentIds, $offset, $sizes[$index]);
+        $offset += $sizes[$index];
+    }
+    unset($group);
     return $groups;
+}
+
+/**
+ * Finalized academic sectioning.
+ *
+ * Section 1 is the honor section. It is deliberately UNCAPPED: every student
+ * whose exact GWA is at least 90.00 is placed in the first ordered section,
+ * regardless of that section's configured capacity. Section 1 is ordered by
+ * highest exact GWA, then LRN, so the roster is deterministic.
+ *
+ * Every remaining student (GWA below 90.00) is distributed evenly across
+ * Sections 2+ with chunkEvenly(), which assignStudentsToSections() applies
+ * while still respecting each section's configured capacity and generating
+ * overflow sections when the batch is larger than the catalog.
+ *
+ * A missing GWA is deliberately a regular placement. That is the safe
+ * administrative default for a student with no recorded grades; it must not
+ * turn an unrecorded GWA into a rollover blocker or an honor award.
+ *
+ * @param array<int,string|int>        $studentIds     Students to place.
+ * @param array<int,array>             $orderedSections Section 1 first, then Sections 2+.
+ * @param array<string|int,float|null> $gwaMap         GWA per student id.
+ * @return array{honor:array<int,string|int>,regular:array<int,string|int>,groups:array<int,array{section:array,students:array}>}
+ */
+function assignStudentsByAcademicSections(
+    array $studentIds,
+    array $orderedSections,
+    array $gwaMap,
+    int $defaultCapacity = DEFAULT_SECTION_CAPACITY,
+): array {
+    $orderedSections = array_values($orderedSections);
+    if (!$orderedSections) {
+        throw new RuntimeException('No section is available for sectioning.');
+    }
+
+    // Section 1 is the first ordered section; the rest receive the regulars.
+    $honorSection = array_shift($orderedSections);
+    $regularSections = $orderedSections;
+
+    $honor = [];
+    $regular = [];
+    foreach (array_values($studentIds) as $studentId) {
+        $gwa = $gwaMap[$studentId] ?? null;
+        if ($gwa !== null && (float) $gwa >= 90.00) {
+            $honor[] = $studentId;
+        } else {
+            $regular[] = $studentId;
+        }
+    }
+
+    // Keep Section 1 deterministic: highest exact GWA first, then LRN.
+    usort($honor, static function ($left, $right) use ($gwaMap): int {
+        $comparison = ((float) $gwaMap[$right] <=> (float) $gwaMap[$left]);
+        return $comparison ?: strcmp((string) $left, (string) $right);
+    });
+
+    $honorSection['IS_HONOR'] = true;
+    $groups = [['section' => $honorSection, 'students' => $honor]];
+    if ($regularSections) {
+        $groups = array_merge(
+            $groups,
+            assignStudentsToSections($regular, $regularSections, $defaultCapacity),
+        );
+    } elseif ($regular) {
+        throw new RuntimeException('No regular section is available for the remaining students.');
+    }
+
+    return ['honor' => $honor, 'regular' => $regular, 'groups' => $groups];
+}
+
+/**
+ * Backwards-compatible wrapper. Older callers pass Section 1 separately from
+ * the regular sections; the canonical entry point is
+ * assignStudentsByAcademicSections().
+ *
+ * @param array<int,string|int> $studentIds
+ * @param array<string|int,float|null> $gwaByStudent
+ * @param array $honorSection Section 1
+ * @param array<int,array> $regularSections Sections 2 and above
+ * @return array{honor:array<int,string|int>,regular:array<int,string|int>,groups:array<int,array{section:array,students:array}>}
+ */
+function sectionOneHonorAndBalancedRegular(
+    array $studentIds,
+    array $gwaByStudent,
+    array $honorSection,
+    array $regularSections,
+    ?int $default = null,
+): array {
+    return assignStudentsByAcademicSections(
+        $studentIds,
+        array_merge([$honorSection], array_values($regularSections)),
+        $gwaByStudent,
+        $default ?? DEFAULT_SECTION_CAPACITY,
+    );
 }
 
 /**
@@ -181,56 +324,11 @@ function ensureSectionCapacity(mysqli $conn, int $grade, string $strand, int $ne
     return $createdSections;
 }
 
-/**
- * Split an ordered list of student IDs across weighted targets.
- * Uses the largest-remainder method so the chunks always add up to the total.
- *
- * @param array<int,string|int> $studentIds Already ordered.
- * @param array<int,int>        $percents   One weight per target (0 skips a target).
- * @return array<int,array<int,string|int>> One chunk per weight, in the same order.
- */
-function splitStudentsByWeights(array $studentIds, array $percents): array
-{
-    $percents = array_values($percents);
-    $count = count($percents);
-    $total = count($studentIds);
-    $sum = array_sum($percents);
-    if ($count === 0 || $total === 0 || $sum <= 0) {
-        return array_fill(0, $count, []);
-    }
-
-    $floors = [];
-    $remainders = [];
-    foreach ($percents as $index => $percent) {
-        $exact = $total * $percent / $sum;
-        $floors[$index] = (int) floor($exact);
-        $remainders[$index] = $exact - $floors[$index];
-    }
-
-    $assigned = array_sum($floors);
-    arsort($remainders);
-    foreach (array_keys($remainders) as $index) {
-        if ($assigned >= $total) break;
-        $floors[$index]++;
-        $assigned++;
-    }
-
-    $groups = [];
-    $offset = 0;
-    foreach ($floors as $size) {
-        $groups[] = array_slice($studentIds, $offset, $size);
-        $offset += $size;
-    }
-    return $groups;
-}
-
-/**
- * Validate posted rollover plans into flat rows.
- * A source grade/strand may target several strands (Grade 10 -> Grade 11 split),
- * so each row is a (source, target, percent) tuple.
+/** Validate one deterministic target for every non-Grade-10 promotion source.
+ * Grade 10 is routed separately by an administrator-reviewed student choice.
  *
  * @param callable(string):never $fail
- * @return array<int,array{FROM_GRADE:int,FROM_STRAND:string,TO_GRADE:int,TO_STRAND:string,SPLIT_PERCENT:int}>
+ * @return array<int,array{FROM_GRADE:int,FROM_STRAND:string,TO_GRADE:int,TO_STRAND:string}>
  */
 function normalisePromotionPlans(array $postedPlans, callable $fail): array
 {
@@ -240,7 +338,7 @@ function normalisePromotionPlans(array $postedPlans, callable $fail): array
         if (!is_array($posted)) $fail('Choose valid promotion targets.');
         $fromGrade = (int) ($posted['from_grade'] ?? 0);
         $fromStrand = trim((string) ($posted['from_strand'] ?? ''));
-        if ($fromGrade < 7 || $fromGrade > 11) {
+        if (!in_array($fromGrade, [7, 8, 9, 11], true)) {
             $fail('Choose a valid source grade for every promotion.');
         }
 
@@ -262,45 +360,24 @@ function normalisePromotionPlans(array $postedPlans, callable $fail): array
         $toGrade = $fromGrade + 1;
         $targetStrands = studentStrandsForGrade($toGrade);
         $targets = $posted['targets'] ?? [];
-        if (!is_array($targets) || !$targets) {
-            $fail('Choose a target for Grade ' . $toGrade . '.');
+        if (!is_array($targets) || count($targets) !== 1 || !is_array($targets[0] ?? null)) {
+            $fail('Choose one target for Grade ' . $toGrade . '.');
         }
-
-        $percentTotal = 0;
-        $usedStrands = [];
-        foreach ($targets as $target) {
-            if (!is_array($target)) $fail('Choose valid strand targets.');
-            $toStrand = trim((string) ($target['strand'] ?? ''));
-            $percent = (int) ($target['percent'] ?? 100);
-            if ($fromGrade === 11 && $toStrand !== $fromStrand) $fail('Grade 11 students must keep their strand in Grade 12.');
-            if ($targetStrands) {
-                if (!in_array($toStrand, $targetStrands, true)) {
-                    $fail('Choose a valid target strand for Grade ' . $toGrade . '.');
-                }
-            } else {
-                $toStrand = '';
+        $toStrand = trim((string) ($targets[0]['strand'] ?? ''));
+        if ($fromGrade === 11 && $toStrand !== $fromStrand) $fail('Grade 11 students must keep their strand in Grade 12.');
+        if ($targetStrands) {
+            if (!in_array($toStrand, $targetStrands, true)) {
+                $fail('Choose a valid target strand for Grade ' . $toGrade . '.');
             }
-            if (isset($usedStrands[$toStrand])) {
-                $fail('Each target strand may only be chosen once.');
-            }
-            $usedStrands[$toStrand] = true;
-            if ($percent < 0 || $percent > 100) {
-                $fail('Target percentages must be between 0 and 100.');
-            }
-            $percentTotal += $percent;
-            if ($percent === 0) continue;
-            $rows[] = [
-                'FROM_GRADE' => $fromGrade,
-                'FROM_STRAND' => $fromStrand,
-                'TO_GRADE' => $toGrade,
-                'TO_STRAND' => $toStrand,
-                'SPLIT_PERCENT' => $percent,
-            ];
+        } else {
+            $toStrand = '';
         }
-
-        if ($percentTotal !== 100) {
-            $fail('Target percentages for Grade ' . $fromGrade . ' must add up to 100%.');
-        }
+        $rows[] = [
+            'FROM_GRADE' => $fromGrade,
+            'FROM_STRAND' => $fromStrand,
+            'TO_GRADE' => $toGrade,
+            'TO_STRAND' => $toStrand,
+        ];
     }
     return $rows;
 }

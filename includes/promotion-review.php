@@ -10,7 +10,9 @@ function promotionReviewPage(array $plan, int $grade = 0, string $placement = ''
         $sections[$key] = 'Grade '.$student['GRADE'].' '.$student['STRAND'].' / '.$student['SECTION'];
         $missing += count($record['standing']['missing_subjects']);
         $incomplete += count($record['standing']['incomplete_subjects']);
-        if ($record['standing']['complete'] && $record['standing']['decision']==='Promoted'
+        // Unrecorded grades are promoted administratively, so readiness only
+        // depends on the planned placement (or Grade 12 graduation).
+        if ($record['standing']['decision']!=='Retained'
             && ((int)$student['GRADE']===12 || $record['placement']!==null)) $ready++;
     }
     foreach ($plan['reviews'] as $review) {

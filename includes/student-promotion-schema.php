@@ -58,7 +58,8 @@ function studentResultRemark(?float $finalGrade): string
 
 function studentPromotionDecision(int $failedSubjects): string
 {
-    if ($failedSubjects >= 3) return 'Retained';
-    if ($failedSubjects === 2) return 'Summer class required';
+    // Retention is an explicit administrative override. A failing final grade
+    // creates a remedial obligation but does not silently keep a student back.
+    if ($failedSubjects >= 1) return 'Summer Class / Remedial';
     return 'Promoted';
 }

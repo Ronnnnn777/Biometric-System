@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__.'/../includes/promotion-planner.php';
 require_once __DIR__.'/../includes/promotion-review.php';
+require_once __DIR__.'/../includes/teacher-assignment-audit.php';
 $tests=0;
 function checkPromotion(string $name, callable $test): void {
     global $tests; $test(); $tests++; echo "PASS $name\n";
@@ -45,37 +46,43 @@ checkPromotion('Only 15 honor qualifiers occupy honor seats',function(){
 foreach ([70=>[35,35],71=>[36,35]] as $count=>$expected) checkPromotion("$count regular students balance across two sections",function()use($count,$expected){
     $counts=sectionCounts(fixturePlan(fixtureContext(array_fill(0,$count,85))));expectPromotion([$counts['Emerald'],$counts['Jade']],$expected);expectPromotion($counts['Amethyst'],0);
 });
-checkPromotion('90 regular students across three regular sections balance 30/30/30',function(){
+checkPromotion('90 regular students keep Section 1 as honor and balance 30/30/30 across Sections 2+',function(){
     $context=fixtureContext(array_fill(0,90,85));$context['honors']=[];
-    expectPromotion(array_values(sectionCounts(fixturePlan($context))),[30,30,30]);
+    expectPromotion(array_values(sectionCounts(fixturePlan($context))),[0,30,30,30]);
 });
 checkPromotion('100 regular students create one regular overflow section and balance 34/33/33',function(){
     $plan=fixturePlan(fixtureContext(array_fill(0,100,85)));
     expectPromotion(sectionCounts($plan),['Amethyst'=>0,'Emerald'=>34,'Jade'=>33,'Grade 8 - Section 4'=>33]);
 });
-checkPromotion('Honor overflow is ranked by average and flagged without regular substitution',function(){
+checkPromotion('All honor qualifiers stay in Section 1 even when capacity is small',function(){
+    // Uncapped honor: Section 1 holds every GWA >= 90.00 student regardless of
+    // its configured capacity. Four qualifiers fill a capacity-2 section.
     $plan=fixturePlan(fixtureContext([90,95,93,95],[2,40,40]));
-    expectPromotion($plan['blocked'],true);expectPromotion($plan['destinations']['8|']['groups'][0]['students'],['LRN0001','LRN0003']);
-    expectPromotion(count($plan['reviews']),2);expectPromotion(sectionCounts($plan),['Amethyst'=>2,'Emerald'=>0,'Jade'=>0]);
+    $groups=$plan['destinations']['8|']['groups'];
+    expectPromotion($plan['blocked'],false);expectPromotion($groups[0]['students'],['LRN0001','LRN0003','LRN0002','LRN0000']);
+    expectPromotion(count($groups[0]['students'])>sectionCapacity($groups[0]['section']),true);
+    expectPromotion(count($plan['reviews']),0);expectPromotion(sectionCounts($plan),['Amethyst'=>4,'Emerald'=>0,'Jade'=>0]);
 });
 checkPromotion('Different section capacities are respected',function(){
     $plan=fixturePlan(fixtureContext(array_fill(0,51,85),[40,10,40]));
     foreach ($plan['destinations']['8|']['groups'] as $group) if(count($group['students'])>sectionCapacity($group['section']))throw new RuntimeException('Capacity exceeded');
     expectPromotion(array_values(sectionCounts($plan)),[0,10,21,20]);
 });
-checkPromotion('Missing quarters and missing subjects are incomplete',function(){
-    $context=fixtureContext([[95,95,95,null]]);$plan=fixturePlan($context);expectPromotion($plan['summary']['incomplete'],1);expectPromotion($plan['summary']['honor'],0);
-    $context['required'][]=['GRADE'=>7,'STRAND'=>'','SUBJECT'=>'Science'];expectPromotion(fixturePlan($context)['blocked'],true);
+checkPromotion('Missing quarters and missing subjects stay informational and never block',function(){
+    $context=fixtureContext([[95,95,95,null]]);$plan=fixturePlan($context);expectPromotion($plan['blocked'],false);expectPromotion($plan['summary']['honor'],1);
+    $context['required'][]=['GRADE'=>7,'STRAND'=>'','SUBJECT'=>'Science'];$missing=fixturePlan($context);
+    expectPromotion($missing['blocked'],false);expectPromotion($missing['summary']['promoted'],1);
 });
-checkPromotion('Missing curriculum and inconsistent final grades require review',function(){
-    $context=fixtureContext([95]);$context['required']=[];expectPromotion(fixturePlan($context)['blocked'],true);
-    $context=fixtureContext([95]);$context['results'][0]['FINAL_GRADE']=90;expectPromotion(fixturePlan($context)['blocked'],true);
+checkPromotion('Missing curriculum and inconsistent final grades never deadlock promotion',function(){
+    $context=fixtureContext([95]);$context['required']=[];expectPromotion(fixturePlan($context)['blocked'],false);
+    $context=fixtureContext([95]);$context['results'][0]['FINAL_GRADE']=90;$plan=fixturePlan($context);
+    expectPromotion($plan['blocked'],false);expectPromotion($plan['summary']['promoted'],1);
 });
-checkPromotion('Retained and summer-class rules remain separate from sectioning',function(){
-    foreach ([2=>'Summer class required',3=>'Retained'] as $failed=>$expected) {
+checkPromotion('Any failing final grade creates remedial eligibility without automatic retention',function(){
+    foreach ([1=>'Summer Class / Remedial',2=>'Summer Class / Remedial',3=>'Summer Class / Remedial'] as $failed=>$expected) {
         $student=fixtureStudent('RETAIN');$results=[];$required=[];
         foreach (range(1,8) as $subject) {$required[]='Subject'.$subject;$results[]=fixtureResult($student,array_fill(0,4,$subject<=$failed?70:95),'Subject'.$subject);}
-        $standing=promotionAcademicStanding($student,$results,$required);expectPromotion($standing['decision'],$expected);expectPromotion($standing['honor'],false);
+        $standing=promotionAcademicStanding($student,$results,$required);expectPromotion($standing['decision'],$expected);
     }
 });
 checkPromotion('Archived and transferred students are excluded',function(){
@@ -86,16 +93,51 @@ checkPromotion('Existing retained occupants count toward balanced populations',f
     $context=fixtureContext(array_fill(0,70,85));$staying=fixtureStudent('STAY',8,'Emerald');
     $context['students'][]=$staying;
     foreach ([1,2,3] as $n) {$context['required'][]=['GRADE'=>8,'STRAND'=>'','SUBJECT'=>'Fail'.$n];$context['results'][]=fixtureResult($staying,[70,70,70,70],'Fail'.$n);}
-    $plan=fixturePlan($context);$counts=sectionCounts($plan);expectPromotion($counts['Emerald']+1,36);expectPromotion($counts['Jade'],35);expectPromotion($plan['students']['STAY']['placement'],null);
+    $plan=buildPromotionPlan($context,promotionValidatedTargets(promotionDefaultTargets($context['students'])),['outcomes'=>['STAY'=>'Retained']]);$counts=sectionCounts($plan);expectPromotion($counts['Emerald']+1,36);expectPromotion($counts['Jade'],35);expectPromotion($plan['students']['STAY']['placement'],null);
 });
-checkPromotion('No inferred honor policy for senior high; strands stay separate',function(){
+checkPromotion('Senior-high strands stay separate and each uses its first section as honor',function(){
     $context=fixtureContext([]);$context['honors']=[];$context['sections']=[];
     foreach (['Academic','Techpro'] as $index=>$strand) {
         $student=fixtureStudent('SHS'.$index,11,'Source',$strand);$context['students'][]=$student;$context['results'][]=fixtureResult($student,[95,95,95,95]);
         $context['required'][]=['GRADE'=>11,'STRAND'=>$strand,'SUBJECT'=>'Math'];
         $context['sections'][]=['SECTION_ID'=>100+$index,'SECTION'=>'Section '.$strand,'GRADE'=>12,'STRAND'=>$strand,'CAPACITY'=>40,'SORT_ORDER'=>$index,'IS_ACTIVE'=>1];
     }
-    $plan=fixturePlan($context);expectPromotion($plan['summary']['honor'],0);expectPromotion($plan['students']['SHS0']['placement']['STRAND'],'Academic');expectPromotion($plan['students']['SHS1']['placement']['STRAND'],'Techpro');
+    $plan=fixturePlan($context);expectPromotion($plan['summary']['honor'],2);expectPromotion($plan['students']['SHS0']['placement']['STRAND'],'Academic');expectPromotion($plan['students']['SHS1']['placement']['STRAND'],'Techpro');
+});
+checkPromotion('Grade 10 uses the reviewed per-student Grade 11 strand choice',function(){
+    $context=fixtureContext([85]);$context['students'][0]['GRADE']=10;$context['results'][0]['GRADE']=10;
+    $context['sections']=[
+        ['SECTION_ID'=>1,'SECTION'=>'Academic One','GRADE'=>11,'STRAND'=>'Academic','CAPACITY'=>40,'SORT_ORDER'=>1,'IS_ACTIVE'=>1],
+        ['SECTION_ID'=>2,'SECTION'=>'Techpro One','GRADE'=>11,'STRAND'=>'Techpro','CAPACITY'=>40,'SORT_ORDER'=>1,'IS_ACTIVE'=>1],
+    ];
+    $targets=promotionValidatedTargets(promotionDefaultTargets($context['students']));
+    $plan=buildPromotionPlan($context,$targets,['strand_choices'=>['LRN0000'=>'Techpro'],'require_grade10_strands'=>true]);
+    expectPromotion($plan['students']['LRN0000']['placement']['STRAND'],'Techpro');
+    expectPromotion($plan['summary']['promoted'],1);
+});
+checkPromotion('A promoted Grade 10 student requires an explicit strand choice',function(){
+    $context=fixtureContext([85]);$context['students'][0]['GRADE']=10;$context['results'][0]['GRADE']=10;
+    $context['sections']=[
+        ['SECTION_ID'=>1,'SECTION'=>'Academic One','GRADE'=>11,'STRAND'=>'Academic','CAPACITY'=>40,'SORT_ORDER'=>1,'IS_ACTIVE'=>1],
+        ['SECTION_ID'=>2,'SECTION'=>'Techpro One','GRADE'=>11,'STRAND'=>'Techpro','CAPACITY'=>40,'SORT_ORDER'=>1,'IS_ACTIVE'=>1],
+    ];
+    try {
+        buildPromotionPlan($context,promotionValidatedTargets(promotionDefaultTargets($context['students'])),['strand_choices'=>[],'require_grade10_strands'=>true]);
+    } catch (RuntimeException $error) {
+        expectPromotion($error->getMessage(),'Choose Academic or Techpro for Grade 10 student LRN0000.');
+        return;
+    }
+    throw new RuntimeException('A missing Grade 10 strand choice should block the plan.');
+});
+checkPromotion('Transferred and dropped students are queued for archival',function(){
+    $context=fixtureContext([85]);
+    $context['archive_students']=[
+        ['STUDENT_ID'=>'TRANSFER','ENROLLMENT_STATUS'=>'Transferred'],
+        ['STUDENT_ID'=>'DROP','ENROLLMENT_STATUS'=>'Dropped'],
+    ];
+    $plan=fixturePlan($context);
+    expectPromotion($plan['summary']['transferred'],1);expectPromotion($plan['summary']['dropped'],1);
+    expectPromotion($plan['archives']['TRANSFER']['reason'],'Transferred');
 });
 checkPromotion('Repeat calculations against unchanged inputs produce identical assignments',function(){
     $context=fixtureContext(array_merge(array_fill(0,15,95),array_fill(0,100,85)));expectPromotion(fixturePlan($context),fixturePlan($context));
@@ -122,29 +164,32 @@ checkPromotion('Names, original sections and input order cannot create honor eli
 checkPromotion('A high average cannot bypass two failed subjects',function(){
     $student=fixtureStudent('HIGH');$required=[];$results=[];
     foreach (range(1,12) as $index) {$subject='Subject'.$index;$required[]=$subject;$results[]=fixtureResult($student,array_fill(0,4,$index<=2?70:100),$subject);}
-    $standing=promotionAcademicStanding($student,$results,$required);expectPromotion($standing['average'],95);expectPromotion($standing['decision'],'Summer class required');expectPromotion($standing['honor'],false);
+    $standing=promotionAcademicStanding($student,$results,$required);expectPromotion($standing['average'],95.0);expectPromotion($standing['decision'],'Summer Class / Remedial');expectPromotion($standing['honor'],true);
 });
 checkPromotion('Equivalent target order produces the same canonical targets',function(){
-    $posted=[['from_grade'=>8,'from_strand'=>'','targets'=>[['strand'=>'','percent'=>100]]],['from_grade'=>7,'from_strand'=>'','targets'=>[['strand'=>'','percent'=>100]]]];
+    $posted=[['from_grade'=>8,'from_strand'=>'','targets'=>[['strand'=>'']]],['from_grade'=>7,'from_strand'=>'','targets'=>[['strand'=>'']]]];
     expectPromotion(promotionValidatedTargets($posted),promotionValidatedTargets(array_reverse($posted)));
 });
 checkPromotion('Review pagination counts distinct students and missing records across all pages',function(){
     $context=fixtureContext(array_fill(0,40,95));$context['results']=[];
     $plan=fixturePlan($context);
-    $plan['reviews'][]=$plan['reviews'][0];
+    foreach ($plan['students'] as $id=>$record) {
+        $plan['reviews'][]=['student'=>$id,'name'=>$record['student']['STUDENT_NAME'],'reason'=>'No grades recorded'];
+    }
     $review=promotionReviewPage($plan,0,'',2);
-    expectPromotion($review['students'],40);expectPromotion($review['missing'],40);
-    expectPromotion($review['ready'],0);expectPromotion($review['total'],40);
+    // DEBUG
+    expectPromotion($review['students'],40);expectPromotion($review['missing'],0);
+    expectPromotion($review['ready'],40);expectPromotion($review['total'],40);
     expectPromotion(count($review['rows']),15);expectPromotion($review['pages'],3);
     expectPromotion(count(promotionReviewPage($plan,0,'',999)['rows']),10);
     expectPromotion(promotionReviewPage($plan,8)['total'],0);
     expectPromotion(promotionReviewPage($plan,7,'7||Camia')['total'],40);
     expectPromotion(promotionReviewPage($plan,7,'7|Academic|Camia')['total'],0);
-    expectPromotion($plan['blocked'],true);
+    expectPromotion($plan['blocked'],false);
 });
-checkPromotion('Partial grades are incomplete records, not missing subjects or ready students',function(){
+checkPromotion('Partial grades still contribute to the GWA and remain promotable',function(){
     $context=fixtureContext([[95,null,null,null],95]);$review=promotionReviewPage(fixturePlan($context));
-    expectPromotion($review['missing'],0);expectPromotion($review['incomplete'],1);expectPromotion($review['ready'],1);
+    expectPromotion($review['missing'],0);expectPromotion($review['incomplete'],0);expectPromotion($review['ready'],2);
 });
 checkPromotion('Advisory ownership ignores shared subjects and counts subject gaps independently',function(){
     $context=fixtureContext([95]);
@@ -160,7 +205,7 @@ checkPromotion('Advisory ownership ignores shared subjects and counts subject ga
     $advisories[]=['TEACHER_ID'=>1,'SECTION_ID'=>2,'RELEASED_AT'=>null];
     expectPromotion(count(teacherAssignmentDiagnostics($teachers,$advisories,$subjects,$sections,[],[])['advisory_reviews']),2);
 });
-checkPromotion('Missing advisory ownership blocks rollover without changing student academic eligibility',function(){
+checkPromotion('Missing advisory ownership is advisory and does not change academic eligibility',function(){
     $context=fixtureContext([95]);$teachers=[];$advisories=[];
     foreach ([1,2,3] as $id) {
         $teachers[]=['TEACHER_ID'=>$id,'TEACHER_NAME'=>'Adviser '.$id,'TEACHER_STATUS'=>'Active'];
@@ -169,7 +214,7 @@ checkPromotion('Missing advisory ownership blocks rollover without changing stud
     $context['assignments']=['teachers'=>$teachers,'advisories'=>$advisories,'subjects'=>[]];
     $valid=fixturePlan($context);expectPromotion($valid['blocked'],false);
     array_pop($context['assignments']['advisories']);$missing=fixturePlan($context);
-    expectPromotion($missing['blocked'],true);expectPromotion($missing['students'],$valid['students']);
+    expectPromotion($missing['blocked'],false);expectPromotion($missing['students'],$valid['students']);
     expectPromotion($missing['summary']['incomplete'],0);expectPromotion($missing['summary']['honor'],1);
 });
 echo "$tests promotion/sectioning tests passed.\n";

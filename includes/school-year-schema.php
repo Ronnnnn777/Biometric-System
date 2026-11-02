@@ -7,8 +7,8 @@ function ensureSchoolYearRolloverSchema(mysqli $conn): void
     ensureAttendanceSnapshotColumns($conn);
     // Retired: per-section rollover mapping was replaced by grade-level auto-sectioning.
     // Preserve retired tables for historical reference; schema setup never deletes them.
-    // Grade-level destination plan. One source may target several strands
-    // (Grade 10 -> Grade 11 split), hence TO_STRAND is part of the key.
+    // Legacy percentage-plan records are retained for historical reference.
+    // Current rollovers route Grade 10 students by individual strand choice.
     $conn->query("CREATE TABLE IF NOT EXISTS school_year_promotion_plan (FROM_GRADE TINYINT UNSIGNED NOT NULL, FROM_STRAND VARCHAR(20) NOT NULL DEFAULT '', TO_GRADE TINYINT UNSIGNED NOT NULL, TO_STRAND VARCHAR(20) NOT NULL DEFAULT '', SPLIT_PERCENT TINYINT UNSIGNED NOT NULL DEFAULT 100, UPDATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (FROM_GRADE, FROM_STRAND, TO_STRAND))");
     ensurePromotionPlanColumns($conn);
     // Sections created automatically by a rollover, so undo can clean them up.

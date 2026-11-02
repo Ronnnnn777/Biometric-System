@@ -45,6 +45,7 @@ if ($admin && password_verify($inputPassword, $admin["ADMIN_PASS"])) {
     session_regenerate_id(true);
     $_SESSION["is-authenticated"] = true;
     $_SESSION["user-role"] = "administrator";
+    $_SESSION["user-id"] = (int) $admin["ADMIN_ID"];
     $_SESSION["admin-user"] = $admin["ADMIN_USER"];
     header("Location: home.php");
     exit();

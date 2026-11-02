@@ -10,7 +10,7 @@ ensureAttendanceTimeOutColumn($conn);
 
 $id = (int) ($_GET["id"] ?? 0);
 $studentQuery = $conn->prepare(
-    "SELECT * FROM students WHERE ID=? AND ENROLLMENT_STATUS='Archived' LIMIT 1",
+    "SELECT * FROM students WHERE ID=? AND (ENROLLMENT_STATUS IN ('Archived','Graduated') OR COALESCE(STUDENT_STATUS,'Active')='Archived') LIMIT 1",
 );
 $studentQuery->bind_param("i", $id);
 $studentQuery->execute();

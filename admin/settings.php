@@ -765,6 +765,40 @@ $mobileScannerId !== ""
         }
     });
 </script>
+<div class="card bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm mb-6">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+            <h2 class="text-xl font-black text-slate-900 dark:text-white">Classroom Capacities</h2>
+            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Set the maximum number of students for each active section. These limits are used before the default capacity during sectioning.</p>
+        </div>
+        <span class="rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300"><?= array_sum(array_map(static fn($strands) => array_sum(array_map('count', $strands)), $groups)) ?> active</span>
+    </div>
+    <form action="settings-save.php" method="post" class="mt-6 space-y-6">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION["csrf_token"]) ?>">
+        <input type="hidden" name="action" value="save_section_capacities">
+        <?php foreach ($groups as $grade => $strands): ?>
+            <section aria-labelledby="capacity-grade-<?= (int) $grade ?>">
+                <h3 id="capacity-grade-<?= (int) $grade ?>" class="mb-3 text-sm font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">Grade <?= (int) $grade ?></h3>
+                <div class="space-y-4">
+                    <?php foreach ($strands as $strand => $sections): ?>
+                        <div>
+                            <?php if ($strand !== ""): ?><h4 class="mb-2 text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300"><?= htmlspecialchars($strand) ?></h4><?php endif; ?>
+                            <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                <?php foreach ($sections as $section): ?>
+                                    <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">
+                                        <span class="min-w-0"><span class="block truncate text-sm font-bold text-slate-800 dark:text-slate-100"><?= htmlspecialchars($section["SECTION"]) ?></span><span class="block text-xs text-slate-500 dark:text-slate-400"><?= (int) $section["students"] ?> enrolled</span></span>
+                                        <input type="number" name="capacities[<?= (int) $section["SECTION_ID"] ?>]" value="<?= (int) $section["CAPACITY"] ?>" min="15" max="100" required class="w-20 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 text-center text-sm font-bold focus:ring-2 focus:ring-blue-500">
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+        <?php endforeach; ?>
+        <div class="flex justify-end border-t border-slate-200 pt-4 dark:border-slate-800"><button class="btn btn-primary">Save Capacities</button></div>
+    </form>
+</div>
 <div class="grid gap-7 lg:grid-cols-2">
     <section class="card card-body">
         <h2 class="text-xl font-black text-slate-900">Change admin password</h2>

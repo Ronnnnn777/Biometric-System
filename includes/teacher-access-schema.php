@@ -99,6 +99,33 @@ function setTeacherAdvisory(mysqli $conn, int $teacherId, int $sectionId): void
     }
 }
 
+/** Replace the current-year advisory roster in one transaction. Caller owns it. */
+function replaceTeacherAdvisories(mysqli $conn, array $sectionTeachers): void
+{
+    $year = (string) $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1 FOR UPDATE')->fetch_assoc()['ACTIVE_SCHOOL_YEAR'];
+    $activeSections = [];
+    foreach ($conn->query('SELECT SECTION_ID FROM sections WHERE IS_ACTIVE=1 FOR UPDATE') as $row) $activeSections[(int)$row['SECTION_ID']] = true;
+    $activeTeachers = [];
+    foreach ($conn->query("SELECT TEACHER_ID FROM teachers WHERE TEACHER_STATUS='Active' FOR UPDATE") as $row) $activeTeachers[(int)$row['TEACHER_ID']] = true;
+    $seenTeachers = [];
+    $clean = [];
+    foreach ($sectionTeachers as $sectionId => $teacherId) {
+        $sectionId = (int) $sectionId; $teacherId = (int) $teacherId;
+        if ($teacherId === 0) continue;
+        if (!isset($activeSections[$sectionId])) throw new RuntimeException('An advisory section is no longer active. Refresh the page.');
+        if (!isset($activeTeachers[$teacherId])) throw new RuntimeException('An advisory teacher is no longer active. Refresh the page.');
+        if (isset($seenTeachers[$teacherId])) throw new RuntimeException('Each teacher may advise only one active section.');
+        $seenTeachers[$teacherId] = true; $clean[$sectionId] = $teacherId;
+    }
+    $release = $conn->prepare('UPDATE teacher_advisory_assignments SET RELEASED_AT=NOW() WHERE SCHOOL_YEAR=? AND RELEASED_AT IS NULL');
+    $release->bind_param('s', $year); $release->execute();
+    $insert = $conn->prepare('INSERT INTO teacher_advisory_assignments (TEACHER_ID,SECTION_ID,SCHOOL_YEAR) VALUES (?,?,?)');
+    foreach ($clean as $sectionId => $teacherId) {
+        $insert->bind_param('iis', $teacherId, $sectionId, $year); $insert->execute();
+        syncTeacherAdvisoryProfile($conn, $teacherId);
+    }
+}
+
 /** Retains compatibility with older administrative profile displays. */
 function syncTeacherAdvisoryProfile(mysqli $conn, int $teacherId): void
 {
@@ -117,7 +144,7 @@ function requireTeacherAdvisory(mysqli $conn, int $teacherId): void
     }
 }
 
-/** Called inside the rollover transaction; teachers stay with their section. */
+/** Called inside the rollover transaction. Subject access carries forward; advisory ownership resets. */
 function carryForwardTeacherAssignments(mysqli $conn, string $fromYear, string $toYear): void
 {
     // Keep deliberate target-year assignments, including any manual changes after undo.
@@ -129,17 +156,11 @@ function carryForwardTeacherAssignments(mysqli $conn, string $fromYear, string $
             SELECT 1 FROM teacher_assignments target WHERE target.TEACHER_ID=ta.TEACHER_ID AND target.SCHOOL_YEAR=?
                 AND target.GRADE=ta.GRADE AND target.STRAND=ta.STRAND AND target.SECTION=ta.SECTION)");
     $subjects->bind_param('sss', $toYear, $fromYear, $toYear); $subjects->execute();
-    $release = $conn->prepare("UPDATE teacher_advisory_assignments a JOIN teachers t ON t.TEACHER_ID=a.TEACHER_ID
-        SET a.RELEASED_AT=NOW() WHERE a.SCHOOL_YEAR=? AND a.RELEASED_AT IS NULL AND t.TEACHER_STATUS<>'Active'");
+    // The next school year deliberately begins with no advisers. Existing
+    // target-year rows can only be stale data from an undone/partial run.
+    $release = $conn->prepare("UPDATE teacher_advisory_assignments
+        SET RELEASED_AT=NOW() WHERE SCHOOL_YEAR=? AND RELEASED_AT IS NULL");
     $release->bind_param('s', $toYear); $release->execute();
-    $advisers = $conn->prepare("INSERT INTO teacher_advisory_assignments (TEACHER_ID,SECTION_ID,SCHOOL_YEAR)
-        SELECT a.TEACHER_ID,a.SECTION_ID,? FROM teacher_advisory_assignments a
-        JOIN teachers t ON t.TEACHER_ID=a.TEACHER_ID AND t.TEACHER_STATUS='Active'
-        JOIN sections s ON s.SECTION_ID=a.SECTION_ID AND s.IS_ACTIVE=1
-        WHERE a.SCHOOL_YEAR=? AND a.RELEASED_AT IS NULL
-          AND NOT EXISTS (SELECT 1 FROM teacher_advisory_assignments target WHERE target.SCHOOL_YEAR=? AND target.TEACHER_ID=a.TEACHER_ID AND target.RELEASED_AT IS NULL)
-          AND NOT EXISTS (SELECT 1 FROM teacher_advisory_assignments target WHERE target.SCHOOL_YEAR=? AND target.SECTION_ID=a.SECTION_ID AND target.RELEASED_AT IS NULL)");
-    $advisers->bind_param('ssss', $toYear, $fromYear, $toYear, $toYear); $advisers->execute();
 }
 
 function teacherAdvisorySelect(mysqli $conn, int $teacherId = 0): void

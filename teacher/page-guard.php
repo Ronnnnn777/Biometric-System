@@ -12,7 +12,9 @@ header('Referrer-Policy: strict-origin-when-cross-origin');
 header('X-Frame-Options: SAMEORIGIN');
 
 if (empty($_SESSION['is-authenticated']) || ($_SESSION['user-role'] ?? '') !== 'teacher') {
-    header('Location: login.php', true, 302);
+    // Clear the session through the shared logout controller instead of sending
+    // a cross-portal request to the teacher login page.
+    header('Location: ../common/logout.php', true, 302);
     exit;
 }
 

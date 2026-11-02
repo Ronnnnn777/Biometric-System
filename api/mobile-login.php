@@ -49,5 +49,9 @@ if($removedAfterRegistration->get_result()->num_rows===1){
     exit;
 }
 session_regenerate_id(true);$_SESSION['is-authenticated']=true;$_SESSION['user-role']='mobile_scanner';$_SESSION['csrf_token']=bin2hex(random_bytes(32));
+// Bind the authenticated session to this device so scans can be attributed to a
+// real, server-verified scanner instead of an id supplied by the request body.
+$_SESSION['scanner_id']=$scannerId;
+$_SESSION['scanner_name']=$scannerName;
 echo json_encode(['ok'=>true,'message'=>'Mobile scanner connected.','scanner_name'=>$scannerName,'scanner_id'=>$scannerId,'csrf_token'=>$_SESSION['csrf_token']]);
 

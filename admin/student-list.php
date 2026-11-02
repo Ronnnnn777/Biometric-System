@@ -19,11 +19,12 @@ $isArchivedView = $view === 'archived';
 
 // One page now owns both rosters. The two predicates are deliberately exact so
 // the list, the SQL count, and the pager always report the same records.
-$archivedStatus = 'Archived';
-$archivedStatusSql = $conn->real_escape_string($archivedStatus);
+// Graduates are archived from the active roster while keeping their explicit
+// ENROLLMENT_STATUS='Graduated' marker. STUDENT_STATUS is the shared archival
+// marker for both manual archives and year-end graduation.
 $studentWhere = $isArchivedView
-    ? "s.ENROLLMENT_STATUS='" . $archivedStatusSql . "'"
-    : "COALESCE(NULLIF(s.ENROLLMENT_STATUS,''),'Enrolled')<>'" . $archivedStatusSql . "'";
+    ? "(s.ENROLLMENT_STATUS IN ('Archived','Graduated') OR COALESCE(s.STUDENT_STATUS,'Active')='Archived')"
+    : "(COALESCE(NULLIF(s.ENROLLMENT_STATUS,''),'Enrolled') NOT IN ('Archived','Graduated','Transferred','Dropped') AND COALESCE(s.STUDENT_STATUS,'Active')<>'Archived')";
 
 $countStmt = $conn->prepare("SELECT COUNT(*) AS total FROM students s WHERE $studentWhere");
 $countStmt->execute();
@@ -56,13 +57,9 @@ $sectionCatalog = studentSectionPlacementOptions($conn);
 $honorSectionMap = promotionHonorSectionMap($conn);
 
 // Archived status remains available only in the archived roster.
-$statusItems = [['value' => '', 'label' => 'All Statuses']];
-foreach (studentEnrollmentStatuses() as $statusOption) {
-    if ($statusOption === 'Archived' && !$isArchivedView) {
-        continue;
-    }
-    $statusItems[] = ['value' => $statusOption, 'label' => $statusOption];
-}
+$statusItems = $isArchivedView
+    ? [['value'=>'','label'=>'All'],['value'=>'Graduated','label'=>'Graduated'],['value'=>'Transferred','label'=>'Transferred'],['value'=>'Dropped','label'=>'Dropped']]
+    : [['value'=>'','label'=>'All Statuses'],['value'=>'Enrolled','label'=>'Enrolled']];
 
 $gradeItems = [['value' => '', 'label' => 'All Grades']];
 foreach ([7, 8, 9, 10, 11, 12] as $grade) {
@@ -93,7 +90,8 @@ adminSidebar(
     $isArchivedView ? 'Archived student records' : 'Search profiles and filter by grade or section',
 );
 ?>
-<div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+<div class="w-full flex-1 min-w-0 max-w-full space-y-6">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
         <p class="text-sm font-semibold text-slate-500">
             <?= $totalStudents ?> <?= $isArchivedView ? 'archived' : 'active' ?>
@@ -120,7 +118,7 @@ $filterPillActiveClass = 'filter-pill filter-pill-active';
 $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
 
 ?>
-<div class="card mb-5">
+<div class="card w-full">
     <div class="card-body space-y-3">
         <!-- Grade is the first step in section filtering. -->
         <div class="min-w-0">
@@ -144,7 +142,7 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
             </select>
         </div>
 
-        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <div class="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <div id="section-filter-container" class="table-filter-control w-full min-w-0 flex-1 sm:min-w-64">
                 <label for="section-filter" class="filter-label">Section</label>
                 <select id="section-filter" class="field min-h-11 py-2 pr-10 text-base leading-6 [&>option]:text-base disabled:opacity-60" data-always-visible="true" disabled>
@@ -152,12 +150,29 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
                 </select>
             </div>
             <div class="table-filter-control w-full min-w-0 flex-1 sm:min-w-64">
+                <?php if ($isArchivedView): ?>
+                <p class="filter-label">Archive category</p>
+                <div class="filter-pills" role="group" aria-label="Filter archived students by category"
+                    data-capsule-group="status_filter" data-capsule-value=""
+                    data-capsule-active-class="<?= htmlspecialchars($filterPillActiveClass, ENT_QUOTES) ?>"
+                    data-capsule-inactive-class="<?= htmlspecialchars($filterPillInactiveClass, ENT_QUOTES) ?>">
+                    <?php foreach ($statusItems as $statusItem): ?>
+                    <button type="button" class="<?= $statusItem['value'] === '' ? $filterPillActiveClass : $filterPillInactiveClass ?>"
+                        data-capsule-item data-value="<?= htmlspecialchars($statusItem['value'], ENT_QUOTES) ?>"
+                        aria-pressed="<?= $statusItem['value'] === '' ? 'true' : 'false' ?>"><?= htmlspecialchars($statusItem['label']) ?></button>
+                    <?php endforeach; ?>
+                </div>
+                <select id="status-filter" class="sr-only" tabindex="-1" aria-hidden="true">
+                    <?php foreach ($statusItems as $statusItem): ?><option value="<?= htmlspecialchars($statusItem['value'], ENT_QUOTES) ?>"><?= htmlspecialchars($statusItem['label']) ?></option><?php endforeach; ?>
+                </select>
+                <?php else: ?>
                 <label for="status-filter" class="filter-label">Enrollment Status</label>
                 <select id="status-filter" class="field min-h-11 py-2 pr-10 text-base leading-6 [&>option]:text-base">
                     <?php foreach ($statusItems as $statusItem): ?>
                     <option value="<?= htmlspecialchars($statusItem['value'], ENT_QUOTES) ?>"><?= htmlspecialchars($statusItem['label']) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <?php endif; ?>
             </div>
             <div id="strand-filter-container" class="table-filter-control w-full min-w-0 flex-1 sm:min-w-[12rem]" hidden>
                 <label for="strand-filter" class="filter-label">Strand</label>
@@ -170,7 +185,7 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
             </div>
         </div>
 
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-end">
             <div class="table-filter-control min-w-0 flex-1">
                 <label for="student-search" class="filter-label">Search</label>
                 <input type="search" id="student-search" class="field h-11" placeholder="Student name or LRN">
@@ -181,9 +196,8 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
     </div>
 </div>
 
-<div class="card overflow-hidden">
-    <div class="w-full overflow-x-auto">
-        <table class="w-full min-w-full text-left text-sm">
+<div class="w-full overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+        <table class="w-full text-left border-collapse text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
                     <th class="w-12 px-4 py-3 text-center text-xs font-black uppercase tracking-wider text-slate-400">#</th>
@@ -254,6 +268,7 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
                         <div class="flex flex-wrap justify-end gap-2">
                             <a class="btn btn-secondary inline-flex h-7 items-center justify-center rounded border border-blue-500/20 bg-blue-500/10 px-2.5 py-0 text-xs font-medium text-blue-600 transition hover:bg-blue-500/20"
                                 href="archived-student-record.php?id=<?= (int) $row['ID'] ?>">Open record</a>
+                            <?php if (($row['ENROLLMENT_STATUS'] ?? '') !== 'Graduated'): ?>
                             <form action="restore-archived-student.php" method="post" class="inline">
                                 <input type="hidden" name="csrf_token"
                                     value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
@@ -261,6 +276,7 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
                                 <button
                                     class="btn btn-secondary inline-flex h-7 items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0 text-xs font-medium text-emerald-700 transition hover:bg-emerald-500/20">Restore</button>
                             </form>
+                            <?php endif; ?>
                         </div>
                     </td>
                     <?php else: ?>

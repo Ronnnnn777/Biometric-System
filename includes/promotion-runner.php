@@ -5,20 +5,21 @@ require_once __DIR__ . '/teacher-access-schema.php';
 function promotionPlacementState(array $student): array
 {
     $state = [];
-    foreach (['GRADE','STRAND','SECTION','ENROLLMENT_STATUS','ARCHIVE_REASON','IS_ARCHIVED','ARCHIVED_AT','ARCHIVED_BY'] as $field) {
-        $state[$field] = $student[$field] === null ? null : (string)$student[$field];
+    foreach (['GRADE','STRAND','SECTION','ENROLLMENT_STATUS','STUDENT_STATUS','ARCHIVE_REASON','IS_ARCHIVED','ARCHIVED_AT','ARCHIVED_BY'] as $field) {
+        $state[$field] = ($student[$field] ?? null) === null ? null : (string) $student[$field];
     }
     return $state;
 }
 
 /** All validation, new sections, history and changes share one transaction. */
-function executePromotionRollover(mysqli $conn, string $year, array $targets, string $previewHash, string $administrator): array
+function executePromotionRollover(mysqli $conn, string $year, array $targets, array $choices, string $previewHash, string $administrator): array
 {
     $conn->begin_transaction();
     try {
         $context = promotionContext($conn,$year,true);
-        $plan = buildPromotionPlan($context,$targets);
-        if ($plan['blocked']) throw new RuntimeException('Rollover blocked: review advisory ownership, actual student grades and section capacities in the preview. Subject teaching coverage is reported separately.');
+        $choices['require_grade10_strands'] = true;
+        $plan = buildPromotionPlan($context,$targets,$choices);
+        if ($plan['blocked']) throw new RuntimeException('Rollover blocked: no enrolled students are available for promotion.');
         if ($previewHash === '' || !hash_equals($plan['fingerprint'],$previewHash)) throw new RuntimeException('Grades, placement settings, students or targets changed. Refresh and review the preview before confirming.');
         $parts = explode('-',$year); $nextYear = ((int)$parts[0]+1).'-'.((int)$parts[1]+1);
         $run = $conn->prepare('INSERT INTO school_year_rollover_runs (SOURCE_YEAR,TARGET_YEAR,PREVIEW_HASH) VALUES (?,?,?)');
@@ -40,33 +41,55 @@ function executePromotionRollover(mysqli $conn, string $year, array $targets, st
         $attendance->bind_param('ss',$start,$end); $attendance->execute();
         $history = $conn->prepare('INSERT IGNORE INTO student_school_history (STUDENT_ID,SCHOOL_YEAR,GRADE,STRAND,SECTION,ENROLLMENT_STATUS) VALUES (?,?,?,?,?,?)');
         $decision = $conn->prepare('INSERT INTO student_promotion_decisions (STUDENT_ID,SCHOOL_YEAR,FAILED_SUBJECTS,DECISION) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE FAILED_SUBJECTS=VALUES(FAILED_SUBJECTS),DECISION=VALUES(DECISION)');
-        $update = $conn->prepare('UPDATE students SET GRADE=?,STRAND=?,SECTION=?,ENROLLMENT_STATUS=?,ARCHIVE_REASON=?,IS_ARCHIVED=?,ARCHIVED_AT=?,ARCHIVED_BY=? WHERE STUDENT_ID=?');
+        $update = $conn->prepare('UPDATE students SET GRADE=?,STRAND=?,SECTION=?,ENROLLMENT_STATUS=?,STUDENT_STATUS=?,ARCHIVE_REASON=?,IS_ARCHIVED=?,ARCHIVED_AT=?,ARCHIVED_BY=? WHERE STUDENT_ID=?');
         $snapshot = $conn->prepare('INSERT INTO school_year_rollover_students (RUN_ID,STUDENT_ID,BEFORE_STATE,AFTER_STATE,ACADEMIC_STANDING) VALUES (?,?,?,?,?)');
         foreach ($plan['students'] as $id=>$record) {
             $id = (string)$id; $student=$record['student']; $standing=$record['standing'];
             $before = promotionPlacementState($student); $after = $before;
-            if ($record['placement']) foreach ($record['placement'] as $field=>$value) $after[$field]=(string)$value;
-            elseif ((int)$student['GRADE']===12 && $standing['decision']==='Promoted') {
-                $after['ENROLLMENT_STATUS']='Archived'; $after['ARCHIVE_REASON']='Graduated';
-                $after['IS_ARCHIVED']='1'; $after['ARCHIVED_AT']=date('Y-m-d H:i:s'); $after['ARCHIVED_BY']=$administrator;
+            $isRetained = $standing['decision'] === 'Retained';
+            $isGraduate = (int) $student['GRADE'] === 12 && !$isRetained;
+            if ($record['placement']) {
+                foreach ($record['placement'] as $field=>$value) $after[$field]=(string)$value;
+                $after['STUDENT_STATUS'] = 'Active';
+            } elseif ($isGraduate) {
+                // Grade 12 closes out for both Academic and Techpro. The
+                // enrollment marker records graduation while the profile is
+                // removed from every active roster via STUDENT_STATUS/is_archived.
+                $after['ENROLLMENT_STATUS']='Graduated';
+                $after['STUDENT_STATUS']='Archived';
+                $after['ARCHIVE_REASON']='Graduated';
+                $after['IS_ARCHIVED']='1';
+                $after['ARCHIVED_AT']=date('Y-m-d H:i:s');
+                $after['ARCHIVED_BY']=$administrator;
             }
-            $history->bind_param('ssisss',$id,$year,$student['GRADE'],$student['STRAND'],$student['SECTION'],$student['ENROLLMENT_STATUS']); $history->execute();
-            $decision->bind_param('ssis',$id,$year,$standing['failed'],$standing['decision']); $decision->execute();
+            $historyStatus = $isGraduate ? 'Graduated' : (string) $student['ENROLLMENT_STATUS'];
+            $history->bind_param('ssisss',$id,$year,$student['GRADE'],$student['STRAND'],$student['SECTION'],$historyStatus); $history->execute();
+            $decisionValue = $isGraduate ? 'Graduated' : $standing['decision'];
+            $decision->bind_param('ssis',$id,$year,$standing['failed'],$decisionValue); $decision->execute();
             if ($after !== $before) {
-                $update->bind_param('issssisss',$after['GRADE'],$after['STRAND'],$after['SECTION'],$after['ENROLLMENT_STATUS'],$after['ARCHIVE_REASON'],$after['IS_ARCHIVED'],$after['ARCHIVED_AT'],$after['ARCHIVED_BY'],$id); $update->execute();
+                $update->bind_param('isssssisss',$after['GRADE'],$after['STRAND'],$after['SECTION'],$after['ENROLLMENT_STATUS'],$after['STUDENT_STATUS'],$after['ARCHIVE_REASON'],$after['IS_ARCHIVED'],$after['ARCHIVED_AT'],$after['ARCHIVED_BY'],$id); $update->execute();
             }
             $beforeJson=json_encode($before,JSON_THROW_ON_ERROR); $afterJson=json_encode($after,JSON_THROW_ON_ERROR); $academicJson=json_encode($standing,JSON_THROW_ON_ERROR);
             $snapshot->bind_param('issss',$runId,$id,$beforeJson,$afterJson,$academicJson); $snapshot->execute();
         }
-        // Save reviewed strand targets without removing historical student records.
-        $conn->query('DELETE FROM school_year_promotion_plan');
-        $targetInsert=$conn->prepare('INSERT INTO school_year_promotion_plan (FROM_GRADE,FROM_STRAND,TO_GRADE,TO_STRAND,SPLIT_PERCENT) VALUES (?,?,?,?,?)');
-        foreach ($targets as $target) {
-            $targetInsert->bind_param('isisi',$target['FROM_GRADE'],$target['FROM_STRAND'],$target['TO_GRADE'],$target['TO_STRAND'],$target['SPLIT_PERCENT']); $targetInsert->execute();
+        foreach ($plan['archives'] as $id => $record) {
+            $id = (string) $id; $student = $record['student']; $reason = $record['reason'];
+            $before = promotionPlacementState($student); $after = $before;
+            $after['STUDENT_STATUS'] = 'Archived';
+            $after['ARCHIVE_REASON'] = $reason;
+            $after['IS_ARCHIVED'] = '1';
+            $after['ARCHIVED_AT'] = date('Y-m-d H:i:s');
+            $after['ARCHIVED_BY'] = $administrator;
+            $history->bind_param('ssisss',$id,$year,$student['GRADE'],$student['STRAND'],$student['SECTION'],$student['ENROLLMENT_STATUS']); $history->execute();
+            $decisionValue = $reason;
+            $failed = 0;
+            $decision->bind_param('ssis',$id,$year,$failed,$decisionValue); $decision->execute();
+            $update->bind_param('isssssisss',$after['GRADE'],$after['STRAND'],$after['SECTION'],$after['ENROLLMENT_STATUS'],$after['STUDENT_STATUS'],$after['ARCHIVE_REASON'],$after['IS_ARCHIVED'],$after['ARCHIVED_AT'],$after['ARCHIVED_BY'],$id); $update->execute();
+            $beforeJson=json_encode($before,JSON_THROW_ON_ERROR); $afterJson=json_encode($after,JSON_THROW_ON_ERROR);
+            $academicJson=json_encode(['decision'=>$reason,'archived'=>true],JSON_THROW_ON_ERROR);
+            $snapshot->bind_param('issss',$runId,$id,$beforeJson,$afterJson,$academicJson); $snapshot->execute();
         }
         carryForwardTeacherAssignments($conn,$year,$nextYear);
-        $curriculum=$conn->prepare('INSERT IGNORE INTO promotion_required_subjects (SCHOOL_YEAR,GRADE,STRAND,SUBJECT) SELECT ?,GRADE,STRAND,SUBJECT FROM promotion_required_subjects WHERE SCHOOL_YEAR=?');
-        $curriculum->bind_param('ss',$nextYear,$year); $curriculum->execute();
         $activate=$conn->prepare('UPDATE school_year_settings SET ACTIVE_SCHOOL_YEAR=? WHERE ID=1');
         $activate->bind_param('s',$nextYear); $activate->execute();
         $conn->commit();
@@ -80,21 +103,94 @@ function undoPromotionRun(mysqli $conn, array $run): int
     $stmt=$conn->prepare('SELECT * FROM school_year_rollover_students WHERE RUN_ID=? ORDER BY STUDENT_ID');
     $stmt->bind_param('i',$run['ID']); $stmt->execute(); $snapshots=$stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $find=$conn->prepare('SELECT * FROM students WHERE STUDENT_ID=? FOR UPDATE');
-    $restore=$conn->prepare('UPDATE students SET GRADE=?,STRAND=?,SECTION=?,ENROLLMENT_STATUS=?,ARCHIVE_REASON=?,IS_ARCHIVED=?,ARCHIVED_AT=?,ARCHIVED_BY=? WHERE STUDENT_ID=?');
+    $restore=$conn->prepare('UPDATE students SET GRADE=?,STRAND=?,SECTION=?,ENROLLMENT_STATUS=?,STUDENT_STATUS=?,ARCHIVE_REASON=?,IS_ARCHIVED=?,ARCHIVED_AT=?,ARCHIVED_BY=? WHERE STUDENT_ID=?');
     foreach ($snapshots as $snapshot) {
         $id=$snapshot['STUDENT_ID']; $find->bind_param('s',$id); $find->execute(); $student=$find->get_result()->fetch_assoc();
-        if (!$student || promotionPlacementState($student)!==json_decode($snapshot['AFTER_STATE'],true,512,JSON_THROW_ON_ERROR)) throw new RuntimeException('A student placement changed after rollover. Review those changes before undoing.');
+        $expectedAfter=json_decode($snapshot['AFTER_STATE'],true,512,JSON_THROW_ON_ERROR);
+        $current= promotionPlacementState($student ?: []);
+        // Compare only the fields captured by this run. Older audit snapshots
+        // predate STUDENT_STATUS and must still be undoable.
+        foreach ($expectedAfter as $field=>$value) {
+            if (!$student || ($current[$field] ?? null) !== $value) throw new RuntimeException('A student placement changed after rollover. Review those changes before undoing.');
+        }
         $state=json_decode($snapshot['BEFORE_STATE'],true,512,JSON_THROW_ON_ERROR);
-        $restore->bind_param('issssisss',$state['GRADE'],$state['STRAND'],$state['SECTION'],$state['ENROLLMENT_STATUS'],$state['ARCHIVE_REASON'],$state['IS_ARCHIVED'],$state['ARCHIVED_AT'],$state['ARCHIVED_BY'],$id); $restore->execute();
+        $grade=(string)($state['GRADE'] ?? '');
+        $strand=(string)($state['STRAND'] ?? '');
+        $section=(string)($state['SECTION'] ?? '');
+        $enrollment=(string)($state['ENROLLMENT_STATUS'] ?? 'Enrolled');
+        $studentStatus=(string)($state['STUDENT_STATUS'] ?? 'Active');
+        $archiveReason=(string)($state['ARCHIVE_REASON'] ?? '');
+        $isArchived=(string)($state['IS_ARCHIVED'] ?? '0');
+        $archivedAt=$state['ARCHIVED_AT'] ?? null;
+        $archivedBy=$state['ARCHIVED_BY'] ?? null;
+        $restore->bind_param('isssssisss',$grade,$strand,$section,$enrollment,$studentStatus,$archiveReason,$isArchived,$archivedAt,$archivedBy,$id); $restore->execute();
     }
-    // Keep section and run history; only unused sections created by this run are deactivated.
-    $deactivate=$conn->prepare("UPDATE sections s JOIN school_year_rollover_sections r ON r.SECTION=s.SECTION
-        SET s.IS_ACTIVE=0 WHERE r.RUN_ID=? AND s.BASE_SECTION=''
-        AND NOT EXISTS (SELECT 1 FROM students st WHERE st.SECTION=s.SECTION AND st.ENROLLMENT_STATUS='Enrolled')
-        AND NOT EXISTS (SELECT 1 FROM teacher_advisory_assignments a WHERE a.SECTION_ID=s.SECTION_ID AND a.RELEASED_AT IS NULL)
-        AND NOT EXISTS (SELECT 1 FROM teacher_assignments ta WHERE ta.SECTION=s.SECTION)");
-    $deactivate->bind_param('i',$run['ID']); $deactivate->execute();
     $mark=$conn->prepare('UPDATE school_year_rollover_runs SET UNDONE_AT=NOW() WHERE ID=?');
     $mark->bind_param('i',$run['ID']); $mark->execute();
     return count($snapshots);
+}
+
+/**
+ * Remove empty virtual sections made by an undone rollover, without letting a
+ * foreign-key reference prevent the student rollback. The caller owns the
+ * transaction and invokes this only after student placements are restored.
+ *
+ * @return array{deleted:int,deactivated:int,retained:int}
+ */
+function cleanupUndoneRolloverSections(mysqli $conn, ?int $runId, string $sourceYear): array
+{
+    $sections = $conn->prepare(
+        "SELECT s.SECTION_ID, s.SECTION
+           FROM school_year_rollover_sections r
+           JOIN sections s ON s.SECTION=r.SECTION
+                         AND s.GRADE=r.GRADE
+                         AND s.STRAND=r.STRAND
+          WHERE s.BASE_SECTION=''
+            AND (r.RUN_ID=? OR (r.RUN_ID IS NULL AND r.SCHOOL_YEAR=?))
+          FOR UPDATE",
+    );
+    $sections->bind_param('is', $runId, $sourceYear);
+    $sections->execute();
+    $trackedSections = $sections->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    $enrolled = $conn->prepare(
+        "SELECT COUNT(*) total FROM students
+          WHERE SECTION=? AND ENROLLMENT_STATUS='Enrolled' AND COALESCE(IS_ARCHIVED,0)=0",
+    );
+    $delete = $conn->prepare("DELETE FROM sections WHERE SECTION_ID=? AND BASE_SECTION=''");
+    $deactivate = $conn->prepare("UPDATE sections SET IS_ACTIVE=0 WHERE SECTION_ID=? AND BASE_SECTION=''");
+    $result = ['deleted'=>0, 'deactivated'=>0, 'retained'=>0];
+
+    foreach ($trackedSections as $section) {
+        $sectionId = (int) $section['SECTION_ID'];
+        $sectionName = (string) $section['SECTION'];
+        $enrolled->bind_param('s', $sectionName);
+        $enrolled->execute();
+        if ((int) ($enrolled->get_result()->fetch_assoc()['total'] ?? 0) > 0) {
+            $result['retained']++;
+            continue;
+        }
+
+        try {
+            $delete->bind_param('i', $sectionId);
+            $delete->execute();
+            if ($delete->affected_rows > 0) $result['deleted']++;
+        } catch (mysqli_sql_exception $exception) {
+            // A historical foreign-key reference must survive; hide the empty
+            // virtual section instead of failing an otherwise valid undo.
+            if ((int) $exception->getCode() !== 1451) throw $exception;
+            $deactivate->bind_param('i', $sectionId);
+            $deactivate->execute();
+            if ($deactivate->affected_rows > 0) $result['deactivated']++;
+        }
+    }
+
+    $removeTracking = $conn->prepare(
+        "DELETE FROM school_year_rollover_sections
+          WHERE RUN_ID=? OR (RUN_ID IS NULL AND SCHOOL_YEAR=?)",
+    );
+    $removeTracking->bind_param('is', $runId, $sourceYear);
+    $removeTracking->execute();
+    $conn->query('DELETE FROM school_year_promotion_plan');
+    return $result;
 }

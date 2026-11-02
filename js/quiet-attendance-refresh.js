@@ -9,7 +9,7 @@ window.createQuietAttendanceRefresh = ({ rows, controls, exportLink, endpoint, g
 
   const showInitialError = () => {
     if (lastHtml !== null) return;
-    rows.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-rose-600">Could not load records. Check your connection and try again.</td></tr>';
+    rows.innerHTML = '<tr><td colspan="11" class="px-4 py-8 text-center text-rose-600">Could not load records. Check your connection and try again.</td></tr>';
   };
 
   async function refresh() {

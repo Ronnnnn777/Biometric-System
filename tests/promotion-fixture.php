@@ -10,7 +10,8 @@ function fixtureSql(mysqli $conn,string $query): void { $result=$conn->query($qu
 if ($action==='sql') fixtureSql($conn,stream_get_contents(STDIN));
 elseif ($action==='plan') {
     $context=promotionContext($conn,'2026-2027');$controls=promotionDefaultTargets($context['students']);
-    echo json_encode(['controls'=>$controls,'plan'=>buildPromotionPlan($context,promotionValidatedTargets($controls))],JSON_THROW_ON_ERROR);
+    $choices=['outcomes'=>['QA_RETAINED'=>'Retained'],'strand_choices'=>[],'require_grade10_strands'=>true];
+    echo json_encode(['controls'=>$controls,'plan'=>buildPromotionPlan($context,promotionValidatedTargets($controls),$choices)],JSON_THROW_ON_ERROR);
 } elseif ($action==='admin-session') {
     session_save_path(__DIR__.'/../tmp/'.$database.'/sessions');session_id('promotionadmin'.bin2hex(random_bytes(8)));session_start();
     $_SESSION=['is-authenticated'=>true,'user-role'=>'administrator','admin-user'=>$conn->query('SELECT ADMIN_USER FROM admins LIMIT 1')->fetch_assoc()['ADMIN_USER'],'csrf_token'=>bin2hex(random_bytes(32))];

@@ -118,7 +118,8 @@ teacherShell("Students");
 ?>
 
 
-<div class="mb-6 flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+<div class="w-full flex-1 min-w-0 max-w-full space-y-6">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
     <div>
         <h2 class="text-2xl font-black text-slate-900 dark:text-white">Assigned classes</h2>
         <p class="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">Choose an assigned grade and section
@@ -127,7 +128,7 @@ teacherShell("Students");
     <div class="flex flex-wrap gap-2"><a href="grading.php" class="btn btn-primary bg-blue-600">Grading</a><a href="home.php" class="btn btn-secondary shrink-0">Attendance logs</a></div>
 </div>
 
-<section class="mb-6 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+<section class="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
     <div class="flex w-full flex-col gap-4 border-b border-slate-100 pb-5 dark:border-slate-800 xl:flex-row xl:items-center xl:justify-between">
         <div class="min-w-0">
             <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Grade level</p>
@@ -164,8 +165,8 @@ teacherShell("Students");
         <a href="<?= htmlspecialchars($cardHref) ?>" data-section-card data-section-grade="<?= $cardGrade ?>"
             <?= $cardGrade !== $grade ? 'hidden' : '' ?> <?= $isActive ? 'aria-current="page"' : '' ?>
             class="<?= $isActive
-                ? 'rounded-2xl border-2 border-blue-500 bg-blue-600/10 p-5 shadow-sm transition-all cursor-pointer'
-                : 'rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 hover:border-slate-400 dark:hover:border-slate-700 transition-all cursor-pointer' ?>">
+                ? 'rounded-2xl border-2 border-blue-500 bg-blue-600/10 p-5 w-full flex flex-col justify-between shadow-sm transition-all cursor-pointer'
+                : 'rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 w-full flex flex-col justify-between hover:border-slate-400 dark:hover:border-slate-700 transition-all cursor-pointer' ?>">
             <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                     <span class="block truncate text-base font-black text-slate-900 dark:text-white"><?= htmlspecialchars($item['SECTION']) ?></span>
@@ -191,10 +192,10 @@ teacherShell("Students");
 </section>
 
 <?php if ($students): ?>
-<div class="flex flex-wrap items-center gap-3 w-full bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 mb-6">
+<div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
     <label for="student-search" class="sr-only">Search students</label>
     <input id="student-search" type="text"
-        class="flex-1 min-w-[240px] px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-medium focus:ring-2 focus:ring-blue-500 text-slate-900 placeholder:text-slate-400 dark:text-white dark:placeholder:text-slate-500 focus:outline-none"
+        class="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-medium focus:ring-2 focus:ring-blue-500 text-slate-900 placeholder:text-slate-400 dark:text-white dark:placeholder:text-slate-500 focus:outline-none"
         placeholder="Search by name or LRN">
     <button id="clear-student-filters" type="button"
         class="btn btn-secondary text-sm font-semibold h-11 px-4">Clear filters</button>
@@ -224,7 +225,7 @@ teacherShell("Students");
     </div>
     <?php else: ?>
     <div class="w-full overflow-x-auto">
-        <table class="w-full min-w-full text-left text-sm">
+        <table class="w-full text-left border-collapse text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
                 <tr>
                     <th class="px-5 py-4">Student</th>
@@ -287,6 +288,7 @@ teacherShell("Students");
     </div>
     <?php endif; ?>
 </section>
+</div>
 
 <script src="../js/capsule-control.js?v=3"></script>
 <script src="../js/student-pagination.js?v=13"></script>

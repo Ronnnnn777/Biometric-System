@@ -22,7 +22,6 @@ $reviewUrl = static fn(int $page): string => 'school-year-rollover.php?'.http_bu
         <input type="hidden" name="plans[<?= $index ?>][from_strand]" value="<?= $escape($source['from_strand']) ?>">
         <?php foreach ($source['targets'] as $targetIndex=>$target): ?>
         <input type="hidden" name="plans[<?= $index ?>][targets][<?= $targetIndex ?>][strand]" value="<?= $escape($target['strand']) ?>">
-        <input type="hidden" name="plans[<?= $index ?>][targets][<?= $targetIndex ?>][percent]" value="<?= (int)$target['percent'] ?>">
         <?php endforeach; endforeach; ?>
         <label class="text-sm font-bold">Grade<select name="review_grade" class="field mt-1"><option value="0">All grades</option><?php foreach ($review['grades'] as $option): ?><option value="<?= $option ?>" <?= $reviewGrade===$option?'selected':'' ?>>Grade <?= $option ?></option><?php endforeach; ?></select></label>
         <label class="text-sm font-bold">Section<select name="review_section" class="field mt-1"><option value="">All sections</option><?php foreach ($review['sections'] as $key=>$label): ?><option value="<?= $escape($key) ?>" <?= $reviewSection===$key?'selected':'' ?>><?= $escape($label) ?></option><?php endforeach; ?></select></label>

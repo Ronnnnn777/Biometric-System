@@ -188,12 +188,12 @@ function check(label,callback){callback();checks++;console.log('PASS '+label);}
   const studentsBeforeRollover=sql('SELECT ID,GRADE,STRAND,SECTION,ENROLLMENT_STATUS FROM students ORDER BY ID');
   const rolloverBody=new URLSearchParams({csrf_token:admin.csrf,current_password:'FixtureOnly!AdminPassword29',end_school_year_confirmation:'1'});
   const sources=sql("SELECT DISTINCT GRADE,STRAND FROM students WHERE ENROLLMENT_STATUS='Enrolled' AND GRADE BETWEEN 7 AND 11 ORDER BY GRADE,STRAND");
-  sources.forEach((source,index)=>{
+  sources.filter(source=>Number(source.GRADE)!==10).forEach((source,index)=>{
    rolloverBody.set(`plans[${index}][from_grade]`,source.GRADE);rolloverBody.set(`plans[${index}][from_strand]`,source.STRAND);
-   rolloverBody.set(`plans[${index}][targets][0][strand]`,Number(source.GRADE)===10?'Academic':source.STRAND);
-   rolloverBody.set(`plans[${index}][targets][0][percent]`,'100');
+   rolloverBody.set(`plans[${index}][targets][0][strand]`,source.STRAND);
   });
-  const promotionPreview=await admin.request('admin/school-year-rollover.php');
+  sql("SELECT STUDENT_ID FROM students WHERE ENROLLMENT_STATUS='Enrolled' AND GRADE=10").forEach(student=>rolloverBody.set(`strand_choices[${student.STUDENT_ID}]`,'Academic'));
+  const promotionPreview=await admin.request('admin/school-year-rollover.php',rolloverBody);
   rolloverBody.set('expected_school_year','2026-2027');
   rolloverBody.set('preview_fingerprint',promotionPreview.html.match(/name="preview_fingerprint" value="([^"]+)"/)[1]);
   const rolled=await admin.request('admin/run-school-year-rollover.php',rolloverBody);assert.equal(rolled.status,302);

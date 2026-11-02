@@ -29,7 +29,7 @@ foreach ($matches as $match) {
     if($candidate['count']<$needed){echo json_encode(['ok'=>false,'faces'=>$faces,'message'=>'Face found. Confirming identity…','frame_width'=>$result['frame_width']??0,'frame_height'=>$result['frame_height']??0]);exit;}
     if ($role === 'administrator') {
         $stmt=$conn->prepare('SELECT ADMIN_USER FROM admins WHERE ADMIN_ID=? LIMIT 1');$stmt->bind_param('i',$id);$stmt->execute();$account=$stmt->get_result()->fetch_assoc();
-        if(!$account) continue; session_regenerate_id(true); $_SESSION['is-authenticated']=true; $_SESSION['user-role']='administrator'; $_SESSION['admin-user']=$account['ADMIN_USER'];
+        if(!$account) continue; session_regenerate_id(true); $_SESSION['is-authenticated']=true; $_SESSION['user-role']='administrator'; $_SESSION['user-id']=$id; $_SESSION['admin-user']=$account['ADMIN_USER'];
         echo json_encode(['ok'=>true,'redirect'=>'home.php','faces'=>$faces]); exit;
     }
     $stmt=$conn->prepare("SELECT TEACHER_ID,TEACHER_NAME,SECTION FROM teachers WHERE TEACHER_ID=? AND COALESCE(TEACHER_STATUS,'Active')='Active' LIMIT 1");$stmt->bind_param('i',$id);$stmt->execute();$account=$stmt->get_result()->fetch_assoc();

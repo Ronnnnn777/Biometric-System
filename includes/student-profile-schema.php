@@ -1,7 +1,21 @@
 <?php
+/**
+ * Adds the explicit archival marker used by graduation. This is intentionally
+ * a small, standalone helper so the rollover runner can prepare the column
+ * before it opens its single promotion transaction.
+ */
+function ensureStudentStatusColumn(mysqli $conn): void
+{
+    if (!$conn->query("SHOW COLUMNS FROM students LIKE 'STUDENT_STATUS'")->num_rows) {
+        $hasEnrollment = $conn->query("SHOW COLUMNS FROM students LIKE 'ENROLLMENT_STATUS'")->num_rows > 0;
+        $conn->query("ALTER TABLE students ADD COLUMN STUDENT_STATUS VARCHAR(20) NOT NULL DEFAULT 'Active'" . ($hasEnrollment ? ' AFTER ENROLLMENT_STATUS' : ''));
+    }
+}
+
 /** Keeps older installations compatible with structured student profiles. */
 function ensureStudentProfileColumns(mysqli $conn): void
 {
+    ensureStudentStatusColumn($conn);
     $columns = [];
     $result = $conn->query('SHOW COLUMNS FROM students');
     while ($result && ($column = $result->fetch_assoc())) {
@@ -15,11 +29,12 @@ function ensureStudentProfileColumns(mysqli $conn): void
     if (!isset($columns['STRAND'])) $conn->query("ALTER TABLE students ADD COLUMN STRAND VARCHAR(20) NOT NULL DEFAULT '' AFTER AGE");
     if (!isset($columns['ADDRESS'])) $conn->query("ALTER TABLE students ADD COLUMN ADDRESS VARCHAR(255) NOT NULL DEFAULT '' AFTER STRAND");
     if (!isset($columns['ENROLLMENT_STATUS'])) $conn->query("ALTER TABLE students ADD COLUMN ENROLLMENT_STATUS VARCHAR(20) NOT NULL DEFAULT 'Enrolled' AFTER SECTION");
-    if (!isset($columns['ARCHIVE_REASON'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVE_REASON VARCHAR(40) NOT NULL DEFAULT '' AFTER ENROLLMENT_STATUS");
+    if (!isset($columns['STUDENT_STATUS'])) $conn->query("ALTER TABLE students ADD COLUMN STUDENT_STATUS VARCHAR(20) NOT NULL DEFAULT 'Active' AFTER ENROLLMENT_STATUS");
+    if (!isset($columns['ARCHIVE_REASON'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVE_REASON VARCHAR(40) NOT NULL DEFAULT '' AFTER STUDENT_STATUS");
     if (!isset($columns['ARCHIVED_AT'])) $conn->query("ALTER TABLE students ADD COLUMN ARCHIVED_AT DATETIME NULL AFTER ARCHIVE_REASON");
-    // Graduation is performed only by the year-end rollover and is kept in
-    // the archive with its reason, not as an active manual status.
-    $conn->query("UPDATE students SET ENROLLMENT_STATUS='Archived', ARCHIVE_REASON='Graduated', ARCHIVED_AT=COALESCE(ARCHIVED_AT, NOW()) WHERE ENROLLMENT_STATUS='Graduated'");
+    // Graduation is performed only by the year-end rollover. Keep the explicit
+    // ENROLLMENT_STATUS='Graduated' marker while the profile is archived.
+    $conn->query("UPDATE students SET STUDENT_STATUS='Archived', ARCHIVE_REASON=IF(ARCHIVE_REASON='','Graduated',ARCHIVE_REASON), ARCHIVED_AT=COALESCE(ARCHIVED_AT, NOW()) WHERE ENROLLMENT_STATUS IN ('Graduated','Archived') AND STUDENT_STATUS<>'Archived'");
 
     $students = $conn->query("SELECT ID, STUDENT_NAME FROM students WHERE FIRST_NAME='' OR LAST_NAME=''");
     $update = $conn->prepare('UPDATE students SET FIRST_NAME=?, LAST_NAME=? WHERE ID=?');
@@ -39,7 +54,7 @@ function isValidStudentAge(int $age): bool
 
 function studentEnrollmentStatuses(): array
 {
-    return ['Enrolled', 'Transferred', 'Dropped', 'Archived'];
+    return ['Enrolled', 'Transferred', 'Dropped', 'Archived', 'Graduated'];
 }
 
 function isValidStudentEnrollmentStatus(string $status): bool

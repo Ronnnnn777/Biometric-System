@@ -10,6 +10,17 @@ require_once __DIR__ . '/../includes/student-face-references.php';
 $studentFaceReferences = recognitionStudentReferences($conn);
 ensureAttendanceTimeOutColumn($conn);
 ensureAttendanceSnapshotColumns($conn);
+require_once __DIR__ . '/../includes/attendance-scan-events-schema.php';
+ensureAttendanceScanEventsSchema($conn);
+// Opportunistic, bounded retention for unsuccessful attempts only.
+if (function_exists('random_int') && random_int(1, 500) === 1) {
+    pruneAttendanceScanEvents($conn);
+}
+// Scanner attribution comes from the authenticated server-side session, never
+// from a value supplied in the request body.
+$scanSource = defined('MOBILE_API_AUTHENTICATED') ? 'mobile' : 'webcam';
+$scannerId = defined('MOBILE_API_AUTHENTICATED') ? (string) ($_SESSION['scanner_id'] ?? '') : '';
+$scannerName = defined('MOBILE_API_AUTHENTICATED') ? (string) ($_SESSION['scanner_name'] ?? '') : 'Webcam';
 header("Content-Type: application/json");
 $imagePath = "";
 $removeImage = false;
@@ -212,6 +223,22 @@ $recognized = $activeRecognized;
 // but are not sent to the visible corner overlay until identity is confirmed.
 if (!$recognized) {
     unset($_SESSION["face_match_confirmations"]);
+    // Log at most one unidentified-face attempt per scanner every 10 seconds so
+    // a continuous stream of failed frames cannot flood the event table. The
+    // row intentionally carries NO student id (identity was never established).
+    $lastUnrecognized = (float) ($_SESSION["scan_unrecognized_logged_at"] ?? 0);
+    if (!empty($strictUnknownFaces) && microtime(true) - $lastUnrecognized > 10) {
+        $_SESSION["scan_unrecognized_logged_at"] = microtime(true);
+        logAttendanceScanEvent($conn, [
+            "student_id" => null,
+            "event_type" => "unrecognized",
+            "result" => "unrecognized",
+            "scanner_source" => $scanSource,
+            "scanner_id" => $scannerId,
+            "scanner_name" => $scannerName,
+            "detail" => "Face not recognized.",
+        ]);
+    }
     echo json_encode([
         "match" => false,
         "faces" => [],
@@ -302,98 +329,167 @@ foreach ($recognized as $recognizedFace) {
     $logged = false;
     $message = "";
     $action = $scanType;
+    $attendanceId = null;
     if (($student["ENROLLMENT_STATUS"] ?? "Enrolled") !== "Enrolled") {
         $message =
             "Student is " .
             strtolower($student["ENROLLMENT_STATUS"]) .
             " and cannot record attendance.";
+        // Non-critical: a rejected attempt carries no attendance write.
+        logAttendanceScanEvent($conn, [
+            "student_id" => $student["STUDENT_ID"],
+            "event_type" => "ignored",
+            "result" => "rejected",
+            "scanner_source" => $scanSource,
+            "scanner_id" => $scannerId,
+            "scanner_name" => $scannerName,
+            "detail" => $message,
+            "grade" => $student["GRADE"],
+            "strand" => $student["STRAND"],
+            "section" => $student["SECTION"],
+            "dedupe_seconds" => 30,
+        ]);
     } else {
-        $check->bind_param("ss", $student["STUDENT_ID"], $today);
-        $check->execute();
-        $record = $check->get_result()->fetch_assoc();
-        if ($record && ($record["ATTENDANCE_REMARK"] ?? "") === "Absent") {
-            $clearManualAbsent->bind_param("i", $record["ID"]);
-            $clearManualAbsent->execute();
-            $record = null;
-        }
-        $cooldown =
-            $record && $record["TIME_OUT"] === null
-                ? attendanceTimeOutCooldownRemaining(
-                    $record["AFTERNOON_TIME_IN"] ?? $record["TIME_IN"],
-                )
-                : 0;
+        // The attendance write and its success event are committed together so
+        // the log can never claim a scan that was not recorded (and a recorded
+        // scan can never go unlogged).
+        try {
+            $conn->begin_transaction();
+            $check->bind_param("ss", $student["STUDENT_ID"], $today);
+            $check->execute();
+            $record = $check->get_result()->fetch_assoc();
+            if ($record && ($record["ATTENDANCE_REMARK"] ?? "") === "Absent") {
+                $clearManualAbsent->bind_param("i", $record["ID"]);
+                $clearManualAbsent->execute();
+                $record = null;
+            }
+            $cooldown =
+                $record && $record["TIME_OUT"] === null
+                    ? attendanceTimeOutCooldownRemaining(
+                        $record["AFTERNOON_TIME_IN"] ?? $record["TIME_IN"],
+                    )
+                    : 0;
 
-        if ($scanType === "auto") {
-            $next = attendanceNextAutomaticAction(
-                $record,
-                null,
-                $wholeDayAttendance,
-            );
-            $action = $next["action"];
-            $message = $next["message"];
-            if ($action === "time_in") {
-                $log->bind_param(
-                    "ssiss",
-                    $student["STUDENT_ID"],
-                    $student["STUDENT_NAME"],
-                    $student["GRADE"],
-                    $student["STRAND"],
-                    $student["SECTION"],
+            if ($scanType === "auto") {
+                $next = attendanceNextAutomaticAction(
+                    $record,
+                    null,
+                    $wholeDayAttendance,
                 );
-                $log->execute();
-                $logged = true;
-            } elseif ($action === "lunch_out") {
-                $lunchOut->bind_param("i", $record["ID"]);
-                $lunchOut->execute();
-                $logged = $lunchOut->affected_rows > 0;
-                if (!$logged) {
-                    $message = "Lunch Out already recorded.";
+                $action = $next["action"];
+                $message = $next["message"];
+                if ($action === "time_in") {
+                    $log->bind_param(
+                        "ssiss",
+                        $student["STUDENT_ID"],
+                        $student["STUDENT_NAME"],
+                        $student["GRADE"],
+                        $student["STRAND"],
+                        $student["SECTION"],
+                    );
+                    $log->execute();
+                    $logged = true;
+                    $attendanceId = (int) $conn->insert_id;
+                } elseif ($action === "lunch_out") {
+                    $lunchOut->bind_param("i", $record["ID"]);
+                    $lunchOut->execute();
+                    $logged = $lunchOut->affected_rows > 0;
+                    $attendanceId = (int) $record["ID"];
+                    if (!$logged) {
+                        $message = "Lunch Out already recorded.";
+                    }
+                } elseif ($action === "afternoon_time_in") {
+                    $afternoonTimeIn->bind_param("i", $record["ID"]);
+                    $afternoonTimeIn->execute();
+                    $logged = $afternoonTimeIn->affected_rows > 0;
+                    $attendanceId = (int) $record["ID"];
+                    if (!$logged) {
+                        $message = "Afternoon Time In already recorded.";
+                    }
+                } elseif ($action === "time_out") {
+                    $timeOut->bind_param("i", $record["ID"]);
+                    $timeOut->execute();
+                    $logged = $timeOut->affected_rows > 0;
+                    $attendanceId = (int) $record["ID"];
+                    if (!$logged) {
+                        $message = "Time Out already recorded.";
+                    }
                 }
-            } elseif ($action === "afternoon_time_in") {
-                $afternoonTimeIn->bind_param("i", $record["ID"]);
-                $afternoonTimeIn->execute();
-                $logged = $afternoonTimeIn->affected_rows > 0;
-                if (!$logged) {
-                    $message = "Afternoon Time In already recorded.";
+            } elseif ($scanType === "time_in") {
+                if (!$record) {
+                    $log->bind_param(
+                        "ssiss",
+                        $student["STUDENT_ID"],
+                        $student["STUDENT_NAME"],
+                        $student["GRADE"],
+                        $student["STRAND"],
+                        $student["SECTION"],
+                    );
+                    $log->execute();
+                    $logged = true;
+                    $attendanceId = (int) $conn->insert_id;
+                    $message = "Time in recorded";
+                } else {
+                    $message = "Time in already recorded";
                 }
-            } elseif ($action === "time_out") {
+            } elseif (!$record) {
+                $message = "No time-in record today";
+            } elseif ($record["TIME_OUT"] !== null) {
+                $message = "Time out already recorded";
+            } elseif ($cooldown > 0) {
+                $action = "cooldown";
+                $message = attendanceTimeOutCooldownMessage($cooldown);
+            } else {
                 $timeOut->bind_param("i", $record["ID"]);
                 $timeOut->execute();
                 $logged = $timeOut->affected_rows > 0;
-                if (!$logged) {
-                    $message = "Time Out already recorded.";
-                }
+                $attendanceId = (int) $record["ID"];
+                $message = $logged
+                    ? "Time out recorded"
+                    : "Time out already recorded";
             }
-        } elseif ($scanType === "time_in") {
-            if (!$record) {
-                $log->bind_param(
-                    "ssiss",
-                    $student["STUDENT_ID"],
-                    $student["STUDENT_NAME"],
-                    $student["GRADE"],
-                    $student["STRAND"],
-                    $student["SECTION"],
-                );
-                $log->execute();
-                $logged = true;
-                $message = "Time in recorded";
-            } else {
-                $message = "Time in already recorded";
-            }
-        } elseif (!$record) {
-            $message = "No time-in record today";
-        } elseif ($record["TIME_OUT"] !== null) {
-            $message = "Time out already recorded";
-        } elseif ($cooldown > 0) {
-            $action = "cooldown";
-            $message = attendanceTimeOutCooldownMessage($cooldown);
-        } else {
-            $timeOut->bind_param("i", $record["ID"]);
-            $timeOut->execute();
-            $logged = $timeOut->affected_rows > 0;
-            $message = $logged
-                ? "Time out recorded"
-                : "Time out already recorded";
+
+            $result = $logged
+                ? ATTENDANCE_SCAN_RESULT_SUCCESS
+                : ($action === "cooldown"
+                    ? "cooldown"
+                    : (in_array(
+                        $action,
+                        ["morning_protected", "waiting_afternoon", "complete"],
+                        true,
+                    )
+                        ? "ignored"
+                        : "duplicate"));
+            $eventType =
+                $logged &&
+                in_array(
+                    $action,
+                    ["time_in", "lunch_out", "afternoon_time_in", "time_out"],
+                    true,
+                )
+                    ? $action
+                    : "ignored";
+            logAttendanceScanEvent($conn, [
+                "attendance_id" => $logged ? $attendanceId : null,
+                "student_id" => $student["STUDENT_ID"],
+                "event_type" => $eventType,
+                "result" => $result,
+                "scanner_source" => $scanSource,
+                "scanner_id" => $scannerId,
+                "scanner_name" => $scannerName,
+                "detail" => $message,
+                "grade" => $student["GRADE"],
+                "strand" => $student["STRAND"],
+                "section" => $student["SECTION"],
+                "dedupe_seconds" => $logged ? 0 : 20,
+            ]);
+            $conn->commit();
+        } catch (Throwable $error) {
+            $conn->rollback();
+            error_log("scan_match_write_failed: " . $error->getMessage());
+            $logged = false;
+            $attendanceId = null;
+            $message = "Attendance could not be saved. Please scan again.";
         }
     }
 

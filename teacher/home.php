@@ -37,8 +37,9 @@ $today = date("Y-m-d");
 teacherHead("Attendance");
 teacherShell("Attendance records");
 ?>
-<section class="card p-5">
-    <div class="flex flex-wrap items-end justify-between gap-4 border-b border-slate-100 pb-5">
+<div class="w-full flex-1 min-w-0 max-w-full space-y-6">
+<section class="card p-5 w-full">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5 w-full">
         <p class="text-slate-500">Updates quietly when attendance changes in your assigned grades. Students who have timed in appear first.</p>
         <a id="export-link" href="export-attendance.php?date=<?= htmlspecialchars(
         $today,
@@ -161,8 +162,8 @@ teacherShell("Attendance records");
             }
         }
     </style>
-    <div class="teacher-attendance-log-scroll mt-6 w-full overflow-x-auto">
-        <table id="teacher-attendance-log-table" class="w-full text-left">
+    <div class="teacher-attendance-log-scroll mt-6 w-full overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+        <table id="teacher-attendance-log-table" class="w-full text-left border-collapse">
             <thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
                     <th>LRN</th>
@@ -273,6 +274,7 @@ teacherShell("Attendance records");
         }
     </style>
 </section>
+</div>
 <div id="attendance-remark-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-5"
     role="dialog" aria-modal="true" aria-labelledby="attendance-remark-title">
     <form action="update-attendance-remark.php" method="post"

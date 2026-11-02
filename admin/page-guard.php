@@ -12,6 +12,31 @@ header('Referrer-Policy: strict-origin-when-cross-origin');
 header('X-Frame-Options: SAMEORIGIN');
 
 if (empty($_SESSION['is-authenticated']) || ($_SESSION['user-role'] ?? '') !== 'administrator') {
-    header('Location: login.php', true, 302);
+    // Clear the session through the shared logout controller instead of sending
+    // a cross-portal request to the admin login page.
+    header('Location: ../common/logout.php', true, 302);
+    exit;
+}
+
+// Revalidate the administrator account on every protected request, mirroring
+// teacher/page-guard.php. A removed or otherwise invalid account must not keep
+// an authenticated session alive.
+require_once __DIR__ . '/../config/db_conn.php';
+$adminUserId = (int) ($_SESSION['user-id'] ?? 0);
+$adminUser = (string) ($_SESSION['admin-user'] ?? '');
+if ($adminUserId > 0) {
+    $adminCheck = $conn->prepare('SELECT ADMIN_ID FROM admins WHERE ADMIN_ID=? LIMIT 1');
+    $adminCheck->bind_param('i', $adminUserId);
+} else {
+    $adminCheck = $conn->prepare('SELECT ADMIN_ID FROM admins WHERE ADMIN_USER=? LIMIT 1');
+    $adminCheck->bind_param('s', $adminUser);
+}
+$adminCheck->execute();
+$adminAccount = $adminCheck->get_result()->fetch_assoc();
+$adminCheck->close();
+if (!$adminAccount) {
+    $_SESSION = [];
+    session_destroy();
+    header('Location: ../common/logout.php', true, 302);
     exit;
 }
