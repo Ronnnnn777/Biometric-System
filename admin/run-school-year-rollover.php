@@ -1,8 +1,11 @@
 <?php
 require 'page-guard.php';
 require_once '../config/db_conn.php';
+require_once '../includes/student-promotion-schema.php';
 require_once '../includes/promotion-runner.php';
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+ensureStudentPromotionSchema($conn);
 
 function rolloverFail(string $message): void
 {

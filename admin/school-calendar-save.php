@@ -6,7 +6,7 @@ ensureSchoolCalendarSchema($conn);
 
 if (!hash_equals($_SESSION["csrf_token"] ?? "", $_POST["csrf_token"] ?? "")) {
     $_SESSION["toast"] = ["message" => "The request expired. Please try again.", "type" => "error"];
-    header("Location: school-calendar.php");
+    header("Location: school-year-rollover.php?view=schedule");
     exit();
 }
 
@@ -15,7 +15,7 @@ $date = trim((string) ($_POST["calendar_date"] ?? ""));
 
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
     $_SESSION["toast"] = ["message" => "Choose a valid date.", "type" => "error"];
-    header("Location: school-calendar.php");
+    header("Location: school-year-rollover.php?view=schedule");
     exit();
 }
 
@@ -32,5 +32,5 @@ if ($action === "delete") {
     }
 }
 
-header("Location: school-calendar.php");
+header("Location: school-year-rollover.php?view=schedule");
 exit();

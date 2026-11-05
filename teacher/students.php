@@ -83,6 +83,33 @@ $assignedStrand = trim((string) ($sectionRow["STRAND"] ?? ""));
 $setting = $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc();
 $schoolYear = (string) ($setting['ACTIVE_SCHOOL_YEAR'] ?? '');
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle_retention') {
+    try {
+        if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string) ($_POST['csrf_token'] ?? ''))) {
+            throw new RuntimeException('The retention request expired. Refresh and try again.');
+        }
+        $studentId = trim((string) ($_POST['student_id'] ?? ''));
+        $retained = (string) ($_POST['retained'] ?? '') === '1';
+        $owned = $conn->prepare("SELECT s.STUDENT_ID FROM students s
+            JOIN current_teacher_advisory_assignments ta
+              ON ta.GRADE=s.GRADE AND ta.SECTION=s.SECTION AND ta.STRAND=s.STRAND
+            WHERE s.STUDENT_ID=? AND ta.TEACHER_ID=? AND s.ENROLLMENT_STATUS='Enrolled'
+              AND COALESCE(s.IS_ARCHIVED,0)=0 AND s.GRADE BETWEEN 7 AND 10 LIMIT 1");
+        $owned->bind_param('si', $studentId, $teacherId);
+        $owned->execute();
+        if (!$owned->get_result()->fetch_assoc()) {
+            throw new RuntimeException('You may only change retention for an enrolled Grade 7–10 student in your advisory class.');
+        }
+        setStudentRetentionFlag($conn, $studentId, $schoolYear, $retained);
+        $_SESSION['toast'] = ['message'=>$retained ? 'Student marked Retained for the active school year.' : 'Retention flag removed; rollover will recalculate the outcome.', 'type'=>'success'];
+    } catch (RuntimeException $error) {
+        $_SESSION['toast'] = ['message'=>$error->getMessage(), 'type'=>'error'];
+    }
+    header('Location: students.php?' . http_build_query(['grade'=>$grade, 'section'=>$section]));
+    exit;
+}
+$retentionFlags = studentRetentionFlags($conn, $schoolYear);
+
 $today = date("Y-m-d");
 $stmt = $conn->prepare(
     "SELECT s.*, (SELECT COUNT(*) FROM attendance a WHERE TRIM(a.STUDENT_ID) = TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN) = ?) attended_today, (SELECT a.ATTENDANCE_REMARK FROM attendance a WHERE TRIM(a.STUDENT_ID) = TRIM(s.STUDENT_ID) AND DATE(a.TIME_IN) = ? ORDER BY a.ID DESC LIMIT 1) attendance_remark FROM students s WHERE s.SECTION = ? AND s.GRADE = ? AND s.STRAND=? AND s.ENROLLMENT_STATUS='Enrolled' ORDER BY s.LAST_NAME, s.FIRST_NAME, s.STUDENT_NAME",
@@ -232,6 +259,7 @@ teacherShell("Students");
                     <th class="px-5 py-4">LRN</th>
                     <th class="px-5 py-4">Grade</th>
                     <th class="px-5 py-4">Section</th>
+                    <th class="px-5 py-4">Retention</th>
                     <th class="px-5 py-4">Today</th>
                     <th class="px-5 py-4 text-right">Action</th>
                 </tr>
@@ -258,6 +286,18 @@ teacherShell("Students");
                     <td class="px-5 py-4"><span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300"><?= htmlspecialchars(
               $student["SECTION"],
           ) ?></span></td>
+                    <td class="px-5 py-4">
+                        <?php $canRetain = (int) $student['GRADE'] >= 7 && (int) $student['GRADE'] <= 10; $isRetained = !empty($retentionFlags[trim((string) $student['STUDENT_ID'])]); ?>
+                        <?php if ($canRetain): ?>
+                        <form method="post" class="inline">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                            <input type="hidden" name="action" value="toggle_retention">
+                            <input type="hidden" name="student_id" value="<?= htmlspecialchars($student['STUDENT_ID']) ?>">
+                            <input type="hidden" name="retained" value="<?= $isRetained ? '0' : '1' ?>">
+                            <button type="submit" class="rounded-full px-3 py-1 text-xs font-bold <?= $isRetained ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' ?>"><?= $isRetained ? 'Retained · Remove' : 'Mark retained' ?></button>
+                        </form>
+                        <?php else: ?><span class="text-xs text-slate-400">Grade 7–10 only</span><?php endif; ?>
+                    </td>
                     <?php
           $todayRemark = $student["attendance_remark"] ?? "";
           $todayLabel = $student["attended_today"]

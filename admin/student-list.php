@@ -2,12 +2,38 @@
 require '../config/db_conn.php';
 require '../includes/student-profile-schema.php';
 require '../includes/section-catalog-schema.php';
+require_once '../includes/student-promotion-schema.php';
 require_once '../includes/promotion-policy-schema.php';
 ensureStudentProfileColumns($conn);
 ensureSectionCatalogColumns($conn);
+ensureStudentPromotionSchema($conn);
 require 'page-guard.php';
 require '../includes/csrf-token.php';
 require 'components.php';
+
+$setting = $conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc();
+$schoolYear = (string) ($setting['ACTIVE_SCHOOL_YEAR'] ?? '');
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle_retention') {
+    try {
+        if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string) ($_POST['csrf_token'] ?? ''))) {
+            throw new RuntimeException('The retention request expired. Refresh and try again.');
+        }
+        $studentId = trim((string) ($_POST['student_id'] ?? ''));
+        $retained = (string) ($_POST['retained'] ?? '') === '1';
+        $eligible = $conn->prepare("SELECT STUDENT_ID FROM students WHERE STUDENT_ID=? AND ENROLLMENT_STATUS='Enrolled'
+            AND COALESCE(IS_ARCHIVED,0)=0 AND GRADE BETWEEN 7 AND 10 LIMIT 1");
+        $eligible->bind_param('s', $studentId);
+        $eligible->execute();
+        if (!$eligible->get_result()->fetch_assoc()) throw new RuntimeException('Only enrolled Grade 7–10 students can be marked Retained.');
+        setStudentRetentionFlag($conn, $studentId, $schoolYear, $retained);
+        $_SESSION['toast'] = ['message'=>$retained ? 'Student marked Retained for the active school year.' : 'Retention flag removed; rollover will recalculate the outcome.', 'type'=>'success'];
+    } catch (RuntimeException $error) {
+        $_SESSION['toast'] = ['message'=>$error->getMessage(), 'type'=>'error'];
+    }
+    header('Location: student-list.php?view=active');
+    exit;
+}
+$retentionFlags = studentRetentionFlags($conn, $schoolYear);
 
 $limit = 15;
 $today = date('Y-m-d');
@@ -210,6 +236,7 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
                     <th class="px-5 py-4">Status</th>
                     <?php else: ?>
                     <th class="px-5 py-4">Status</th>
+                    <th class="px-5 py-4">Retention</th>
                     <th class="px-5 py-4">Today</th>
                     <?php endif; ?>
                     <th class="px-5 py-4"></th>
@@ -282,6 +309,18 @@ $filterPillInactiveClass = 'filter-pill filter-pill-inactive';
                     <?php else: ?>
                     <td class="px-5 py-4"><span
                             class="rounded-full px-3 py-1 font-bold <?= $rowStatusClass ?>"><?= htmlspecialchars($rowStatus) ?></span>
+                    </td>
+                    <td class="px-5 py-4">
+                        <?php $canRetain = (int) $row['GRADE'] >= 7 && (int) $row['GRADE'] <= 10; $isRetained = !empty($retentionFlags[trim((string) $row['STUDENT_ID'])]); ?>
+                        <?php if ($canRetain): ?>
+                        <form method="post" class="inline">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                            <input type="hidden" name="action" value="toggle_retention">
+                            <input type="hidden" name="student_id" value="<?= htmlspecialchars($row['STUDENT_ID']) ?>">
+                            <input type="hidden" name="retained" value="<?= $isRetained ? '0' : '1' ?>">
+                            <button type="submit" class="rounded-full px-3 py-1 text-xs font-bold <?= $isRetained ? 'bg-rose-500/10 text-rose-700' : 'bg-slate-100 text-slate-600' ?>"><?= $isRetained ? 'Retained · Remove' : 'Mark retained' ?></button>
+                        </form>
+                        <?php else: ?><span class="text-xs text-slate-400">Grade 7–10 only</span><?php endif; ?>
                     </td>
                     <?php
                         $todayLabel = ($row['attendance_remark'] ?? '') === 'Absent' ? 'Absent' : ($row['attended_today'] ? 'Present' : 'Not recorded');

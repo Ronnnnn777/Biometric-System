@@ -14,6 +14,5 @@ return [
     ['url' => 'teacher-list.php', 'label' => 'Teachers', 'key' => 'teachers', 'icon' => 'briefcase'],
     ['url' => 'attendance-log.php', 'label' => 'Attendance logs', 'key' => 'attendance', 'icon' => 'clipboard-list'],
     ['url' => 'school-year-rollover.php', 'label' => 'School year', 'key' => 'rollover', 'icon' => 'calendar'],
-    ['url' => 'school-calendar.php', 'label' => 'School calendar', 'key' => 'school-calendar', 'icon' => 'calendar'],
     ['url' => 'settings.php', 'label' => 'Settings', 'key' => 'settings', 'icon' => 'settings'],
 ];

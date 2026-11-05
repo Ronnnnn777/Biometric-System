@@ -84,7 +84,6 @@ try {
         $advisory = teacherAdvisoryAssignments($conn,$id)[0] ?? null;
         $sectionId = isset($_POST['advisory_section_id']) ? (int)$_POST['advisory_section_id'] : (int)($advisory['SECTION_ID'] ?? 0);
         setTeacherAdvisory($conn, $id, $sectionId);
-        requireTeacherAdvisory($conn,$id);
     }
     $conn->commit();
 } catch (Throwable $error) {

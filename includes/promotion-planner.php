@@ -82,10 +82,11 @@ function promotionContext(mysqli $conn, string $year, bool $lock = false): array
     $archiveStudents = $conn->query("SELECT * FROM students WHERE ENROLLMENT_STATUS IN ('Transferred','Dropped') AND COALESCE(IS_ARCHIVED,0)=0 ORDER BY STUDENT_ID".$suffix)->fetch_all(MYSQLI_ASSOC);
     $stmt = $conn->prepare('SELECT * FROM student_subject_results WHERE SCHOOL_YEAR=? ORDER BY STUDENT_ID'.$suffix);
     $stmt->bind_param('s',$year); $stmt->execute(); $results = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $retentionFlags = studentRetentionFlags($conn, $year);
     $sections = $conn->query('SELECT * FROM sections ORDER BY GRADE,STRAND,SORT_ORDER,SECTION_ID'.$suffix)->fetch_all(MYSQLI_ASSOC);
     $honors = $conn->query('SELECT * FROM promotion_honor_sections ORDER BY GRADE,STRAND'.$suffix)->fetch_all(MYSQLI_ASSOC);
     $capacity = $conn->query('SELECT DEFAULT_CAPACITY FROM section_settings WHERE ID=1'.$suffix)->fetch_assoc();
-    return ['year'=>$year,'students'=>$students,'archive_students'=>$archiveStudents,'results'=>$results,'sections'=>$sections,'honors'=>$honors,'default'=>(int)($capacity['DEFAULT_CAPACITY'] ?? 40)];
+    return ['year'=>$year,'students'=>$students,'archive_students'=>$archiveStudents,'results'=>$results,'retention_flags'=>$retentionFlags,'sections'=>$sections,'honors'=>$honors,'default'=>(int)($capacity['DEFAULT_CAPACITY'] ?? 40)];
 }
 
 /** Default one-to-one promotion targets. Grade 10 is routed per student. */
@@ -126,7 +127,8 @@ function buildPromotionPlan(array $context, array $targets, array $choices = [])
     $outcomes = is_array($choices['outcomes'] ?? null) ? $choices['outcomes'] : [];
     $strandChoices = is_array($choices['strand_choices'] ?? null) ? $choices['strand_choices'] : [];
     $requireGrade10Strands = !empty($choices['require_grade10_strands']);
-    $plan = ['year'=>$context['year'],'students'=>[],'archives'=>[],'destinations'=>[],'reviews'=>[],
+    $retentionFlags = is_array($context['retention_flags'] ?? null) ? $context['retention_flags'] : [];
+    $plan = ['year'=>$context['year'],'students'=>[],'archives'=>[],'destinations'=>[],'retained_destinations'=>[],'reviews'=>[],
         'summary'=>['promoted'=>0,'honor'=>0,'regular'=>0,'retained'=>0,'remedial'=>0,'graduated'=>0,'transferred'=>0,'dropped'=>0,'incomplete'=>0],
         'targets'=>$targets,'choices'=>['outcomes'=>$outcomes,'strand_choices'=>$strandChoices],'blocked'=>false];
 
@@ -144,7 +146,7 @@ function buildPromotionPlan(array $context, array $targets, array $choices = [])
     }
     unset($destinationSections);
 
-    $sources = []; $occupied = [];
+    $sources = []; $retainedPools = []; $occupied = [];
     foreach ($context['students'] as $student) {
         if ($student['ENROLLMENT_STATUS'] !== 'Enrolled' || !empty($student['IS_ARCHIVED'])) continue;
         $id = trim($student['STUDENT_ID']); $key = $student['GRADE'].'|'.$student['STRAND'];
@@ -153,14 +155,22 @@ function buildPromotionPlan(array $context, array $targets, array $choices = [])
         if ($override !== '' && $override !== 'Retained') {
             throw new RuntimeException('Invalid promotion outcome for '.$id.'.');
         }
-        if ($override === 'Retained') {
+        $persistedRetention = (int) $student['GRADE'] >= 7 && (int) $student['GRADE'] <= 10
+            && !empty($retentionFlags[$id]);
+        if ($persistedRetention || $override === 'Retained') {
             $standing['decision'] = 'Retained';
-            $standing['manual_retained'] = true;
+            $standing['manual_retained'] = !$persistedRetention;
+            $standing['teacher_retained'] = $persistedRetention;
         }
         $plan['students'][$id] = ['student'=>$student,'standing'=>$standing,'placement'=>null];
 
         if ($standing['decision'] === 'Retained') {
             $plan['summary']['retained']++;
+            // Retained learners stay in their source grade and are sectioned
+            // before promotion destinations reserve their remaining seats.
+            if ((int) $student['GRADE'] >= 7 && (int) $student['GRADE'] <= 10) {
+                $retainedPools[$key][] = $id;
+            }
             continue;
         }
         // Grade 12 is always closed out, regardless of strand or missing rows.
@@ -207,6 +217,64 @@ function buildPromotionPlan(array $context, array $targets, array $choices = [])
         $plan['destinations'][$destinationKey]['ids'] = array_merge(
             $plan['destinations'][$destinationKey]['ids'], $ids,
         );
+    }
+
+    // Retention pools are deliberately separate from promotion destinations:
+    // learners do not enter honor/regular eligibility chunking, but their
+    // same-grade placement still reserves real capacity for incoming students.
+    foreach ($retainedPools as $key => $ids) {
+        [$poolGrade, $poolStrand] = explode('|', $key, 2);
+        $poolGrade = (int) $poolGrade;
+        sort($ids, SORT_STRING);
+        $sections = $sectionsByDestination[$key] ?? [];
+        $poolHonorId = $honorIds[$key] ?? 0;
+        if ($poolHonorId > 0) {
+            $sections = array_values(array_filter(
+                $sections,
+                static fn(array $section): bool => (int) $section['SECTION_ID'] !== $poolHonorId,
+            ));
+        }
+        foreach ($sections as &$section) {
+            $section['EXISTING_COUNT'] = count($occupied[$key.'|'.$section['SECTION']] ?? []);
+        }
+        unset($section);
+        $available = 0;
+        foreach ($sections as $section) {
+            $available += max(0, sectionCapacity($section, $context['default']) - (int) $section['EXISTING_COUNT']);
+        }
+        $next = count($sectionsByDestination[$key] ?? []) + 1;
+        while ($available < count($ids)) {
+            do { $name = generatedSectionName($poolGrade, $poolStrand, $next++); }
+            while (isset($knownNames[strtolower($name)]));
+            $knownNames[strtolower($name)] = true;
+            $sections[] = [
+                'SECTION_ID'=>0,'SECTION'=>$name,'GRADE'=>$poolGrade,'STRAND'=>$poolStrand,
+                'CAPACITY'=>$context['default'],'SORT_ORDER'=>1000 + $next,
+                'EXISTING_COUNT'=>0,'VIRTUAL'=>true,
+            ];
+            $available += $context['default'];
+        }
+        $groups = assignStudentsToSections($ids, $sections, $context['default']);
+        $groups = array_values(array_filter(
+            $groups,
+            static fn(array $group): bool => !empty($group['students']) || empty($group['section']['VIRTUAL']),
+        ));
+        foreach ($groups as $group) {
+            $sectionName = (string) $group['section']['SECTION'];
+            foreach ($group['students'] as $id) {
+                $plan['students'][$id]['placement'] = [
+                    'GRADE'=>$poolGrade,
+                    'STRAND'=>$poolStrand,
+                    'SECTION'=>$sectionName,
+                ];
+                $occupied[$key.'|'.$sectionName][] = $id;
+            }
+        }
+        $plan['retained_destinations'][$key] = [
+            'grade'=>$poolGrade,
+            'strand'=>$poolStrand,
+            'groups'=>$groups,
+        ];
     }
 
     foreach ($plan['destinations'] as $key => &$destination) {

@@ -24,10 +24,9 @@ $restore->bind_param('i', $id);
 $restore->execute();
 if (!$restore->affected_rows) throw new RuntimeException('Archived teacher was not found.');
 setTeacherAdvisory($conn,$id,(int)($_POST['advisory_section_id'] ?? 0));
-requireTeacherAdvisory($conn,$id);
 $conn->commit();
 $_SESSION['toast'] = [
-    'message' => 'Teacher restored with one advisory section for the active school year.',
+    'message' => 'Teacher restored for the active school year.',
     'type' => 'success',
 ];
 } catch (Throwable $error) {

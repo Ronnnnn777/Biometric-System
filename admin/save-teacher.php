@@ -73,7 +73,6 @@ try {
     }
     $importedAssignments = empty($_POST['advisory_section_id']) ? assignRememberedAdviserClasses($conn, $teacherId, $name) : 0;
     if (!empty($_POST['advisory_section_id'])) setTeacherAdvisory($conn, $teacherId, (int)$_POST['advisory_section_id']);
-    requireTeacherAdvisory($conn,$teacherId);
     $conn->commit();
 } catch (Throwable $error) {
     $conn->rollback();
@@ -88,7 +87,7 @@ $_SESSION["toast"] = [
                 $importedAssignments .
                 " imported adviser class" .
                 ($importedAssignments === 1 ? "." : "es.")
-            : 'Teacher account and advisory section created successfully.'),
+            : 'Teacher account created successfully.'),
     "type" => "success",
 ];
 header("Location: teacher-list.php");

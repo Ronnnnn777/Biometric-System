@@ -8,20 +8,30 @@ ensureTeacherProfileColumns($conn);
 ensureTeacherAssignmentSchema($conn);
 require 'components.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_advisories') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assign_advisory') {
     if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($_POST['csrf_token'] ?? ''))) {
         $_SESSION['toast']=['message'=>'The advisory request expired. Refresh and try again.','type'=>'error'];
     } else {
         try {
-            $submitted = $_POST['adviser'] ?? [];
-            if (!is_array($submitted)) throw new RuntimeException('Invalid advisory assignments.');
+            $teacherId = (int) ($_POST['teacher_id'] ?? 0);
+            $rawSectionId = $_POST['section_id'] ?? '';
+            if (is_array($rawSectionId)) throw new RuntimeException('Choose a valid advisory section.');
+            $sectionValue = trim((string) $rawSectionId);
+            if ($teacherId < 1 || ($sectionValue !== '' && (!ctype_digit($sectionValue) || (int) $sectionValue < 1))) {
+                throw new RuntimeException('Choose a valid teacher and advisory section.');
+            }
+            $sectionId = $sectionValue === '' ? 0 : (int) $sectionValue;
+            $current = teacherAdvisoryAssignments($conn, $teacherId)[0] ?? null;
+            if ($sectionId > 0 && $current && (int) $current['SECTION_ID'] !== $sectionId && ($_POST['replace_confirmation'] ?? '') !== '1') {
+                throw new RuntimeException('Confirm that the teacher’s existing advisory will be released before assigning the new section.');
+            }
             $conn->begin_transaction();
-            replaceTeacherAdvisories($conn, $submitted);
+            setTeacherAdvisory($conn, $teacherId, $sectionId);
             $conn->commit();
-            $_SESSION['toast']=['message'=>'Current-year advisory assignments saved.','type'=>'success'];
+            $_SESSION['toast']=['message'=>$sectionId > 0 ? 'Current-year advisory assignment saved.' : 'Current-year advisory assignment released.','type'=>'success'];
         } catch (Throwable $error) {
             $conn->rollback();
-            $_SESSION['toast']=['message'=>$error instanceof RuntimeException ? $error->getMessage() : 'Advisory assignments could not be saved.','type'=>'error'];
+            $_SESSION['toast']=['message'=>$error instanceof RuntimeException ? $error->getMessage() : ($error instanceof mysqli_sql_exception && (int) $error->getCode() === 1062 ? 'That teacher or section was just assigned elsewhere. Refresh and choose another available section.' : 'Advisory assignments could not be saved.'),'type'=>'error'];
         }
     }
     header('Location: teacher-list.php'); exit;
@@ -46,14 +56,6 @@ $teachers = $conn->query(
      WHERE $teacherWhere
      ORDER BY $teacherOrder",
 );
-$activeSections = !$isArchivedView ? $conn->query(
-    "SELECT s.SECTION_ID,s.GRADE,s.STRAND,s.SECTION,a.TEACHER_ID
-       FROM sections s LEFT JOIN current_teacher_advisory_assignments a ON a.SECTION_ID=s.SECTION_ID
-      WHERE s.IS_ACTIVE=1 ORDER BY s.GRADE,s.STRAND,s.SORT_ORDER,s.SECTION_ID",
-)->fetch_all(MYSQLI_ASSOC) : [];
-$adviserOptions = !$isArchivedView ? $conn->query(
-    "SELECT TEACHER_ID,TEACHER_NAME FROM teachers WHERE TEACHER_STATUS='Active' ORDER BY TEACHER_NAME",
-)->fetch_all(MYSQLI_ASSOC) : [];
 
 $viewPillActive = 'rounded-full bg-blue-600 text-white font-black text-sm px-4 py-2 shadow-md transition-all';
 $viewPillInactive = 'rounded-full text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-bold text-sm px-4 py-2 transition-all';
@@ -84,24 +86,6 @@ adminSidebar(
     <?php endif; ?>
 </div>
 
-<?php if (!$isArchivedView): ?>
-<section class="card card-body mb-6">
-    <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <div><h2 class="text-lg font-black text-slate-900">Post-rollover advisory assignments</h2><p class="text-sm text-slate-500">Assign one active teacher per active section. Blank sections remain unassigned; a teacher can appear only once.</p></div>
-        <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700"><?= count($activeSections) ?> active sections</span>
-    </div>
-    <form method="post" class="mt-4 overflow-x-auto">
-        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>"><input type="hidden" name="action" value="save_advisories">
-        <table class="w-full min-w-[34rem] text-left text-sm"><thead class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500"><tr><th class="p-3">Section</th><th class="p-3">Adviser</th></tr></thead><tbody>
-        <?php foreach ($activeSections as $section): ?>
-        <tr class="border-b border-slate-100"><td class="p-3 font-bold">Grade <?= (int)$section['GRADE'] ?> · <?= htmlspecialchars($section['SECTION']) ?><?= $section['STRAND'] ? ' · '.htmlspecialchars($section['STRAND']) : '' ?></td><td class="p-3"><select name="adviser[<?= (int)$section['SECTION_ID'] ?>]" class="field max-w-sm"><option value="">Unassigned</option><?php foreach ($adviserOptions as $teacher): ?><option value="<?= (int)$teacher['TEACHER_ID'] ?>" <?= (int)$section['TEACHER_ID']===(int)$teacher['TEACHER_ID'] ? 'selected' : '' ?>><?= htmlspecialchars($teacher['TEACHER_NAME']) ?></option><?php endforeach; ?></select></td></tr>
-        <?php endforeach; ?>
-        </tbody></table>
-        <button class="btn btn-primary mt-4">Save advisory roster</button>
-    </form>
-</section>
-<?php endif; ?>
-
 <div class="card overflow-hidden">
     <div class="w-full overflow-x-auto">
         <table class="w-full min-w-full text-left text-sm">
@@ -131,7 +115,7 @@ adminSidebar(
                     <td class="px-5 py-4 text-slate-600"><?= htmlspecialchars($teacher['TEACHER_USER']) ?></td>
                     <td class="px-5 py-4">
                         <div class="flex flex-wrap gap-2">
-                            <?php foreach ($advisory as $adviserClass): ?><span class="rounded-full bg-blue-50 px-3 py-1 font-bold text-blue-700"><?= htmlspecialchars('Adviser: Grade '.$adviserClass['GRADE'].' | '.$adviserClass['SECTION'].($adviserClass['STRAND'] ? ' | '.$adviserClass['STRAND'] : '')) ?></span><?php endforeach; ?>
+                            <?php foreach ($advisory as $adviserClass): ?><span class="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600 border border-blue-500/20"><?= htmlspecialchars('Adviser: Grade '.$adviserClass['GRADE'].' · '.$adviserClass['SECTION'].($adviserClass['STRAND'] ? ' · '.$adviserClass['STRAND'] : '')) ?></span><?php endforeach; ?>
                             <?php foreach ($assignments as $assignment): ?>
                             <?php
                                 $detail = in_array((int) $assignment['GRADE'], [11, 12], true) ? $assignment['STRAND'] : $assignment['SUBJECT'];
@@ -158,16 +142,21 @@ adminSidebar(
                         <div class="flex flex-wrap justify-end gap-2">
                             <a class="btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-blue-500/20 bg-blue-500/10 px-3 text-xs font-medium text-blue-600 transition hover:bg-blue-500/20"
                                 href="archived-teacher-record.php?id=<?= (int) $teacher['TEACHER_ID'] ?>">Open record</a>
-                            <form action="restore-archived-teacher.php" method="post" class="inline">
-                                <input type="hidden" name="csrf_token"
-                                    value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-                                <input type="hidden" name="id" value="<?= (int) $teacher['TEACHER_ID'] ?>">
-                                <?php teacherAdvisorySelect($conn,(int)$teacher['TEACHER_ID']); ?>
-                                <button
-                                    class="btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 px-3 text-xs font-medium text-emerald-700 transition hover:bg-emerald-500/20">Restore</button>
-                            </form>
+                            <?php $restoreOptions = availableTeacherAdvisorySections($conn, (int) $teacher['TEACHER_ID']); ?>
+                            <button type="button" class="advisory-modal-trigger btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 px-3 text-xs font-medium text-emerald-700 transition hover:bg-emerald-500/20"
+                                data-restore="true"
+                                data-teacher-id="<?= (int) $teacher['TEACHER_ID'] ?>"
+                                data-teacher-name="<?= htmlspecialchars($teacher['TEACHER_NAME'], ENT_QUOTES) ?>"
+                                data-current-section="0"
+                                data-sections="<?= htmlspecialchars(json_encode($restoreOptions), ENT_QUOTES) ?>">Restore</button>
                         </div>
                         <?php else: ?>
+                        <?php $advisoryOptions = availableTeacherAdvisorySections($conn, (int) $teacher['TEACHER_ID']); ?>
+                        <button type="button" class="advisory-modal-trigger btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 px-3 text-xs font-medium text-emerald-700 transition hover:bg-emerald-500/20"
+                            data-teacher-id="<?= (int) $teacher['TEACHER_ID'] ?>"
+                            data-teacher-name="<?= htmlspecialchars($teacher['TEACHER_NAME'], ENT_QUOTES) ?>"
+                            data-current-section="<?= (int) ($advisory[0]['SECTION_ID'] ?? 0) ?>"
+                            data-sections="<?= htmlspecialchars(json_encode($advisoryOptions), ENT_QUOTES) ?>">Assign / Change Advisory</button>
                         <a href="edit-teacher.php?id=<?= (int) $teacher['TEACHER_ID'] ?>"
                             class="btn btn-secondary inline-flex h-8 items-center justify-center rounded border border-blue-500/20 bg-blue-500/10 px-3 text-xs font-medium text-blue-600 transition hover:bg-blue-500/20">Open
                             profile</a>
@@ -186,6 +175,29 @@ adminSidebar(
         </table>
     </div>
 </div>
+<div id="advisory-search-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="advisory-modal-title">
+    <div class="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl">
+        <div class="flex items-start justify-between gap-4">
+            <div><h2 id="advisory-modal-title" class="text-lg font-black text-slate-900">Assign advisory</h2><p id="advisory-modal-teacher" class="mt-1 text-sm text-slate-500"></p></div>
+            <button type="button" data-advisory-modal-close class="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100" aria-label="Close">×</button>
+        </div>
+        <form method="post" id="advisory-assignment-form" class="mt-5 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+            <input type="hidden" name="action" value="assign_advisory" id="advisory-action">
+            <input type="hidden" name="teacher_id" id="advisory-teacher-id">
+            <input type="hidden" name="section_id" id="advisory-section-id">
+            <label for="advisory-search-input" class="block text-sm font-bold text-slate-700">Search advisory section</label>
+            <input type="text" id="advisory-search-input" placeholder="Search Grade or Section..." autocomplete="off" class="field w-full" aria-controls="advisory-search-results">
+            <div id="advisory-search-results" class="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-2" role="listbox"></div>
+            <p id="advisory-selected-label" class="text-sm font-semibold text-slate-500">Choose a section or leave it empty.</p>
+            <label id="advisory-replace-confirmation" class="hidden items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <input type="checkbox" name="replace_confirmation" value="1" class="mt-0.5">
+                <span>I understand this releases the teacher’s current advisory before assigning the selected section.</span>
+            </label>
+            <div class="flex justify-end gap-2"><button type="button" data-advisory-modal-close class="btn btn-secondary">Cancel</button><button class="btn btn-primary">Save advisory</button></div>
+        </form>
+    </div>
+</div>
 <script src="../js/table-pagination.js?v=7"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -201,6 +213,99 @@ adminSidebar(
             perPage: <?= $limit ?>,
             total: <?= $totalTeachers ?>
         });
+
+        const modal = document.getElementById('advisory-search-modal');
+        if (!modal) return;
+        const input = document.getElementById('advisory-search-input');
+        const results = document.getElementById('advisory-search-results');
+        const teacherId = document.getElementById('advisory-teacher-id');
+        const sectionId = document.getElementById('advisory-section-id');
+        const teacherLabel = document.getElementById('advisory-modal-teacher');
+        const selectedLabel = document.getElementById('advisory-selected-label');
+        const confirmation = document.getElementById('advisory-replace-confirmation');
+        const form = document.getElementById('advisory-assignment-form');
+        const action = document.getElementById('advisory-action');
+        let sections = [], currentSectionId = 0;
+        const closeModal = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); };
+        const sectionLabel = (section) => `Grade ${section.GRADE} · ${section.SECTION}${section.STRAND ? ` · ${section.STRAND}` : ''}`;
+        const resetConfirmation = () => {
+            confirmation.classList.add('hidden');
+            confirmation.classList.remove('flex');
+            confirmation.querySelector('input').checked = false;
+        };
+        const selectSection = (value, label) => {
+            sectionId.value = value;
+            selectedLabel.textContent = `Selected: ${label}`;
+            const replacing = value !== '' && currentSectionId > 0 && Number(value) !== currentSectionId;
+            confirmation.classList.toggle('hidden', !replacing);
+            confirmation.classList.toggle('flex', replacing);
+            confirmation.querySelector('input').checked = false;
+        };
+        const appendResult = (label, className, onClick, disabled = false) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.role = 'option';
+            button.className = className;
+            button.textContent = label;
+            if (disabled) {
+                button.disabled = true;
+                button.setAttribute('aria-disabled', 'true');
+            } else {
+                button.addEventListener('click', onClick);
+            }
+            results.appendChild(button);
+        };
+        const renderSections = () => {
+            const needle = input.value.trim().toLowerCase();
+            const currentSection = sections.find(section => Number(section.SECTION_ID) === currentSectionId);
+            const matches = sections.filter(section => Number(section.SECTION_ID) !== currentSectionId && (`grade ${section.GRADE} ${section.SECTION} ${section.STRAND || ''}`).toLowerCase().includes(needle));
+            results.innerHTML = '';
+            appendResult(
+                '-- Leave empty (Unassign) --',
+                'block w-full rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-left text-sm font-semibold text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-900/30',
+                () => selectSection('', '-- Leave empty (Unassign) --'),
+            );
+            if (currentSection) {
+                appendResult(
+                    `${sectionLabel(currentSection)} (Currently Assigned)`,
+                    'block w-full cursor-not-allowed rounded-lg bg-slate-50 px-3 py-2 text-left text-sm font-semibold text-slate-400 dark:bg-slate-800/70 dark:text-slate-500',
+                    null,
+                    true,
+                );
+            }
+            if (!matches.length) {
+                const empty = document.createElement('p');
+                empty.className = 'px-3 py-2 text-sm text-slate-500';
+                empty.textContent = 'No available sections match your search.';
+                results.appendChild(empty);
+                return;
+            }
+            matches.forEach(section => {
+                const label = sectionLabel(section);
+                appendResult(
+                    label,
+                    'block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800',
+                    () => selectSection(String(section.SECTION_ID), label),
+                );
+            });
+        };
+        document.querySelectorAll('.advisory-modal-trigger').forEach(button => button.addEventListener('click', () => {
+            const restore = button.dataset.restore === 'true';
+            teacherId.value = button.dataset.teacherId;
+            teacherId.name = restore ? 'id' : 'teacher_id';
+            sectionId.name = restore ? 'advisory_section_id' : 'section_id';
+            form.action = restore ? 'restore-archived-teacher.php' : 'teacher-list.php';
+            action.disabled = restore;
+            teacherLabel.textContent = button.dataset.teacherName;
+            currentSectionId = Number(button.dataset.currentSection || 0);
+            sections = JSON.parse(button.dataset.sections || '[]');
+            input.value = ''; sectionId.value = ''; selectedLabel.textContent = 'Choose a section or leave it empty.';
+            resetConfirmation();
+            renderSections(); modal.classList.remove('hidden'); modal.classList.add('flex'); input.focus();
+        }));
+        input.addEventListener('input', renderSections);
+        modal.querySelectorAll('[data-advisory-modal-close]').forEach(button => button.addEventListener('click', closeModal));
+        document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.classList.contains('hidden')) closeModal(); });
     });
 </script>
 <?php adminFoot(); ?>

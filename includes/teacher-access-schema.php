@@ -32,6 +32,20 @@ function ensureTeacherAccessSchema(mysqli $conn): void
         FOREIGN KEY (TEACHER_ID) REFERENCES teachers(TEACHER_ID),
         FOREIGN KEY (SECTION_ID) REFERENCES sections(SECTION_ID)
     ) ENGINE=InnoDB");
+    $indexes = [];
+    foreach ($conn->query('SHOW INDEX FROM teacher_advisory_assignments') as $index) $indexes[$index['Key_name']] = true;
+    if (!isset($indexes['uq_teacher_year'])) {
+        if (isset($indexes['uq_adviser_year'])) {
+            $conn->query('ALTER TABLE teacher_advisory_assignments DROP INDEX uq_adviser_year, ADD UNIQUE KEY uq_teacher_year (SCHOOL_YEAR,ACTIVE_TEACHER_ID)');
+        } else {
+            $conn->query('ALTER TABLE teacher_advisory_assignments ADD UNIQUE KEY uq_teacher_year (SCHOOL_YEAR,ACTIVE_TEACHER_ID)');
+        }
+    } elseif (isset($indexes['uq_adviser_year'])) {
+        $conn->query('ALTER TABLE teacher_advisory_assignments DROP INDEX uq_adviser_year');
+    }
+    if (!isset($indexes['uq_section_year'])) {
+        $conn->query('ALTER TABLE teacher_advisory_assignments ADD UNIQUE KEY uq_section_year (SCHOOL_YEAR,ACTIVE_SECTION_ID)');
+    }
     if (!$conn->query("SHOW FULL TABLES LIKE 'current_teacher_subject_assignments'")->num_rows) {
         $conn->query("CREATE VIEW current_teacher_subject_assignments AS SELECT ta.* FROM teacher_assignments ta JOIN school_year_settings sy ON sy.ID=1 AND sy.ACTIVE_SCHOOL_YEAR=ta.SCHOOL_YEAR JOIN teachers t ON t.TEACHER_ID=ta.TEACHER_ID AND t.TEACHER_STATUS='Active'");
     }
@@ -65,10 +79,28 @@ function teacherAdvisoryAssignments(mysqli $conn, int $teacherId): array
     return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 }
 
+/** Active sections that are unowned or already owned by this teacher this year. */
+function availableTeacherAdvisorySections(mysqli $conn, int $teacherId): array
+{
+    $year = activeTeacherSchoolYear($conn);
+    $stmt = $conn->prepare("SELECT s.SECTION_ID,s.GRADE,s.STRAND,s.SECTION
+        FROM sections s
+        WHERE s.IS_ACTIVE=1 AND NOT EXISTS (
+            SELECT 1 FROM teacher_advisory_assignments a
+            JOIN teachers t ON t.TEACHER_ID=a.TEACHER_ID AND t.TEACHER_STATUS='Active'
+            WHERE a.SECTION_ID=s.SECTION_ID AND a.SCHOOL_YEAR=? AND a.RELEASED_AT IS NULL
+              AND a.TEACHER_ID<>?
+        )
+        ORDER BY s.GRADE,s.STRAND,s.SORT_ORDER,s.SECTION_ID");
+    $stmt->bind_param('si', $year, $teacherId);
+    $stmt->execute();
+    return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+}
+
 /** Caller owns the transaction. Unique keys also protect concurrent writes. */
 function setTeacherAdvisory(mysqli $conn, int $teacherId, int $sectionId): void
 {
-    if ($sectionId < 1) throw new RuntimeException('Choose one active advisory section. Subjects are optional and do not establish advisory ownership.');
+    if ($sectionId < 0) throw new RuntimeException('Choose a valid advisory section.');
     $year = (string)$conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1 FOR UPDATE')->fetch_assoc()['ACTIVE_SCHOOL_YEAR'];
     $teacher = $conn->prepare("SELECT TEACHER_ID FROM teachers WHERE TEACHER_ID=? AND TEACHER_STATUS='Active' FOR UPDATE");
     $teacher->bind_param('i', $teacherId); $teacher->execute();
@@ -78,7 +110,7 @@ function setTeacherAdvisory(mysqli $conn, int $teacherId, int $sectionId): void
         syncTeacherAdvisoryProfile($conn, $teacherId);
         return;
     }
-    if ($sectionId) {
+    if ($sectionId > 0) {
         $section = $conn->prepare('SELECT SECTION_ID FROM sections WHERE SECTION_ID=? AND IS_ACTIVE=1 FOR UPDATE');
         $section->bind_param('i', $sectionId); $section->execute();
         if (!$section->get_result()->fetch_assoc()) throw new RuntimeException('Choose an existing active section.');
@@ -89,14 +121,14 @@ function setTeacherAdvisory(mysqli $conn, int $teacherId, int $sectionId): void
     }
     $release = $conn->prepare('UPDATE teacher_advisory_assignments SET RELEASED_AT=NOW() WHERE TEACHER_ID=? AND SCHOOL_YEAR=? AND RELEASED_AT IS NULL');
     $release->bind_param('is', $teacherId, $year); $release->execute();
-    if ($sectionId) {
+    if ($sectionId > 0) {
         // A record archived through another maintenance path must not reserve a class.
         $cleanup = $conn->prepare("UPDATE teacher_advisory_assignments a JOIN teachers t ON t.TEACHER_ID=a.TEACHER_ID SET a.RELEASED_AT=NOW() WHERE a.SECTION_ID=? AND a.SCHOOL_YEAR=? AND a.RELEASED_AT IS NULL AND t.TEACHER_STATUS<>'Active'");
         $cleanup->bind_param('is', $sectionId, $year); $cleanup->execute();
         $insert = $conn->prepare('INSERT INTO teacher_advisory_assignments (TEACHER_ID,SECTION_ID,SCHOOL_YEAR) VALUES (?,?,?)');
         $insert->bind_param('iis', $teacherId, $sectionId, $year); $insert->execute();
-        syncTeacherAdvisoryProfile($conn, $teacherId);
     }
+    syncTeacherAdvisoryProfile($conn, $teacherId);
 }
 
 /** Replace the current-year advisory roster in one transaction. Caller owns it. */
@@ -107,15 +139,16 @@ function replaceTeacherAdvisories(mysqli $conn, array $sectionTeachers): void
     foreach ($conn->query('SELECT SECTION_ID FROM sections WHERE IS_ACTIVE=1 FOR UPDATE') as $row) $activeSections[(int)$row['SECTION_ID']] = true;
     $activeTeachers = [];
     foreach ($conn->query("SELECT TEACHER_ID FROM teachers WHERE TEACHER_STATUS='Active' FOR UPDATE") as $row) $activeTeachers[(int)$row['TEACHER_ID']] = true;
-    $seenTeachers = [];
+    $seenTeachers = []; $seenSections = [];
     $clean = [];
     foreach ($sectionTeachers as $sectionId => $teacherId) {
         $sectionId = (int) $sectionId; $teacherId = (int) $teacherId;
         if ($teacherId === 0) continue;
         if (!isset($activeSections[$sectionId])) throw new RuntimeException('An advisory section is no longer active. Refresh the page.');
         if (!isset($activeTeachers[$teacherId])) throw new RuntimeException('An advisory teacher is no longer active. Refresh the page.');
+        if (isset($seenSections[$sectionId])) throw new RuntimeException('Each active section may have only one adviser.');
         if (isset($seenTeachers[$teacherId])) throw new RuntimeException('Each teacher may advise only one active section.');
-        $seenTeachers[$teacherId] = true; $clean[$sectionId] = $teacherId;
+        $seenTeachers[$teacherId] = true; $seenSections[$sectionId] = true; $clean[$sectionId] = $teacherId;
     }
     $release = $conn->prepare('UPDATE teacher_advisory_assignments SET RELEASED_AT=NOW() WHERE SCHOOL_YEAR=? AND RELEASED_AT IS NULL');
     $release->bind_param('s', $year); $release->execute();
@@ -130,13 +163,18 @@ function replaceTeacherAdvisories(mysqli $conn, array $sectionTeachers): void
 function syncTeacherAdvisoryProfile(mysqli $conn, int $teacherId): void
 {
     $assignment = teacherAdvisoryAssignments($conn, $teacherId)[0] ?? null;
-    if (!$assignment) return;
+    if (!$assignment) {
+        $clear = $conn->prepare("UPDATE teachers SET GRADE=NULL,STRAND='',SECTION='' WHERE TEACHER_ID=?");
+        $clear->bind_param('i', $teacherId);
+        $clear->execute();
+        return;
+    }
     $update = $conn->prepare('UPDATE teachers SET GRADE=?,STRAND=?,SECTION=? WHERE TEACHER_ID=?');
     $update->bind_param('issi', $assignment['GRADE'], $assignment['STRAND'], $assignment['SECTION'], $teacherId);
     $update->execute();
 }
 
-/** At-most-one is enforced by SQL unique keys; every active account write requires one. */
+/** Validates exactly one advisory assignment for workflows that explicitly require one. */
 function requireTeacherAdvisory(mysqli $conn, int $teacherId): void
 {
     if (count(teacherAdvisoryAssignments($conn,$teacherId)) !== 1) {

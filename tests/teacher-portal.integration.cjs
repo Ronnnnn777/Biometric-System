@@ -167,13 +167,19 @@ function check(label,callback){callback();checks++;console.log('PASS '+label);}
   const teachingClass=await clients.get('Emerald').request('teacher/grading.php?grade=7&section=Camia');
   check('explicit subject teaching outside the advisory remains authorized for grading',()=>assert.match(teachingClass.html,/Quarterly grades/));
   const explicitZero=await admin.request('admin/update-teacher.php',{...emeraldSubjects,advisory_section_id:0});
-  check('an active teacher cannot clear their advisory while keeping teaching subjects',()=>{
+  check('an active teacher can clear their advisory while keeping teaching subjects',()=>{
    assert.equal(explicitZero.status,302);
-   assert.equal(sql('SELECT SECTION FROM teachers WHERE TEACHER_ID='+emeraldTeacher.TEACHER_ID)[0].SECTION,'Emerald');
-   assert.equal(Number(sql('SELECT COUNT(*) n FROM current_teacher_advisory_assignments WHERE TEACHER_ID='+emeraldTeacher.TEACHER_ID)[0].n),1);
+   assert.equal(sql('SELECT SECTION FROM teachers WHERE TEACHER_ID='+emeraldTeacher.TEACHER_ID)[0].SECTION,'');
+   assert.equal(Number(sql('SELECT COUNT(*) n FROM current_teacher_advisory_assignments WHERE TEACHER_ID='+emeraldTeacher.TEACHER_ID)[0].n),0);
   });
+  const emeraldSection=sql("SELECT SECTION_ID FROM sections WHERE SECTION='Emerald'")[0].SECTION_ID;
+  await admin.request('admin/update-teacher.php',{...emeraldSubjects,advisory_section_id:emeraldSection});
   await admin.request('admin/save-teacher.php',{csrf_token:admin.csrf,first_name:'No',last_name:'Advisory',teacher_user:'missing-advisory@fixture.example',teacher_pass:'FixtureOnly!NewPassword29',teacher_confirm:'FixtureOnly!NewPassword29'});
-  check('teacher creation without an advisory rolls back the account',()=>assert.equal(Number(sql("SELECT COUNT(*) n FROM teachers WHERE TEACHER_USER='missing-advisory@fixture.example'")[0].n),0));
+  check('teacher creation without an advisory keeps the account unassigned',()=>{
+   const unassigned=sql("SELECT TEACHER_ID FROM teachers WHERE TEACHER_USER='missing-advisory@fixture.example'")[0];
+   assert.ok(unassigned);
+   assert.equal(Number(sql('SELECT COUNT(*) n FROM current_teacher_advisory_assignments WHERE TEACHER_ID='+unassigned.TEACHER_ID)[0].n),0);
+  });
   fixture('promotion-ready');
   const beforeCoverage=JSON.parse(fixture('plan'));
   const teachingRows=sql('SELECT * FROM teacher_assignments');
@@ -217,6 +223,7 @@ function check(label,callback){callback();checks++;console.log('PASS '+label);}
   assert.equal(Number(sql('SELECT COUNT(*) n FROM current_teacher_advisory_assignments WHERE TEACHER_ID='+camiaTeacher.TEACHER_ID)[0].n),0);
   assert.ok(Number(sql('SELECT COUNT(*) n FROM teacher_advisory_assignments WHERE TEACHER_ID='+camiaTeacher.TEACHER_ID+' AND RELEASED_AT IS NOT NULL')[0].n)>0);checks++;
   check('stale advisory rows belonging to archived teachers do not reserve a class',()=>assert.match(fixture('stale-archived-advisory'),/without an active advisory conflict/));
+  check('releasing an advisory clears the teacher profile and makes the section available',()=>assert.match(fixture('unassign-advisory'),/released and legacy profile fields cleared/));
   const newAccount={csrf_token:admin.csrf,first_name:'New',last_name:'Adviser',teacher_user:'new-adviser@fixture.example',teacher_pass:'FixtureOnly!NewPassword29',teacher_confirm:'FixtureOnly!NewPassword29',advisory_section_id:camiaSection,
    'assignment_grade[0]':8,'assignment_strand[0]':'','assignment_section[0]':'Emerald','assignment_subject[0]':'Filipino'};
   await admin.request('admin/save-teacher.php',newAccount);
@@ -230,14 +237,18 @@ function check(label,callback){callback();checks++;console.log('PASS '+label);}
   const replaced=await admin.request('admin/update-teacher.php',{id:roseTeacher.TEACHER_ID,first_name:'Angela Mae',last_name:'Cruz',advisory_section_id:camiaSection,csrf_token:admin.csrf});assert.equal(replaced.status,302);
   assert.equal(sql('SELECT SECTION FROM current_teacher_advisory_assignments WHERE TEACHER_ID='+roseTeacher.TEACHER_ID)[0].SECTION,'Camia');checks++;
   const restore=await admin.request('admin/restore-archived-teacher.php',{id:camiaTeacher.TEACHER_ID,csrf_token:admin.csrf});assert.equal(restore.status,302);
-  check('restoration without an advisory keeps the account archived',()=>assert.equal(sql('SELECT TEACHER_STATUS FROM teachers WHERE TEACHER_ID='+camiaTeacher.TEACHER_ID)[0].TEACHER_STATUS,'Archived'));
+  check('restoration without an advisory activates an unassigned teacher',()=>{
+   assert.equal(sql('SELECT TEACHER_STATUS FROM teachers WHERE TEACHER_ID='+camiaTeacher.TEACHER_ID)[0].TEACHER_STATUS,'Active');
+   assert.equal(Number(sql('SELECT COUNT(*) n FROM current_teacher_advisory_assignments WHERE TEACHER_ID='+camiaTeacher.TEACHER_ID)[0].n),0);
+  });
+  await admin.request('admin/delete-teacher.php',{id:camiaTeacher.TEACHER_ID,csrf_token:admin.csrf});
   await admin.request('admin/restore-archived-teacher.php',{id:camiaTeacher.TEACHER_ID,advisory_section_id:camiaSection,csrf_token:admin.csrf});
   check('restoration cannot reclaim an occupied advisory',()=>assert.equal(sql('SELECT TEACHER_STATUS FROM teachers WHERE TEACHER_ID='+camiaTeacher.TEACHER_ID)[0].TEACHER_STATUS,'Archived'));
   await admin.request('admin/restore-archived-teacher.php',{id:camiaTeacher.TEACHER_ID,advisory_section_id:roseSection,csrf_token:admin.csrf});
   check('restoration activates the existing account with one available advisory',()=>{
    assert.equal(sql('SELECT SECTION FROM current_teacher_advisory_assignments WHERE TEACHER_ID='+camiaTeacher.TEACHER_ID)[0].SECTION,'Rose');
-   assert.equal(Number(sql("SELECT COUNT(*) n FROM teachers WHERE TEACHER_STATUS='Active'")[0].n),19);
-   assert.deepEqual(sql("SELECT t.TEACHER_ID,COUNT(a.SECTION_ID) n FROM teachers t LEFT JOIN current_teacher_advisory_assignments a ON a.TEACHER_ID=t.TEACHER_ID WHERE t.TEACHER_STATUS='Active' GROUP BY t.TEACHER_ID HAVING n<>1"),[]);
+   assert.equal(Number(sql("SELECT COUNT(*) n FROM teachers WHERE TEACHER_STATUS='Active'")[0].n),20);
+   assert.equal(Number(sql("SELECT COUNT(*) n FROM (SELECT t.TEACHER_ID FROM teachers t LEFT JOIN current_teacher_advisory_assignments a ON a.TEACHER_ID=t.TEACHER_ID WHERE t.TEACHER_STATUS='Active' GROUP BY t.TEACHER_ID HAVING COUNT(a.SECTION_ID)=0) unassigned")[0].n),1);
   });
   console.log('PASS admin adviser conflict rolls back, CSRF, archival release, reassignment and safe restoration');
   assert.equal(liveGrades(),liveGradeFingerprint);checks++;

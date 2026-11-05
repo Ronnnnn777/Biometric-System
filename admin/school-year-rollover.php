@@ -2,9 +2,14 @@
 require 'page-guard.php';
 require_once '../config/db_conn.php';
 require_once '../includes/csrf-token.php';
+require_once '../includes/school-calendar-schema.php';
+require_once '../includes/student-promotion-schema.php';
 require_once '../includes/promotion-planner.php';
 require_once '../includes/promotion-review.php';
 require 'components.php';
+
+ensureStudentPromotionSchema($conn);
+ensureSchoolCalendarSchema($conn);
 
 $activeSchoolYear=(string)$conn->query('SELECT ACTIVE_SCHOOL_YEAR FROM school_year_settings WHERE ID=1')->fetch_assoc()['ACTIVE_SCHOOL_YEAR'];
 $plan=null; $context=null; $controls=[]; $choices=['outcomes'=>[],'strand_choices'=>[]]; $error='';
@@ -32,12 +37,18 @@ try {
 catch (RuntimeException $exception) { $error=$exception->getMessage(); }
 $pastRolloverYears=$conn->query('SELECT DISTINCT SCHOOL_YEAR FROM student_school_history ORDER BY SCHOOL_YEAR DESC')->fetch_all(MYSQLI_ASSOC);
 $summary=$plan['summary'] ?? [];
+$scheduleOpen = (string) ($_GET['view'] ?? '') === 'schedule';
+$calendarRangeStart = date('Y-m-d', strtotime('-2 months'));
+$calendarRangeEnd = date('Y-m-d', strtotime('+10 months'));
+$calendarEntries = schoolCalendarEntries($conn, $calendarRangeStart, $calendarRangeEnd);
+$calendarToday = date('Y-m-d');
+$calendarTodayInfo = schoolDayInfo($conn, $calendarToday);
 adminHead('School year rollover');
 adminSidebar('rollover','End-of-school-year rollover','Review completed grades, honor qualification and balanced section assignments before confirming.');
 $escape=static fn($value): string=>htmlspecialchars((string)$value,ENT_QUOTES);
 ?>
 <style>
-    .step-btn {
+    .step-nav-btn {
         display: inline-flex;
         flex-direction: column;
         align-items: center;
@@ -53,21 +64,28 @@ $escape=static fn($value): string=>htmlspecialchars((string)$value,ENT_QUOTES);
         transition: background-color .15s, border-color .15s, color .15s;
         cursor: pointer;
     }
-    .step-btn:hover {
+    .step-nav-btn:hover {
         background: #f1f5f9;
         border-color: #94a3b8;
     }
-    .step-btn[aria-current="true"] {
+    .step-nav-btn[aria-current="step"] {
         background: var(--maruhat-blue, #1f4f91);
         border-color: var(--maruhat-blue, #1f4f91);
         color: #fff;
         box-shadow: 0 1px 2px rgb(15 23 42 / .12);
     }
-    .step-btn[aria-current="true"] .text-slate-500 {
+    .step-nav-btn[aria-current="step"] .step-nav-label {
+        color: #fff;
+    }
+    .step-nav-btn[aria-current="step"] .step-nav-description {
         color: rgba(255,255,255,.85);
     }
-    .step-panel {
-        display: block;
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
     }
     .section-chevron {
         transition: transform .25s ease;
@@ -142,49 +160,141 @@ if ($plan) {
     }
 }
 ?>
-<section class="card card-body mx-auto max-w-5xl">
-    <h2 class="text-2xl font-black text-slate-900 dark:text-white">End-of-School-Year Rollover</h2>
-    <p class="mt-2 text-sm text-slate-500">SY <?= $escape($activeSchoolYear) ?>. Review the plan in four steps, then confirm. Nothing is
-        changed until you enter your administrator password and submit Step 4.</p>
+<section class="card card-body w-full flex-1 px-4 sm:px-6 lg:px-8">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+            <h2 class="text-2xl font-black text-slate-900 dark:text-white">End-of-School-Year Rollover</h2>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+                <span class="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-700 dark:text-blue-300">Active school year: <?= $escape($activeSchoolYear) ?></span>
+                <p class="text-sm text-slate-500">Review the plan in four steps, then confirm. Nothing is changed until you enter your administrator password and submit Step 4.</p>
+            </div>
+        </div>
+        <button type="button" id="toggle-schedule-btn" aria-controls="schedule-panel" aria-expanded="<?= $scheduleOpen ? 'true' : 'false' ?>" class="btn btn-secondary inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+            <svg class="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 002-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            <span>Schedule &amp; Holidays</span>
+        </button>
+    </div>
+
+    <section id="schedule-panel" class="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-900/60" <?= $scheduleOpen ? '' : 'hidden' ?> aria-label="School calendar and holiday schedule">
+        <div class="flex flex-col gap-3 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+                <h3 class="text-xl font-black text-slate-900 dark:text-white">School Calendar &amp; Holiday Schedule</h3>
+                <p class="mt-1 text-sm text-slate-500">Attendance follows this calendar. Unset dates follow the Monday–Friday school-day default; weekends are non-school days.</p>
+            </div>
+            <p class="shrink-0 text-sm font-bold text-slate-700 dark:text-slate-200">Today, <?= $escape(date('F j, Y')) ?>:
+                <span class="ml-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"><?= $escape(schoolCalendarTypeLabel($calendarTodayInfo['type'])) ?></span>
+            </p>
+        </div>
+
+        <form action="school-calendar-save.php" method="post" class="mt-5 flex flex-wrap items-end gap-3">
+            <input type="hidden" name="csrf_token" value="<?= $escape($_SESSION['csrf_token']) ?>">
+            <input type="hidden" name="action" value="save">
+            <label class="table-filter-control flex-1 text-sm font-bold text-slate-700 dark:text-slate-200">Date
+                <input type="date" name="calendar_date" value="<?= $escape($calendarToday) ?>" required class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+            </label>
+            <label class="table-filter-control flex-1 text-sm font-bold text-slate-700 dark:text-slate-200">Day type
+                <select name="day_type" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+                    <?php foreach (SCHOOL_CALENDAR_TYPES as $calendarType): ?>
+                    <option value="<?= $escape($calendarType) ?>"><?= $escape(schoolCalendarTypeLabel($calendarType)) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label class="table-filter-control flex-[2] text-sm font-bold text-slate-700 dark:text-slate-200">Label (optional)
+                <input type="text" name="label" maxlength="120" placeholder="e.g. Araw ng Kagitingan, typhoon signal #2" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+            </label>
+            <button class="btn btn-primary">Save date</button>
+        </form>
+
+        <div class="mt-6 w-full overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <table class="w-full min-w-[760px] text-left text-sm">
+                <thead class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 dark:border-slate-800">
+                    <tr>
+                        <th class="px-4 py-3">Date</th>
+                        <th class="px-4 py-3">Day</th>
+                        <th class="px-4 py-3">Type</th>
+                        <th class="px-4 py-3">Label</th>
+                        <th class="px-4 py-3"><span class="sr-only">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                    <?php if (!$calendarEntries): ?>
+                    <tr>
+                        <td colspan="5" class="px-4 py-12 text-center">
+                            <p class="text-base font-black text-slate-800 dark:text-white">No calendar exceptions recorded.</p>
+                            <p class="mt-1 text-sm text-slate-500">Every Monday–Friday is treated as a school day until you add a holiday, suspension, or special schedule.</p>
+                        </td>
+                    </tr>
+                    <?php else: ?>
+                    <?php foreach ($calendarEntries as $calendarEntry):
+                        $calendarType = (string) $calendarEntry['DAY_TYPE'];
+                        $calendarChip = match ($calendarType) {
+                            'school', 'special' => 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+                            'holiday' => 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+                            'suspension' => 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+                            default => 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                        };
+                    ?>
+                    <tr>
+                        <td class="px-4 py-3 font-bold text-slate-900 dark:text-white"><?= $escape($calendarEntry['CALENDAR_DATE']) ?></td>
+                        <td class="px-4 py-3 text-slate-600 dark:text-slate-300"><?= $escape(date('l', strtotime($calendarEntry['CALENDAR_DATE']))) ?></td>
+                        <td class="px-4 py-3"><span class="rounded-full px-3 py-1 text-xs font-bold <?= $calendarChip ?>"><?= $escape(schoolCalendarTypeLabel($calendarType)) ?></span></td>
+                        <td class="px-4 py-3 text-slate-600 dark:text-slate-300"><?= $escape($calendarEntry['LABEL'] ?: '—') ?></td>
+                        <td class="px-4 py-3">
+                            <form action="school-calendar-save.php" method="post" onsubmit="return confirm('Remove this calendar entry?')">
+                                <input type="hidden" name="csrf_token" value="<?= $escape($_SESSION['csrf_token']) ?>">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="calendar_date" value="<?= $escape($calendarEntry['CALENDAR_DATE']) ?>">
+                                <button class="btn btn-secondary btn-sm">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
     <?php if ($error): ?><p class="mt-4 rounded-xl bg-rose-50 p-4 font-bold text-rose-700" role="alert"><?= $escape($error) ?></p><?php endif; ?>
 
     <?php if ($plan): ?>
     <!-- --------------------------------------------------------------------- -->
     <!-- Stepper                                                               -->
     <!-- --------------------------------------------------------------------- -->
-    <nav class="mt-5 flex flex-col sm:flex-row gap-2 sm:gap-4" aria-label="Rollover steps">
-        <div class="flex-1 sm:w-auto">
-            <button type="button" class="step-btn w-full sm:w-auto text-left sm:text-center" data-step="1"
-                aria-current="true">
-                <span class="font-bold text-slate-900">Step 1</span>
-                <span class="ml-1.5 text-xs text-slate-500">Advisory classes</span>
+    <div id="sticky-sentinel" class="h-px" aria-hidden="true"></div>
+    <div id="sticky-step-nav" class="sticky top-16 z-40 -mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur-md transition-shadow duration-200 dark:border-slate-800 dark:bg-slate-900/95 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+    <nav aria-label="Rollover steps">
+        <div class="no-scrollbar flex w-full max-w-full items-center justify-between gap-2 overflow-x-auto sm:gap-4">
+            <button type="button" class="step-nav-btn min-w-[10rem] flex-1 text-left sm:min-w-0 sm:text-center" data-target="#step-1"
+                aria-current="step">
+                <span class="step-nav-label font-bold text-slate-900">Step 1</span>
+                <span class="step-nav-description ml-1.5 text-xs text-slate-500">Advisory classes</span>
             </button>
-        </div>
-        <div class="flex-1 sm:w-auto">
-            <button type="button" class="step-btn w-full sm:w-auto text-left sm:text-center" data-step="2">
-                <span class="font-bold text-slate-900">Step 2</span>
-                <span class="ml-1.5 text-xs text-slate-500">Promotion review</span>
+            <button type="button" class="step-nav-btn min-w-[10rem] flex-1 text-left sm:min-w-0 sm:text-center" data-target="#step-2"
+                aria-current="false">
+                <span class="step-nav-label font-bold text-slate-900">Step 2</span>
+                <span class="step-nav-description ml-1.5 text-xs text-slate-500">Promotion review</span>
             </button>
-        </div>
-        <div class="flex-1 sm:w-auto">
-            <button type="button" class="step-btn w-full sm:w-auto text-left sm:text-center" data-step="3">
-                <span class="font-bold text-slate-900">Step 3</span>
-                <span class="ml-1.5 text-xs text-slate-500">Section preview</span>
+            <button type="button" class="step-nav-btn min-w-[10rem] flex-1 text-left sm:min-w-0 sm:text-center" data-target="#step-3"
+                aria-current="false">
+                <span class="step-nav-label font-bold text-slate-900">Step 3</span>
+                <span class="step-nav-description ml-1.5 text-xs text-slate-500">Section preview</span>
             </button>
-        </div>
-        <div class="flex-1 sm:w-auto">
-            <button type="button" class="step-btn w-full sm:w-auto text-left sm:text-center" data-step="4">
-                <span class="font-bold text-slate-900">Step 4</span>
-                <span class="ml-1.5 text-xs text-slate-500">Confirm rollover</span>
+            <button type="button" class="step-nav-btn min-w-[10rem] flex-1 text-left sm:min-w-0 sm:text-center" data-target="#step-4"
+                aria-current="false">
+                <span class="step-nav-label font-bold text-slate-900">Step 4</span>
+                <span class="step-nav-description ml-1.5 text-xs text-slate-500">Confirm rollover</span>
             </button>
         </div>
     </nav>
+    </div>
 
     <!-- --------------------------------------------------------------------- -->
     <!-- Step 1 — Advisory-class roster                                        -->
     <!-- --------------------------------------------------------------------- -->
-    <div id="step-1" class="step-panel mt-5">
-        <h3 class="text-xl font-black text-slate-900 dark:text-white mb-1">Step 1 · Advisory classes</h3>
+    <div id="step-1" class="step-section scroll-mt-24 mt-10 mb-6 rounded-r-2xl border border-l-4 border-l-blue-600 border-slate-200 bg-blue-50/50 p-5 dark:border-slate-800 dark:bg-blue-900/20">
+        <h2 class="text-2xl font-black text-blue-900 dark:text-blue-100">Step 1 · Advisory classes</h2>
         <p class="text-sm text-slate-500 mb-3">Review every enrolled student by Grade and advisory section. Final grades
             are summarized only as an overall GWA; a student without grades is promoted administratively.</p>
 
@@ -211,13 +321,13 @@ if ($plan) {
                 $gradeName .= ' ' . implode(' / ', $strandNames);
             }
         ?>
-        <details class="group rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden mb-4" open>
-            <summary class="flex flex-wrap items-center justify-between gap-3 p-5 cursor-pointer list-none select-none hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+        <details class="group mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <summary class="flex cursor-pointer list-none select-none flex-wrap items-center justify-between gap-3 px-6 py-4 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200 dark:hover:bg-slate-800/50 dark:focus-visible:ring-blue-900">
                 <div class="flex items-center gap-3">
-                    <svg class="w-5 h-5 text-slate-400 group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <svg class="h-6 w-6 text-slate-700 transition-transform group-open:rotate-90 dark:text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
                     </svg>
-                    <h3 class="text-lg font-black text-slate-900 dark:text-slate-100"><?= $escape($gradeName) ?></h3>
+                    <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100"><?= $escape($gradeName) ?></h3>
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="px-3 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
@@ -242,7 +352,7 @@ if ($plan) {
             ?>
             <div class="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
                 <button type="button"
-                    class="section-accordion-trigger w-full flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 transition-all font-bold text-slate-800 dark:text-slate-100 text-left cursor-pointer"
+                    class="section-accordion-trigger flex w-full cursor-pointer items-center justify-between rounded-xl bg-slate-50 px-6 py-4 text-left text-lg font-bold text-slate-900 transition-all hover:bg-slate-100 dark:bg-slate-800/60 dark:text-slate-100"
                     onclick="toggleSectionDropdown(this)" aria-expanded="false" aria-controls="<?= $escape($panelId) ?>">
                     <span class="flex min-w-0 items-center gap-3">
                         <span class="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-300">
@@ -251,7 +361,7 @@ if ($plan) {
                             </svg>
                         </span>
                         <span class="min-w-0">
-                            <span class="block truncate text-sm sm:text-base"><?= $escape($sectionName) ?></span>
+                            <span class="block truncate text-lg"><?= $escape($sectionName) ?></span>
                             <?php if ($sectionStrand !== ''): ?>
                             <span class="mt-0.5 block text-xs font-semibold text-slate-500 dark:text-slate-400"><?= $escape($sectionStrand) ?></span>
                             <?php endif; ?>
@@ -262,7 +372,7 @@ if ($plan) {
                         <span class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                             <?= number_format($studentCount) ?> student<?= $studentCount !== 1 ? 's' : '' ?>
                         </span>
-                        <svg class="section-chevron h-5 w-5 flex-none text-slate-500 transition-transform duration-300" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <svg class="section-chevron h-6 w-6 flex-none text-slate-700 transition-transform duration-300 dark:text-slate-200" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                             <path d="M5 7.5 10 12.5 15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
                     </span>
@@ -321,8 +431,8 @@ if ($plan) {
     <!-- --------------------------------------------------------------------- -->
     <!-- Step 2 — Student Promotion Review                                     -->
     <!-- --------------------------------------------------------------------- -->
-    <div id="step-2" class="step-panel mt-5 hidden">
-        <h3 class="text-xl font-black text-slate-900 dark:text-white mb-1">Step 2 · Student promotion review</h3>
+    <div id="step-2" class="step-section scroll-mt-24 mt-12 mb-6 rounded-r-2xl border border-l-4 border-l-emerald-600 border-slate-200 bg-emerald-50/50 p-5 dark:border-slate-800 dark:bg-emerald-900/20">
+        <h2 class="text-2xl font-black text-emerald-900 dark:text-emerald-100">Step 2 · Student promotion review</h2>
         <p class="text-sm text-slate-500 mb-3">Promoted students are split into an honor section and evenly balanced
             regular sections. Grade 12 (Academic and Techpro) graduates are archived instead of sectioned.</p>
 
@@ -359,6 +469,8 @@ if ($plan) {
             'promoted' => ['Promoted', 'Grades 7–11 advancing to the next grade.', $promoted],
             'honor' => ['Honor Qualified (GWA ≥ 90.00)', 'Assigned to Section 1 of the destination grade.', $honor],
             'regular' => ['Regular Students', 'Balanced evenly across Sections 2 and above.', $regular],
+            'retained' => ['Retained', 'Students repeating their current grade by an approved retention decision.', $retained],
+            'remedial' => ['Remedial', 'Students advancing with a Summer Class / Remedial obligation.', $remedial],
             'graduated' => ['Graduated & Archived', 'All Grade 12 Academic and Techpro students; excluded from next year sectioning.', $graduated],
         ]; ?>
         <?php foreach ($step2Groups as $key => $grp): [$title, $blurb, $items] = $grp; ?>
@@ -374,44 +486,66 @@ if ($plan) {
                 <?php if (count($items) === 0): ?>
                 <p class="text-sm text-slate-500">None.</p>
                 <?php else: ?>
-                <div class="overflow-x-auto rounded-xl border border-slate-100 p-1 dark:border-slate-700">
+                <?php $studentsByGrade = []; foreach ($items as $sid => $record) {
+                    $studentsByGrade[(int) $record['student']['GRADE']][$sid] = $record;
+                } ksort($studentsByGrade, SORT_NUMERIC); ?>
+                <div class="space-y-3">
+                <?php foreach ($studentsByGrade as $sourceGrade => $gradeStudents):
+                    $gradePanelId = 'promotion-' . $key . '-grade-' . $sourceGrade;
+                ?>
+                <details class="group overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                    <summary class="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-6 py-4 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200 dark:hover:bg-slate-800/50 dark:focus-visible:ring-blue-900" aria-controls="<?= $escape($gradePanelId) ?>">
+                        <span class="flex items-center gap-3 text-lg font-bold text-slate-900 dark:text-slate-100">
+                            <svg class="h-6 w-6 flex-none text-slate-700 transition-transform group-open:rotate-90 dark:text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+                            </svg>
+                            Grade <?= (int) $sourceGrade ?>
+                        </span>
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                            <?= number_format(count($gradeStudents)) ?> student<?= count($gradeStudents) === 1 ? '' : 's' ?>
+                        </span>
+                    </summary>
+                    <div id="<?= $escape($gradePanelId) ?>" class="border-t border-slate-200 p-1 dark:border-slate-700">
+                <div class="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-700">
                     <table class="w-full text-left text-sm">
-                        <thead><tr class="border-b border-slate-100 text-slate-500">
-                            <th class="p-2">Student / LRN</th>
-                            <th class="p-2">Grade / section</th>
-                            <th class="p-2">Overall GWA</th>
-                            <th class="p-2">Outcome</th>
-                            <th class="p-2">Grade 11 strand</th>
-                            <th class="p-2">Placement next year</th>
+                        <thead><tr class="border-b border-slate-100 text-slate-500 dark:border-slate-800">
+                            <th class="px-3 py-3">Student / LRN</th>
+                            <th class="px-3 py-3">Grade / section</th>
+                            <th class="px-3 py-3">Overall GWA</th>
+                            <th class="px-3 py-3">Outcome</th>
+                            <th class="px-3 py-3">Grade 11 strand</th>
+                            <th class="px-3 py-3">Placement next year</th>
                         </tr></thead>
-                        <tbody class="divide-y divide-slate-100">
-                        <?php foreach ($items as $sid => $record): $s = $record['student']; $st = $record['standing']; ?>
-                        <tr class="p-1">
-                            <td class="p-2"><strong><?= htmlspecialchars($s['STUDENT_NAME']) ?></strong>
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                        <?php foreach ($gradeStudents as $sid => $record): $s = $record['student']; $st = $record['standing']; ?>
+                        <tr class="align-top hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                            <td class="px-3 py-3"><strong><?= htmlspecialchars($s['STUDENT_NAME']) ?></strong>
                                 <div class="text-xs text-slate-500"><?= htmlspecialchars($sid) ?></div></td>
-                            <td class="p-2">Grade <?= (int)$s['GRADE'] ?>
+                            <td class="px-3 py-3">Grade <?= (int)$s['GRADE'] ?>
                                 <div class="text-xs text-slate-500"><?= htmlspecialchars(trim($s['STRAND'].' '.$s['SECTION'])) ?></div></td>
-                            <td class="p-2">
+                            <td class="px-3 py-3">
                                 <?= $st['average'] === null
                                     ? '<span class="text-slate-500">Not recorded</span>'
                                     : htmlspecialchars(number_format((float) $st['average'], 2, '.', '')) ?>
                             </td>
-                            <td class="p-2">
-                                <?php if (in_array($key, ['promoted','retained'], true) && (int) $s['GRADE'] < 12): ?>
+                            <td class="px-3 py-3">
+                                <?php if (!empty($st['teacher_retained'])): ?>
+                                <span class="rounded-full bg-rose-500/10 px-2 py-1 text-xs font-bold text-rose-700">Teacher flagged Retained</span>
+                                <?php elseif (in_array($key, ['promoted','retained'], true) && (int) $s['GRADE'] < 12): ?>
                                 <select form="rollover-choices-form" name="outcomes[<?= $escape($sid) ?>]" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs">
                                     <option value="" <?= empty($choices['outcomes'][$sid]) ? 'selected' : '' ?>>Automatic outcome</option>
                                     <option value="Retained" <?= ($choices['outcomes'][$sid] ?? '') === 'Retained' ? 'selected' : '' ?>>Retained</option>
                                 </select>
                                 <?php else: ?><span class="text-slate-500"><?= $escape($st['decision']) ?></span><?php endif; ?>
                             </td>
-                            <td class="p-2">
+                            <td class="px-3 py-3">
                                 <?php if (in_array($key, ['promoted','retained'], true) && (int) $s['GRADE'] === 10): ?>
                                 <select form="rollover-choices-form" name="strand_choices[<?= $escape($sid) ?>]" required class="rounded border border-slate-300 bg-white px-2 py-1 text-xs">
                                     <?php foreach (['Academic','Techpro'] as $strandChoice): ?><option value="<?= $strandChoice ?>" <?= ($choices['strand_choices'][$sid] ?? '') === $strandChoice ? 'selected' : '' ?>><?= $strandChoice ?></option><?php endforeach; ?>
                                 </select>
                                 <?php else: ?><span class="text-slate-500">—</span><?php endif; ?>
                             </td>
-                            <td class="p-2">
+                            <td class="px-3 py-3">
                                 <?php if ((int) $s['GRADE'] === 12): ?>
                                 <span class="font-bold text-violet-700">Graduated / Archived</span>
                                 <?php else: ?>
@@ -423,10 +557,10 @@ if ($plan) {
                         </tbody>
                     </table>
                 </div>
-                <?php if (count($items) > 15): ?>
-                <p class="mt-2 text-xs text-slate-500">Showing up to 15 students. Use the table row count above as the
-                    group total.</p>
-                <?php endif; ?>
+                    </div>
+                </details>
+                <?php endforeach; ?>
+                </div>
                 <?php endif; ?>
             </div>
         </div>
@@ -450,57 +584,105 @@ if ($plan) {
     <!-- --------------------------------------------------------------------- -->
     <!-- Step 3 — Section Assignment Preview                                   -->
     <!-- --------------------------------------------------------------------- -->
-    <div id="step-3" class="step-panel mt-5 hidden">
-        <h3 class="text-xl font-black text-slate-900 dark:text-white mb-1">Step 3 · Section assignment preview</h3>
+    <div id="step-3" class="step-section scroll-mt-24 mt-12 mb-6 rounded-r-2xl border border-l-4 border-l-purple-600 border-slate-200 bg-purple-50/50 p-5 dark:border-slate-800 dark:bg-purple-900/20">
+        <h2 class="text-2xl font-black text-purple-900 dark:text-purple-100">Step 3 · Section assignment preview</h2>
         <p class="text-sm text-slate-500 mb-3">Destination grades, sections, capacities and adviser assignments.
             Every student with a GWA of at least 90.00 is placed in Section 1. All remaining students are split
             <strong>evenly</strong> across Sections 2 and above using <code>chunkEvenly()</code>; no section is filled to
             capacity before the next one is populated. Academic and Techpro strands remain separate.</p>
 
-        <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-            <table class="w-full text-left text-sm">
-                <thead>
-                <tr class="border-b border-slate-200 text-slate-500">
-                    <th class="px-4 py-3">Destination</th>
-                    <th class="px-4 py-3">Section</th>
-                    <th class="px-4 py-3">Type</th>
-                    <th class="px-4 py-3">Capacity</th>
-                    <th class="px-4 py-3">Staying</th>
-                    <th class="px-4 py-3">Incoming</th>
-                    <th class="px-4 py-3">Total / capacity</th>
-                    <th class="px-4 py-3">Active teacher / adviser</th>
-                </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                <?php $shownAny = false; foreach ($plan['destinations'] as $destination): foreach ($destination['groups'] as $group): $section = $group['section']; $incoming = count($group['students']); $staying = (int)($section['EXISTING_COUNT'] ?? 0); $shownAny = true; $teacherKey = (int) $destination['grade'].'|'.$destination['strand'].'|'.$section['SECTION']; $teacherLabel = $sectionAdvisers[$teacherKey] ?? ''; ?>
-                <tr class="border-b border-slate-100 dark:border-slate-800">
-                    <td class="px-4 py-3">Grade <?= $destination['grade'] ?> <?= htmlspecialchars($destination['strand']) ?></td>
-                    <td class="px-4 py-3 font-bold">
-                        <?= htmlspecialchars($section['SECTION']) ?>
-                        <?php if (!empty($section['VIRTUAL'])): ?><span class="ml-1 text-xs font-bold text-amber-700">New regular overflow</span><?php endif; ?>
-                    </td>
-                    <td class="px-4 py-3"><?= !empty($section['IS_HONOR']) ? '<span class="font-bold text-violet-700">Honor (90+)</span>' : '<span class="text-slate-600">Regular</span>' ?></td>
-                    <td class="px-4 py-3"><?= sectionCapacity($section, $context['default'] ?? 40) ?></td>
-                    <td class="px-4 py-3"><?= $staying ?></td>
-                    <td class="px-4 py-3"><?= $incoming ?></td>
-                    <td class="px-4 py-3 font-bold"><?= $incoming + $staying ?> / <?= sectionCapacity($section, $context['default'] ?? 40) ?></td>
-                    <td class="px-4 py-3 text-slate-600"><?= $teacherLabel !== '' ? $escape($teacherLabel) : '<span class="text-slate-500">No section adviser assigned</span>' ?></td>
-                </tr>
-                <?php endforeach; endforeach; ?>
-                <?php if (!$shownAny): ?>
-                <tr><td colspan="8" class="p-4 text-slate-500 text-center">No section assignments in this preview.</td></tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
+        <?php
+        $destinationGroups = [];
+        foreach ($plan['destinations'] as $destination) {
+            $destinationKey = (int) $destination['grade'] . '|' . (string) $destination['strand'];
+            if (!isset($destinationGroups[$destinationKey])) {
+                $destinationGroups[$destinationKey] = [
+                    'grade' => (int) $destination['grade'],
+                    'strand' => (string) $destination['strand'],
+                    'assignments' => [],
+                ];
+            }
+            foreach ($destination['groups'] as $group) {
+                $destinationGroups[$destinationKey]['assignments'][] = $group;
+            }
+        }
+        $destinationGroups = array_filter(
+            $destinationGroups,
+            static fn(array $destinationGroup): bool => count($destinationGroup['assignments']) > 0,
+        );
+        uasort($destinationGroups, static function (array $left, array $right): int {
+            return $left['grade'] <=> $right['grade'] ?: strnatcasecmp($left['strand'], $right['strand']);
+        });
+        ?>
+        <?php if (!$destinationGroups): ?>
+        <p class="mt-4 rounded-xl border border-slate-200 px-4 py-3 text-center text-slate-500 dark:border-slate-700">No section assignments in this preview.</p>
+        <?php else: ?>
+        <div class="mt-4 space-y-4">
+        <?php $destinationIndex = 0; foreach ($destinationGroups as $destinationGroup): $destinationIndex++;
+            $destinationPanelId = 'destination-grade-' . $destinationIndex;
+            $sectionCount = count($destinationGroup['assignments']);
+        ?>
+        <details class="group overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+            <summary class="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-6 py-4 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200 dark:hover:bg-slate-800/50 dark:focus-visible:ring-blue-900">
+                <span class="flex items-center gap-3 text-lg font-bold text-slate-900 dark:text-slate-100">
+                    <svg class="h-6 w-6 flex-none text-slate-700 transition-transform group-open:rotate-90 dark:text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+                    </svg>
+                    Target: Grade <?= (int) $destinationGroup['grade'] ?><?= $destinationGroup['strand'] !== '' ? ' ' . $escape($destinationGroup['strand']) : '' ?>
+                </span>
+                <span class="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    <?= number_format($sectionCount) ?> Section<?= $sectionCount === 1 ? '' : 's' ?> Assigned
+                </span>
+            </summary>
+            <div id="<?= $escape($destinationPanelId) ?>" class="overflow-x-auto border-t border-slate-200 dark:border-slate-700">
+                <table class="w-full min-w-[820px] text-left text-sm">
+                    <thead>
+                    <tr class="border-b border-slate-200 text-slate-500 dark:border-slate-800">
+                        <th class="px-4 py-3">Section</th>
+                        <th class="px-4 py-3">Type</th>
+                        <th class="px-4 py-3">Capacity</th>
+                        <th class="px-4 py-3">Staying</th>
+                        <th class="px-4 py-3">Incoming</th>
+                        <th class="px-4 py-3">Total / capacity</th>
+                        <th class="px-4 py-3">Active teacher / adviser</th>
+                    </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                    <?php foreach ($destinationGroup['assignments'] as $group):
+                        $section = $group['section'];
+                        $incoming = count($group['students']);
+                        $staying = (int) ($section['EXISTING_COUNT'] ?? 0);
+                        $teacherKey = (int) $destinationGroup['grade'] . '|' . $destinationGroup['strand'] . '|' . $section['SECTION'];
+                        $teacherLabel = $sectionAdvisers[$teacherKey] ?? '';
+                    ?>
+                    <tr class="align-top hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                        <td class="px-4 py-3 font-bold">
+                            <?= htmlspecialchars($section['SECTION']) ?>
+                            <?php if (!empty($section['VIRTUAL'])): ?><span class="ml-1 text-xs font-bold text-amber-700">New regular overflow</span><?php endif; ?>
+                        </td>
+                        <td class="px-4 py-3"><?= !empty($section['IS_HONOR']) ? '<span class="font-bold text-violet-700">Honor (90+)</span>' : '<span class="text-slate-600 dark:text-slate-300">Regular</span>' ?></td>
+                        <td class="px-4 py-3"><?= sectionCapacity($section, $context['default'] ?? 40) ?></td>
+                        <td class="px-4 py-3"><?= $staying ?></td>
+                        <td class="px-4 py-3"><?= $incoming ?></td>
+                        <td class="px-4 py-3 font-bold"><?= $incoming + $staying ?> / <?= sectionCapacity($section, $context['default'] ?? 40) ?></td>
+                        <td class="px-4 py-3 text-slate-600 dark:text-slate-300"><?= $teacherLabel !== '' ? $escape($teacherLabel) : '<span class="text-slate-500">No section adviser assigned</span>' ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </details>
+        <?php endforeach; ?>
         </div>
+        <?php endif; ?>
 
     </div>
 
     <!-- --------------------------------------------------------------------- -->
     <!-- Step 4 — Final Rollover Confirmation                                  -->
     <!-- --------------------------------------------------------------------- -->
-    <div id="step-4" class="step-panel mt-5 hidden">
-        <h3 class="text-xl font-black text-slate-900 dark:text-white mb-1">Step 4 · Confirm rollover</h3>
+    <div id="step-4" class="step-section scroll-mt-24 mt-12 mb-6 rounded-r-2xl border border-l-4 border-l-rose-600 border-slate-200 bg-rose-50/50 p-5 dark:border-slate-800 dark:bg-rose-900/20">
+        <h2 class="text-2xl font-black text-rose-900 dark:text-rose-100">Step 4 · Confirm rollover</h2>
         <p class="text-sm text-slate-500 mb-3">Review the summary below. Confirming promotes students, creates new
             sections, archives graduates and advances the school year. This action can be undoned from the rollover page.</p>
 
@@ -571,11 +753,11 @@ if ($plan) {
 </section>
 
 <?php if ($context): ?>
-<section class="card card-body mx-auto mt-6 max-w-5xl">
+<section class="card card-body mt-6 w-full flex-1 px-4 sm:px-6 lg:px-8">
     <h3 class="text-xl font-black text-slate-900 dark:text-white">Advisory section settings</h3>
     <p class="mt-3 text-sm text-slate-500">Choose the destination Section 1 for each grade and strand. Manage section advisers through Teachers.</p>
-    <details class="card card-body mx-auto mt-3 max-w-5xl">
-        <summary class="cursor-pointer font-bold">Section 1 designation</summary>
+    <details class="card card-body mt-3 w-full">
+        <summary class="cursor-pointer px-6 py-4 text-lg font-bold text-slate-900 dark:text-slate-100">Section 1 designation</summary>
         <form action="save-promotion-policy.php" method="post" class="mt-6 space-y-3">
             <input type="hidden" name="csrf_token" value="<?= $escape($_SESSION['csrf_token']) ?>">
             <input type="hidden" name="expected_school_year" value="<?= $escape($activeSchoolYear) ?>">
@@ -596,9 +778,9 @@ if ($plan) {
 <?php endif; ?>
 
 <?php if ($pastRolloverYears): ?>
-<section class="card card-body mx-auto mt-6 max-w-5xl">
-    <details class="card card-body mx-auto mt-3 max-w-5xl">
-        <summary class="cursor-pointer font-bold">Undo the latest rollover</summary>
+<section class="card card-body mt-6 w-full flex-1 px-4 sm:px-6 lg:px-8">
+    <details class="card card-body mt-3 w-full">
+        <summary class="cursor-pointer px-6 py-4 text-lg font-bold text-slate-900 dark:text-slate-100">Undo the latest rollover</summary>
         <p class="mt-3 text-sm text-slate-500">Restores the previous year's saved placements. Grades and audit history
             remain preserved.</p>
         <form action="undo-school-year-rollover.php" method="post" class="mt-4 space-y-3">
@@ -614,16 +796,85 @@ if ($plan) {
 <?php endif; ?>
 
 <script>
-    const stepBtns = document.querySelectorAll('.step-btn');
-    const stepPanels = document.querySelectorAll('.step-panel');
-    function showStep(step) {
-        stepBtns.forEach(b => {
-            b.setAttribute('aria-current', b.dataset.step === String(step) ? 'true' : 'false');
+    const scheduleToggleButton = document.getElementById('toggle-schedule-btn');
+    const schedulePanel = document.getElementById('schedule-panel');
+
+    if (scheduleToggleButton && schedulePanel) {
+        const setSchedulePanel = (open, updateUrl = true) => {
+            schedulePanel.hidden = !open;
+            scheduleToggleButton.setAttribute('aria-expanded', String(open));
+            if (!updateUrl) return;
+            const url = new URL(window.location.href);
+            if (open) url.searchParams.set('view', 'schedule');
+            else url.searchParams.delete('view');
+            history.replaceState(null, '', url);
+        };
+
+        scheduleToggleButton.addEventListener('click', () => {
+            setSchedulePanel(schedulePanel.hidden);
         });
-        stepPanels.forEach(p => p.hidden = p.id !== 'step-' + step);
     }
-    stepBtns.forEach(b => b.addEventListener('click', () => showStep(b.dataset.step)));
-    showStep(1);
+
+    const stickyNav = document.getElementById('sticky-step-nav');
+    const stickySentinel = document.getElementById('sticky-sentinel');
+    const stepNavButtons = Array.from(document.querySelectorAll('.step-nav-btn'));
+    const stepSections = Array.from(document.querySelectorAll('.step-section'));
+    const topbar = document.querySelector('.app-topbar');
+
+    if (stickyNav && stickySentinel && stepNavButtons.length && stepSections.length) {
+        const fixedHeaderHeight = () => topbar ? topbar.getBoundingClientRect().height : 0;
+        const stickyOffset = () => fixedHeaderHeight() + stickyNav.getBoundingClientRect().height + 16;
+
+        const setActiveStep = (stepId) => {
+            stepNavButtons.forEach((button) => {
+                const isActive = button.dataset.target === '#' + stepId;
+                button.setAttribute('aria-current', isActive ? 'step' : 'false');
+                button.classList.toggle('bg-blue-600', isActive);
+                button.classList.toggle('text-white', isActive);
+            });
+        };
+
+        const stickyObserver = new IntersectionObserver(([entry]) => {
+            const isPinned = !entry.isIntersecting;
+            stickyNav.classList.toggle('shadow-md', isPinned);
+        }, {
+            rootMargin: `-${fixedHeaderHeight()}px 0px 0px 0px`,
+            threshold: 0,
+        });
+        stickyObserver.observe(stickySentinel);
+
+        stepNavButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const target = document.querySelector(button.dataset.target);
+                if (!target) return;
+
+                const destination = window.scrollY + target.getBoundingClientRect().top - stickyOffset();
+                setActiveStep(target.id);
+                window.scrollTo({ top: Math.max(0, destination), behavior: 'smooth' });
+                history.replaceState(null, '', button.dataset.target);
+            });
+        });
+
+        let stepObserver;
+        const observeSteps = () => {
+            stepObserver?.disconnect();
+            const activationLine = Math.min(stickyOffset(), Math.max(0, window.innerHeight - 1));
+            const lowerMargin = Math.max(0, window.innerHeight - activationLine - 1);
+            stepObserver = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) setActiveStep(entry.target.id);
+                });
+            }, {
+                rootMargin: `-${activationLine}px 0px -${lowerMargin}px 0px`,
+                threshold: 0,
+            });
+            stepSections.forEach((section) => stepObserver.observe(section));
+        };
+
+        observeSteps();
+        window.addEventListener('resize', observeSteps);
+        setActiveStep(window.location.hash.replace('#', '') || 'step-1');
+    }
 
     // Step 1 section accordion. The chevron rotation is driven by aria-expanded
     // so the visual state and accessibility state never drift apart.

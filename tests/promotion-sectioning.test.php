@@ -89,11 +89,19 @@ checkPromotion('Archived and transferred students are excluded',function(){
     $context=fixtureContext([95,95]);$context['students'][0]['ENROLLMENT_STATUS']='Archived';$context['students'][1]['ENROLLMENT_STATUS']='Transferred';
     expectPromotion(fixturePlan($context)['summary']['promoted'],0);
 });
-checkPromotion('Existing retained occupants count toward balanced populations',function(){
+checkPromotion('Retained learners use same-grade pools and reserve capacity for incoming students',function(){
     $context=fixtureContext(array_fill(0,70,85));$staying=fixtureStudent('STAY',8,'Emerald');
     $context['students'][]=$staying;
     foreach ([1,2,3] as $n) {$context['required'][]=['GRADE'=>8,'STRAND'=>'','SUBJECT'=>'Fail'.$n];$context['results'][]=fixtureResult($staying,[70,70,70,70],'Fail'.$n);}
-    $plan=buildPromotionPlan($context,promotionValidatedTargets(promotionDefaultTargets($context['students'])),['outcomes'=>['STAY'=>'Retained']]);$counts=sectionCounts($plan);expectPromotion($counts['Emerald']+1,36);expectPromotion($counts['Jade'],35);expectPromotion($plan['students']['STAY']['placement'],null);
+    $plan=buildPromotionPlan($context,promotionValidatedTargets(promotionDefaultTargets($context['students'])),['outcomes'=>['STAY'=>'Retained']]);$counts=sectionCounts($plan);expectPromotion($counts['Emerald']+1,36);expectPromotion($counts['Jade'],35);expectPromotion($plan['students']['STAY']['placement']['GRADE'],8);expectPromotion($plan['students']['STAY']['placement']['SECTION'],'Emerald');
+});
+checkPromotion('Persisted Grade 7–10 retention overrides promotion and excludes the learner from target pools',function(){
+    $context=fixtureContext([95,85]);$context['retention_flags']=['LRN0000'=>true];
+    $plan=fixturePlan($context);
+    expectPromotion($plan['students']['LRN0000']['standing']['decision'],'Retained');
+    expectPromotion($plan['students']['LRN0000']['placement']['GRADE'],7);
+    expectPromotion($plan['summary']['retained'],1);
+    expectPromotion($plan['summary']['promoted'],1);
 });
 checkPromotion('Senior-high strands stay separate and each uses its first section as honor',function(){
     $context=fixtureContext([]);$context['honors']=[];$context['sections']=[];

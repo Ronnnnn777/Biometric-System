@@ -27,7 +27,11 @@ function executePromotionRollover(mysqli $conn, string $year, array $targets, ar
         $insertSection = $conn->prepare("INSERT INTO sections (SECTION,GRADE,STRAND,BASE_SECTION,IS_ACTIVE,CAPACITY,SORT_ORDER) VALUES (?,?,?,'',1,?,?)");
         $track = $conn->prepare('INSERT INTO school_year_rollover_sections (SCHOOL_YEAR,SECTION,GRADE,STRAND,RUN_ID) VALUES (?,?,?,?,?)');
         $created = 0;
-        foreach ($plan['destinations'] as $destination) foreach ($destination['groups'] as $group) {
+        $sectionDestinations = array_merge(
+            array_values($plan['destinations']),
+            array_values($plan['retained_destinations'] ?? []),
+        );
+        foreach ($sectionDestinations as $destination) foreach ($destination['groups'] as $group) {
             $section = $group['section'];
             if (empty($section['VIRTUAL'])) continue;
             $insertSection->bind_param('sisii',$section['SECTION'],$section['GRADE'],$section['STRAND'],$section['CAPACITY'],$section['SORT_ORDER']); $insertSection->execute();
@@ -40,7 +44,7 @@ function executePromotionRollover(mysqli $conn, string $year, array $targets, ar
             WHERE a.TIME_IN>=? AND a.TIME_IN<? AND (a.SECTION_SNAPSHOT='' OR a.SECTION_SNAPSHOT IS NULL)");
         $attendance->bind_param('ss',$start,$end); $attendance->execute();
         $history = $conn->prepare('INSERT IGNORE INTO student_school_history (STUDENT_ID,SCHOOL_YEAR,GRADE,STRAND,SECTION,ENROLLMENT_STATUS) VALUES (?,?,?,?,?,?)');
-        $decision = $conn->prepare('INSERT INTO student_promotion_decisions (STUDENT_ID,SCHOOL_YEAR,FAILED_SUBJECTS,DECISION) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE FAILED_SUBJECTS=VALUES(FAILED_SUBJECTS),DECISION=VALUES(DECISION)');
+        $decision = $conn->prepare('INSERT INTO student_promotion_decisions (STUDENT_ID,SCHOOL_YEAR,FAILED_SUBJECTS,DECISION,IS_RETAINED) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE FAILED_SUBJECTS=VALUES(FAILED_SUBJECTS),DECISION=VALUES(DECISION),IS_RETAINED=VALUES(IS_RETAINED)');
         $update = $conn->prepare('UPDATE students SET GRADE=?,STRAND=?,SECTION=?,ENROLLMENT_STATUS=?,STUDENT_STATUS=?,ARCHIVE_REASON=?,IS_ARCHIVED=?,ARCHIVED_AT=?,ARCHIVED_BY=? WHERE STUDENT_ID=?');
         $snapshot = $conn->prepare('INSERT INTO school_year_rollover_students (RUN_ID,STUDENT_ID,BEFORE_STATE,AFTER_STATE,ACADEMIC_STANDING) VALUES (?,?,?,?,?)');
         foreach ($plan['students'] as $id=>$record) {
@@ -65,7 +69,8 @@ function executePromotionRollover(mysqli $conn, string $year, array $targets, ar
             $historyStatus = $isGraduate ? 'Graduated' : (string) $student['ENROLLMENT_STATUS'];
             $history->bind_param('ssisss',$id,$year,$student['GRADE'],$student['STRAND'],$student['SECTION'],$historyStatus); $history->execute();
             $decisionValue = $isGraduate ? 'Graduated' : $standing['decision'];
-            $decision->bind_param('ssis',$id,$year,$standing['failed'],$decisionValue); $decision->execute();
+            $retainedFlag = $isRetained ? 1 : 0;
+            $decision->bind_param('ssisi',$id,$year,$standing['failed'],$decisionValue,$retainedFlag); $decision->execute();
             if ($after !== $before) {
                 $update->bind_param('isssssisss',$after['GRADE'],$after['STRAND'],$after['SECTION'],$after['ENROLLMENT_STATUS'],$after['STUDENT_STATUS'],$after['ARCHIVE_REASON'],$after['IS_ARCHIVED'],$after['ARCHIVED_AT'],$after['ARCHIVED_BY'],$id); $update->execute();
             }
@@ -83,7 +88,8 @@ function executePromotionRollover(mysqli $conn, string $year, array $targets, ar
             $history->bind_param('ssisss',$id,$year,$student['GRADE'],$student['STRAND'],$student['SECTION'],$student['ENROLLMENT_STATUS']); $history->execute();
             $decisionValue = $reason;
             $failed = 0;
-            $decision->bind_param('ssis',$id,$year,$failed,$decisionValue); $decision->execute();
+            $retainedFlag = 0;
+            $decision->bind_param('ssisi',$id,$year,$failed,$decisionValue,$retainedFlag); $decision->execute();
             $update->bind_param('isssssisss',$after['GRADE'],$after['STRAND'],$after['SECTION'],$after['ENROLLMENT_STATUS'],$after['STUDENT_STATUS'],$after['ARCHIVE_REASON'],$after['IS_ARCHIVED'],$after['ARCHIVED_AT'],$after['ARCHIVED_BY'],$id); $update->execute();
             $beforeJson=json_encode($before,JSON_THROW_ON_ERROR); $afterJson=json_encode($after,JSON_THROW_ON_ERROR);
             $academicJson=json_encode(['decision'=>$reason,'archived'=>true],JSON_THROW_ON_ERROR);

@@ -73,6 +73,22 @@ if ($action === 'setup') {
         requireTeacherAdvisory($conn,$active);
         echo 'Stale archived reservation released without an active advisory conflict.';
     } finally { $conn->rollback(); }
+} elseif ($action === 'unassign-advisory') {
+    require_once __DIR__.'/../includes/teacher-access-schema.php';
+    $conn->begin_transaction();
+    try {
+        $current = $conn->query("SELECT a.TEACHER_ID,a.SECTION_ID FROM current_teacher_advisory_assignments a ORDER BY a.TEACHER_ID LIMIT 1")->fetch_assoc();
+        if (!$current) throw new RuntimeException('The fixture has no active advisory assignment to release.');
+        $teacherId = (int) $current['TEACHER_ID'];
+        $sectionId = (int) $current['SECTION_ID'];
+        setTeacherAdvisory($conn, $teacherId, 0);
+        if (teacherAdvisoryAssignments($conn, $teacherId)) throw new RuntimeException('The advisory assignment was not released.');
+        $teacher = $conn->query('SELECT GRADE,STRAND,SECTION FROM teachers WHERE TEACHER_ID='.$teacherId)->fetch_assoc();
+        if ($teacher['GRADE'] !== null || $teacher['STRAND'] !== '' || $teacher['SECTION'] !== '') throw new RuntimeException('The legacy advisory profile fields were not cleared.');
+        $available = array_column(availableTeacherAdvisorySections($conn, $teacherId), 'SECTION_ID');
+        if (!in_array($sectionId, array_map('intval', $available), true)) throw new RuntimeException('The released section is not available for reassignment.');
+        echo 'Advisory assignment released and legacy profile fields cleared.';
+    } finally { $conn->rollback(); }
 } elseif ($action === 'constraints') {
     $teacher = (int)$conn->query("SELECT TEACHER_ID FROM teachers WHERE SECTION='Camia' AND TEACHER_STATUS='Active'")->fetch_assoc()['TEACHER_ID'];
     $camia = (int)$conn->query("SELECT SECTION_ID FROM sections WHERE SECTION='Camia'")->fetch_assoc()['SECTION_ID'];
